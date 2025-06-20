@@ -2,25 +2,22 @@ from dgl.data.utils import load_graphs
 import torch
 import pandas as pd
 
-graph_finance, label_dict_finance = load_graphs('./data/t-datasets/tfinance')
-graph_finance = graph_finance[0]
-graph_finance.ndata['label'] = graph_finance.ndata['label'].argmax(1)
+graph, _ = load_graphs('./data/t-datasets/tfinance')
+graph = graph[0]
+graph.ndata['label'] = graph.ndata['label'].argmax(1)
 
-graph_finance.ndata['label'] = graph_finance.ndata['label'].long().squeeze(-1)
-graph_finance.ndata['feature'] = graph_finance.ndata['feature'].float()
+graph.ndata['label'] = graph.ndata['label'].long().squeeze(-1)
+graph.ndata['feature'] = graph.ndata['feature'].float()
 
-src_finance, tgt_finance, edge_id_finance = graph_finance.edges(form='all')
-edges_finance = torch.cat((edge_id_finance.reshape(-1,1), src_finance.reshape(-1,1), tgt_finance.reshape(-1,1)), 1)
-np_edges_finance = edges_finance.detach().numpy()
-df_edges_finance = pd.DataFrame(np_edges_finance, columns=['edge_id', 'src', 'tgt'])
-df_edges_finance.to_csv("data/t-datasets/t-finance/t-finance-edges.csv", index=False)
+nodes = torch.cat((graph.ndata['feature'], graph.ndata['label'].reshape(-1,1)), 1)
+nodes_np = nodes.detach().numpy()
+nodes_columns = ['f'+str(i) for i in range(10)] + ["label"]
+df_nodes = pd.DataFrame(nodes_np, columns=nodes_columns)
+df_nodes.index.names = ['node_id']
+df_nodes.to_csv("./data/t-datasets/t-finance/t-finance-nodes.csv")
 
-np_features_finance = graph_finance.ndata['feature'].detach().numpy()
-df_features_finance = pd.DataFrame(np_features_finance)
-df_features_finance.index.names = ['node_id']
-df_features_finance.to_csv("./data/t-datasets/t-finance/t-finance-features.csv")
-
-np_label_finance = graph_finance.ndata['label'].detach().numpy()
-df_label_finance = pd.DataFrame(np_label_finance, columns=['label'])
-df_label_finance.index.names = ['node_id']
-df_label_finance.to_csv("./data/t-datasets/t-finance/t-finance-labels.csv")
+src, tgt, edge_id = graph.edges(form='all')
+edges = torch.cat((edge_id.reshape(-1,1), src.reshape(-1,1), tgt.reshape(-1,1)), 1)
+edges_np = edges.detach().numpy()
+df_edges = pd.DataFrame(edges_np, columns=['edge_id', 'src', 'tgt'])
+df_edges.to_csv("data/t-datasets/t-finance/t-finance-edges.csv", index=False)
