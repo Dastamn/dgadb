@@ -3,7 +3,7 @@
 set -e
 
 echo "AS-Topology"
-
+# the dataset says sym positive?
 target_dir="${1:-./data}"
 target_filename="tech-as-topology.edges"
 
