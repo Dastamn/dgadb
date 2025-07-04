@@ -36,5 +36,5 @@ df = df.with_columns([
 
 file_path = os.path.join(dataset_dir, "edges.parquet")
 df.write_parquet(file_path)
-print(df)
+
 print("success.")
