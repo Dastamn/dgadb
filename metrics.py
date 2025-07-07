@@ -1,6 +1,46 @@
 import torch
+import functools
 
 
+def metric_ensure_same_device(func):
+    """
+    A decorator that ensures `y_true` and `y_pred` are on the same device
+    before calling the decorated metric function.
+    
+    It assumes the first two arguments of the decorated function are 
+    `y_true` and `y_pred`.
+    
+    It assumes `y_pred` is on the target device. 
+    It also looks for a `device` keyword argument to allow for user override.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        # Extract y_true and y_pred from the function's arguments
+        y_true, y_pred = args[0], args[1]
+        
+        # Extract the optional 'device' keyword argument
+        device = kwargs.get('device')
+        
+        # Determine target device
+        if device is None:
+            target_device = y_pred.device
+        else:
+            target_device = torch.device(device)
+            
+        # Move tensors if necessary
+        y_true_on_device = y_true.to(target_device)
+        y_pred_on_device = y_pred.to(target_device)
+        
+        # Reconstruct the arguments to pass to the original function
+        new_args = (y_true_on_device, y_pred_on_device) + args[2:]
+        
+        # Call the original metric function with the corrected tensors
+        return func(*new_args, **kwargs)
+        
+    return wrapper
+
+
+@metric_ensure_same_device
 def confusion_matrix(y_true: torch.Tensor, y_pred: torch.Tensor):
     assert y_true.shape == y_pred.shape, "Shapes of true and predicted labels must match."
     
@@ -15,6 +55,7 @@ def confusion_matrix(y_true: torch.Tensor, y_pred: torch.Tensor):
     return tp, fp, tn, fn
 
 
+@metric_ensure_same_device
 def accuracy(y_true: torch.Tensor, y_pred: torch.Tensor):
     assert y_true.shape == y_pred.shape, "Shapes of true and predicted labels must match."
     return (y_true == y_pred).float().mean().item()
@@ -25,6 +66,7 @@ def precision(y_true: torch.Tensor, y_pred: torch.Tensor):
     return tp / (tp + fp) if (tp + fp) > 0 else 0.0
 
 
+@metric_ensure_same_device
 def precision_at_k(y_true: torch.Tensor, y_scores: torch.Tensor, k: int):
     assert y_true.shape == y_scores.shape, "Shapes of true labels and scores must match."
 
@@ -37,6 +79,7 @@ def precision_at_k(y_true: torch.Tensor, y_scores: torch.Tensor, k: int):
     return (num_hits_at_k / k).item()
 
 
+@metric_ensure_same_device
 def average_precision(y_true: torch.Tensor, y_scores: torch.Tensor):
     assert y_true.shape == y_scores.shape, "Shapes of true labels and scores must match."
 
@@ -54,12 +97,12 @@ def average_precision(y_true: torch.Tensor, y_scores: torch.Tensor):
     return torch.sum(precisions_at_hits) / total_y_true.float()
 
 
-
 def recall(y_true: torch.Tensor, y_pred: torch.Tensor):
     tp, _, _, fn = confusion_matrix(y_true, y_pred)
     return tp / (tp + fn) if (tp + fn) > 0 else 0.0
 
 
+@metric_ensure_same_device
 def recall_at_k(y_true: torch.Tensor, y_scores: torch.Tensor, k: int):
     assert y_true.shape == y_scores.shape, "Shapes of true labels and scores must match."
 
@@ -86,6 +129,24 @@ def f1_score(y_true: torch.Tensor, y_pred: torch.Tensor):
     return 2 * precision_value * recall_value / denom if denom > 0 else 0.0
 
 
+def best_f1_score(y_true: torch.Tensor, y_scores: torch.Tensor) -> tuple[float, float]:
+    assert y_true.shape == y_scores.shape, "Shapes of true labels and scores must match."
+
+    best_f1 = 0.0
+    thresholds = torch.unique(y_scores).cpu()
+    best_thr = thresholds[0].item() if len(thresholds) > 0 else 0.0
+
+    for thr in thresholds:
+        y_pred = y_scores >= thr
+        f1 = f1_score(y_true, y_pred)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thr = thr.item()
+
+    return best_f1, best_thr
+
+
+@metric_ensure_same_device
 def mean_reciprocal_rank(y_true: torch.Tensor, y_scores: torch.Tensor):
     assert y_true.shape == y_scores.shape, "Shapes of true labels and scores must match."
     y_true_bool = y_true.to(torch.bool)
