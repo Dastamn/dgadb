@@ -11,7 +11,7 @@ base_path = os.environ["BASE_PATH"]
 # TODO create labels from fraction of helpful-to-total votes anomaly if <0.25, paper filters out >0.75 as well
 
 ds = {
-    "am":"Automotive",
+    #"am":"Automotive", cannot run on my computer
     "bp":"Baby_Products",
     "mi":"Musical_Instruments"
 }
