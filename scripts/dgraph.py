@@ -6,6 +6,7 @@ print("DGraph")
 dataset_name = "dgraph"
 
 base_path = os.environ["BASE_PATH"]
+req_dir = os.path.dirname(f"{base_path}/raw/dgraph/")
 dataset_dir = os.path.dirname(f"{base_path}/data/dgraph/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
@@ -13,9 +14,9 @@ if not os.path.exists(dataset_dir):
 print("Looking for required files...")
 
 required_files = [
-    os.path.join(dataset_dir, "dgraphfin.npz"),
-    os.path.join(dataset_dir, "dgraphfinv2_node_timestamp.npy"),
-    os.path.join(dataset_dir, "dgraphfinv2_edge_timestamp.npy")
+    os.path.join(req_dir, "dgraphfin.npz"),
+    os.path.join(req_dir, "dgraphfinv2_node_timestamp.npy"),
+    os.path.join(req_dir, "dgraphfinv2_edge_timestamp.npy")
 ]
 
 for file_path in required_files:
