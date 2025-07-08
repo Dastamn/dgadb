@@ -32,6 +32,5 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:bz2") as tar:
 
 file_path = os.path.join(dataset_dir, "edges.parquet")
 df.write_parquet(file_path)
-print(df.head())
 
 print("success.")
