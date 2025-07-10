@@ -35,11 +35,11 @@ for t in ("alpha", "otc"):
         ])
         
         df_edges = df.select(["edge_id", "src", "tgt", "timestamp"])
-        df_edge_weights = df.select(["edge_id", "weight"])
+        df_edge_features_num = df.select(["edge_id", "weight"]).rename({"weight": "f0"}).unpivot(["f0"], index="edge_id", variable_name="feature_id")
         
     file_path_edges = os.path.join(dataset_dir, "edges.parquet")
-    file_path_edge_weights = os.path.join(dataset_dir, "edge_weights.parquet")
+    file_path_edge_features_num = os.path.join(dataset_dir, "edge_features_num.parquet")
     df_edges.write_parquet(file_path_edges)
-    df_edge_weights.write_parquet(file_path_edge_weights)
+    df_edge_features_num.write_parquet(file_path_edge_features_num)
 
 print("success.")

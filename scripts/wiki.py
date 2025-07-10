@@ -36,8 +36,8 @@ df = df.with_columns(
 
 df_edges = df.select(["edge_id", "src", "tgt", "timestamp"])
 df_edge_labels = df.select(["edge_id", "label"])
-df_edge_features = df.select(["edge_id"] + feature_cols)
-df_edge_features = df_edge_features.unpivot(feature_cols, index=["edge_id"], variable_name="feature_id")
+df_edge_features_num = df.select(["edge_id"] + feature_cols)
+df_edge_features_num = df_edge_features_num.unpivot(feature_cols, index=["edge_id"], variable_name="feature_id")
 
 # add node types
 total_nodes = df_edges["tgt"].max() + 1
@@ -51,11 +51,11 @@ df_node_types = df_node_types.with_columns(
 
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 file_path_edge_labels = os.path.join(dataset_dir, "edge_labels.parquet")
-file_path_edge_features = os.path.join(dataset_dir, "edge_features.parquet")
+file_path_edge_features_num = os.path.join(dataset_dir, "edge_features_num.parquet")
 file_path_node_types = os.path.join(dataset_dir, "node_types.parquet")
 df_edges.write_parquet(file_path_edges)
 df_edge_labels.write_parquet(file_path_edge_labels)
-df_edge_features.write_parquet(file_path_edge_features)
-df_edge_features.write_parquet(file_path_node_types)
+df_edge_features_num.write_parquet(file_path_edge_features_num)
+df_edge_features_num.write_parquet(file_path_node_types)
 
 print("success.")
