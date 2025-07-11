@@ -1,5 +1,6 @@
 import torch
 import functools
+from typing import Tuple
 
 
 def metric_ensure_same_device(func):
@@ -129,7 +130,7 @@ def f1_score(y_true: torch.Tensor, y_pred: torch.Tensor):
     return 2 * precision_value * recall_value / denom if denom > 0 else 0.0
 
 
-def best_f1_score(y_true: torch.Tensor, y_scores: torch.Tensor) -> tuple[float, float]:
+def best_f1_score(y_true: torch.Tensor, y_scores: torch.Tensor) -> Tuple[float, float]:
     assert y_true.shape == y_scores.shape, "Shapes of true labels and scores must match."
 
     best_f1 = 0.0
