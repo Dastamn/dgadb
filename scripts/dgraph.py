@@ -34,14 +34,14 @@ edge_time = np.load(required_files[2])
 
 nodes = np.concatenate((graph["x"], node_time.reshape(-1, 1), graph["y"].reshape(-1, 1)), axis=1)
 
-node_features = np.concatenate((node_time.reshape(-1, 1), graph["x"]), axis=1)
+node_features_num = np.concatenate((node_time.reshape(-1, 1), graph["x"]), axis=1)
 node_labels = graph["y"].reshape(-1, 1)
 
 node_feature_cols = ["node_timestamp"] + ['f'+str(i) for i in range(17)]
 
-df_node_features = pl.from_numpy(node_features, schema=node_feature_cols)
+df_node_features_num = pl.from_numpy(node_features_num, schema=node_feature_cols)
 df_node_labels = pl.from_numpy(node_labels, schema=["label"])
-df_node_features = df_node_features.with_row_index(name="node_id")
+df_node_features = df_node_features_num.with_row_index(name="node_id")
 df_node_labels = df_node_labels.with_row_index(name="node_id")
 
 df_node_features = df_node_features.unpivot([f"f{i}" for i in range(17)], index=["node_id"], variable_name="feature_id")
@@ -53,12 +53,12 @@ df_edge_types = pl.from_numpy(graph["edge_type"].reshape(-1, 1), schema=["edge_t
 df_edges = df_edges.with_row_index(name="edge_id")
 df_edge_types = df_edge_types.with_row_index(name="edge_id")
 
-file_path_node_features = os.path.join(dataset_dir, "node_features.parquet")
+file_path_node_features_num = os.path.join(dataset_dir, "node_features_num.parquet")
 file_path_node_labels = os.path.join(dataset_dir, "node_labels.parquet")
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 file_path_edge_types = os.path.join(dataset_dir, "edge_types.parquet")
 
-df_node_features.write_parquet(file_path_node_features)
+df_node_features_num.write_parquet(file_path_node_features_num)
 df_node_labels.write_parquet(file_path_node_labels)
 df_edges.write_parquet(file_path_edges)
 df_edge_types.write_parquet(file_path_edge_types)
