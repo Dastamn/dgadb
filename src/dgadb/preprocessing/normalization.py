@@ -2,48 +2,20 @@ from typing import Protocol
 from sklearn.preprocessing import StandardScaler
 import polars as pl
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from typing import List, Dict
+from typing import List, Dict, runtime_checkable
+from enum import Enum
 
+@runtime_checkable
 class BaseNormalizer(Protocol):
 
-    def fit(self, df: pl.DataFrame, columns: list[str]) -> None:
-        pass
+    def fit(self, df: pl.DataFrame, columns: list[str]) -> None: ...
 
-    def transform(self, df: pl.DataFrame) -> pl.DataFrame:
-        pass
+    def transform(self, df: pl.DataFrame) -> pl.DataFrame: ...
 
-    def get_params(self) -> dict:
-        pass
+    def get_params(self) -> dict: ...
 
 
-class NumericNormalizer(BaseNormalizer):
-
-    def fit(self, df: pl.DataFrame, columns: list[str]) -> None:
-        pass
-
-    def transform(self, df: pl.DataFrame) -> pl.DataFrame:
-        pass
-
-    def inverse_transform(self, df: pl.DataFrame) -> pl.DataFrame:
-        pass
-
-    def get_params(self) -> dict:
-        pass
-
-
-class TextNormalizer(BaseNormalizer):
-
-    def fit(self, df: pl.DataFrame, columns: list[str]) -> None:
-        pass
-
-    def transform(self, df: pl.DataFrame) -> pl.DataFrame:
-        pass
-
-    def get_params(self) -> dict:
-        pass
-
-
-class StandardNormalizer(NumericNormalizer):
+class StandardNormalizer():
 
     def __init__(self):
             self.mean_ = {}
@@ -76,7 +48,7 @@ class StandardNormalizer(NumericNormalizer):
         return {"mean_": self.mean_, "std_": self.std_}
 
     
-class MinMaxNormalizer(NumericNormalizer):
+class MinMaxNormalizer():
 
     def __init__(self, feature_range=(0, 1)):
         self.min_ = {}
@@ -126,7 +98,7 @@ class MinMaxNormalizer(NumericNormalizer):
         }
 
 
-class BoWNormalizer(TextNormalizer):
+class BoWNormalizer():
 
     def __init__(self, stop_words="english", max_features=None):
         self.vectorizers: Dict[str, CountVectorizer] = {}
@@ -167,7 +139,7 @@ class BoWNormalizer(TextNormalizer):
             "feature_names": self.feature_names
         }
     
-class TfidfNormalizer(TextNormalizer):
+class TfidfNormalizer():
 
     def __init__(self, stop_words="english", max_features=None):
         self.vectorizers: Dict[str, TfidfVectorizer] = {}
@@ -209,14 +181,17 @@ class TfidfNormalizer(TextNormalizer):
         }
 
 
-    
+
 NORMALIZER_REGISTRY = {
     "standard": StandardNormalizer,
     "minmax": MinMaxNormalizer,
     "bow": BoWNormalizer,
     "tfidf": TfidfNormalizer,
     #word2vec??
-}
+}# TODO do this with an enum class instead
 
-def get_normalizer(name: str) -> BaseNormalizer:
-    return NORMALIZER_REGISTRY[name.lower()]()
+def get_normalizer(name: str, for_str:bool) -> BaseNormalizer:
+    if for_str:
+        return NORMALIZER_REGISTRY[name.lower()](max_features=64)
+    else:
+        return NORMALIZER_REGISTRY[name.lower()]()
