@@ -29,7 +29,9 @@ df = pl.read_csv(
     new_columns=["edge_id", "src","tgt","rating", "label", "timestamp", "text"]
 )
 
-df_edges = df.select(["edge_id", "src", "tgt", "timestamp"])
+df_edges = df.select(["edge_id", "src", "tgt", "timestamp"]).with_columns([
+    pl.col("timestamp").str.strptime(pl.Date, "%Y-%m-%d").alias("timestamp")
+])
 df_edge_features_num = (
     df.select(["edge_id", "rating"])
       .unpivot(
@@ -74,12 +76,12 @@ df_edge_features_str.write_parquet(file_path_edge_features_str)
 
 src_nodes = df.select([
     pl.col("src").alias("node_id"),
-    pl.lit(0).alias("type")
+    pl.lit(0).alias("node_type")
 ])
 
 tgt_nodes = df.select([
     pl.col("tgt").alias("node_id"),
-    pl.lit(1).alias("type")
+    pl.lit(1).alias("node_type")
 ])
 
 df_node_types = pl.concat([src_nodes, tgt_nodes]).unique()
