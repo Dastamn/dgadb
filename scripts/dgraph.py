@@ -22,7 +22,7 @@ required_files = [
 for file_path in required_files:
     if not os.path.exists(file_path):
         raise FileNotFoundError(
-            f"Required file not fouind: {file_path}\n Download the required files at https://dgraph.xinye.com and place them in the data/dgraph folder."
+            f"Required file not found: {file_path}\n Download the required files at https://dgraph.xinye.com and place them in the data/dgraph folder."
         )
 
 print("Processing...")
@@ -34,18 +34,21 @@ edge_time = np.load(required_files[2])
 
 nodes = np.concatenate((graph["x"], node_time.reshape(-1, 1), graph["y"].reshape(-1, 1)), axis=1)
 
-node_features_num = np.concatenate((node_time.reshape(-1, 1), graph["x"]), axis=1)
+node_features_num = graph["x"]
+node_time = node_time.reshape(-1, 1)
 node_labels = graph["y"].reshape(-1, 1)
 
-node_feature_cols = ["node_timestamp"] + ['f'+str(i) for i in range(17)]
+node_feature_cols = ['f'+str(i) for i in range(17)]
 
 df_node_features_num = pl.from_numpy(node_features_num, schema=node_feature_cols)
 df_node_labels = pl.from_numpy(node_labels, schema=["label"])
-df_node_features = df_node_features_num.with_row_index(name="node_id")
+df_node_timestamps = pl.from_numpy(node_time, schema=["timestamp"])
+
+df_node_features_num = df_node_features_num.with_row_index(name="node_id")
 df_node_labels = df_node_labels.with_row_index(name="node_id")
+df_node_timestamps = df_node_timestamps.with_row_index(name="node_id")
 
-df_node_features = df_node_features.unpivot([f"f{i}" for i in range(17)], index=["node_id"], variable_name="feature_id")
-
+df_node_features_num = df_node_features_num.unpivot([f"f{i}" for i in range(17)], index=["node_id"], variable_name="feature_id")
 
 edges = np.concatenate((graph["edge_index"], edge_time.reshape(-1, 1)), axis=1)
 df_edges = pl.from_numpy(edges, schema=["src", "tgt", "timestamp"])
@@ -55,11 +58,13 @@ df_edge_types = df_edge_types.with_row_index(name="edge_id")
 
 file_path_node_features_num = os.path.join(dataset_dir, "node_features_num.parquet")
 file_path_node_labels = os.path.join(dataset_dir, "node_labels.parquet")
+file_path_node_timestamps = os.path.join(dataset_dir, "node_timestamps.parquet")
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 file_path_edge_types = os.path.join(dataset_dir, "edge_types.parquet")
 
 df_node_features_num.write_parquet(file_path_node_features_num)
 df_node_labels.write_parquet(file_path_node_labels)
+df_node_timestamps.write_parquet(file_path_node_timestamps)
 df_edges.write_parquet(file_path_edges)
 df_edge_types.write_parquet(file_path_edge_types)
 
