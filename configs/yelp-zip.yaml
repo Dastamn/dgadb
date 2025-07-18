@@ -1,0 +1,11 @@
+window_size: 100
+train_ratio: 0.7
+val_ratio: 0.15
+
+edges:
+  normalizers:
+    standard:
+     - f0_num
+    bow:
+    - name: f0_str
+      max_dim: 32
