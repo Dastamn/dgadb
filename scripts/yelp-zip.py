@@ -4,7 +4,7 @@ import os
 print("Yelp Zip")
 
 base_path = os.environ["BASE_PATH"]
-req_path = os.path.join(base_path, "raw/yelpzip.csv")
+req_path = os.path.join(base_path, "raw/yelp-zip/yelpzip.csv")
 
 if not os.path.exists(req_path):
         raise FileNotFoundError(
