@@ -3,7 +3,9 @@ from typing import Optional, Dict, Any
 import polars as pl
 
 N_KEYS = {"n_feat", "n_type", "n_id", "n_label", "n_snapshot_id"}
-E_KEYS = {"e_pairs", "e_weight", "e_feat", "e_type", "e_id", "e_label", "e_snapshot_id"}
+E_KEYS = {"e_pairs", "e_weight", "e_feat",
+          "e_type", "e_id", "e_label", "e_snapshot_id"}
+
 
 class Graph:
     def __init__(
@@ -33,14 +35,13 @@ class Graph:
 
         if "n_id" not in self._nodes and len(self._nodes) > 0:
             node_ids = torch.unique(self._edges["e_pairs"])
-            self._nodes["n_id"] = torch.arange(node_ids.size(0), dtype=torch.long)
-
-
-        
+            self._nodes["n_id"] = torch.arange(
+                node_ids.size(0), dtype=torch.long)
 
     def _validate_and_set(self, key: str, value: torch.Tensor, is_node: bool):
         if not isinstance(value, torch.Tensor):
-            raise TypeError(f"{'Node' if is_node else 'Edge'} key '{key}' must be a torch.Tensor")
+            raise TypeError(
+                f"{'Node' if is_node else 'Edge'} key '{key}' must be a torch.Tensor")
         if is_node:
             if key not in N_KEYS:
                 raise ValueError(f"Invalid node key: {key}")
@@ -85,19 +86,19 @@ class Graph:
         for k in self._edges:
             self._edges[k] = self._edges[k].to(device)
         return self
-    
+
     def node_timestamps(self) -> Optional[pl.DataFrame]:
         return self.timestamps.get("nodes", None)
 
     def edge_timestamps(self) -> Optional[pl.DataFrame]:
         return self.timestamps.get("edges", None)
-    
+
     def set_node_timestamps(self, df: pl.DataFrame):
         self.timestamps["nodes"] = df
 
     def set_edge_timestamps(self, df: pl.DataFrame):
         self.timestamps["edges"] = df
-    
+
     def get_snapshot(self, snapshot_id: int, all_nodes: bool = False):
         e_mask = (self._edges["e_snapshot_id"] <= snapshot_id)
         e_idx = e_mask.nonzero(as_tuple=True)[0]
@@ -125,7 +126,8 @@ class Graph:
                 id_map = {id.item(): i for i, id in enumerate(edge_node_ids)}
                 # only keep nodes whose n_id is in edge_node_ids
                 nodes_sub = {}
-                mask = torch.tensor([x.item() in id_map for x in self._nodes["n_id"]])
+                mask = torch.tensor(
+                    [x.item() in id_map for x in self._nodes["n_id"]])
                 n_idx = mask.nonzero(as_tuple=True)[0]
                 for k, v in self._nodes.items():
                     if v.shape[0] == mask.shape[0]:
@@ -135,7 +137,6 @@ class Graph:
             nodes=nodes_sub,
             edges=edges_sub
         )
-    
 
     @property
     def num_nodes(self) -> int:
@@ -185,4 +186,5 @@ class Graph:
             return self._edges["e_feat"].shape[1]
         return 0
 
-# TODO add translators to turn them into pyg objects
+# TODO add translators to turn them into pyg objects??
+# TODO make it so that different edge/node types can have differet feature dims

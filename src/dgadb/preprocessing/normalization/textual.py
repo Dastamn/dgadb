@@ -1,8 +1,10 @@
 from .base import BaseNormalizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 import polars as pl
+from typing import Dict, List
 
 DEFAULT_MAX_FEATURES = 64
+
 
 class BoWNormalizer():
     def __init__(self, stop_words="english", max_features=None):
@@ -15,16 +17,19 @@ class BoWNormalizer():
     def fit(self, df: pl.DataFrame, columns: list[str]) -> None:
         self.columns = columns
         for col in columns:
-            vectorizer = CountVectorizer(stop_words=self.stop_words, max_features=self.max_features)
+            vectorizer = CountVectorizer(
+                stop_words=self.stop_words, max_features=self.max_features)
             texts = df[col].to_list()
             vectorizer.fit(texts)
             self.vectorizers[col] = vectorizer
-            self.feature_names[col] = vectorizer.get_feature_names_out().tolist()
+            self.feature_names[col] = vectorizer.get_feature_names_out(
+            ).tolist()
 
     def transform(self, df: pl.DataFrame) -> pl.DataFrame:
         if not self.columns:
-            raise RuntimeError("BoWNormalizer must be fitted before transform.")
-        
+            raise RuntimeError(
+                "BoWNormalizer must be fitted before transform.")
+
         df_out = df.clone()
         for col in self.columns:
             texts = df[col].to_list()
@@ -43,7 +48,8 @@ class BoWNormalizer():
             "max_features": self.max_features,
             "feature_names": self.feature_names
         }
-    
+
+
 class TfidfNormalizer():
 
     def __init__(self, stop_words="english", max_features=None):
@@ -56,16 +62,19 @@ class TfidfNormalizer():
     def fit(self, df: pl.DataFrame, columns: list[str]) -> None:
         self.columns = columns
         for col in columns:
-            vectorizer = TfidfVectorizer(stop_words=self.stop_words, max_features=self.max_features)
+            vectorizer = TfidfVectorizer(
+                stop_words=self.stop_words, max_features=self.max_features)
             texts = df[col].to_list()
             vectorizer.fit(texts)
             self.vectorizers[col] = vectorizer
-            self.feature_names[col] = vectorizer.get_feature_names_out().tolist()
+            self.feature_names[col] = vectorizer.get_feature_names_out(
+            ).tolist()
 
     def transform(self, df: pl.DataFrame) -> pl.DataFrame:
         if not self.columns:
-            raise RuntimeError("TdidfNormalizer must be fitted before transform.")
-        
+            raise RuntimeError(
+                "TdidfNormalizer must be fitted before transform.")
+
         df_out = df.clone()
         for col in self.columns:
             texts = df[col].to_list()
