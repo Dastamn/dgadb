@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import requests, zipfile, io
+import requests
+import zipfile
+import io
 import polars as pl
 import os
 
@@ -12,7 +14,7 @@ if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 
 print("Downloading...")
-url="http://snap.stanford.edu/jodie/reddit.csv"
+url = "http://snap.stanford.edu/jodie/reddit.csv"
 r = requests.get(url)
 r.raise_for_status()
 
@@ -25,7 +27,8 @@ df = pl.read_csv(
     skip_lines=1,
     has_header=False,
     null_values=["-"],
-    new_columns=["src", "tgt", "timestamp", "label"] + [f"f{i}" for i in range(172)]
+    new_columns=["src", "tgt", "timestamp", "label"] +
+    [f"f{i}" for i in range(172)]
 )
 df = df.with_row_index(name="edge_id")
 
@@ -37,8 +40,10 @@ df = df.with_columns(
 
 df_edges = df.select(["edge_id", "src", "tgt", "timestamp"])
 df_edge_labels = df.select(["edge_id", "label"])
-df_edge_features = df.drop(["src", "tgt", "timestamp", "label"]).unpivot([f"f{i}" for i in range(172)], index=["edge_id"], variable_name="feature_id")
-df_edge_features = df_edge_features.with_columns(pl.col("feature_id").str.extract(r"(\d+)").cast(pl.Int64))
+df_edge_features = df.drop(["src", "tgt", "timestamp", "label"]).unpivot(
+    [f"f{i}" for i in range(172)], index=["edge_id"], variable_name="feature_id")
+df_edge_features = df_edge_features.with_columns(
+    pl.col("feature_id").str.extract(r"(\d+)").cast(pl.Int64))
 
 # add node types
 total_nodes = df["tgt"].max() + 1

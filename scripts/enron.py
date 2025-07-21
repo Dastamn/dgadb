@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import requests, tarfile, io
+import requests
+import tarfile
+import io
 import polars as pl
 import os
 
@@ -12,7 +14,7 @@ if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 
 print("Downloading...")
-url="http://konect.cc/files/download.tsv.enron.tar.bz2"
+url = "http://konect.cc/files/download.tsv.enron.tar.bz2"
 r = requests.get(url)
 r.raise_for_status()
 
@@ -25,8 +27,8 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:bz2") as tar:
             skip_rows=1,
             separator=" ",
             has_header=False,
-            columns=[0,1,3],
-            new_columns=["src","tgt","timestamp"]
+            columns=[0, 1, 3],
+            new_columns=["src", "tgt", "timestamp"]
         )
         df = df.with_row_index(name="edge_id")
 

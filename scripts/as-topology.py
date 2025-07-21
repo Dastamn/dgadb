@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import requests, zipfile, io
+import requests
+import zipfile
+import io
 import polars as pl
 import os
 
@@ -23,8 +25,8 @@ with zipfile.ZipFile(io.BytesIO(r.content)) as z:
             separator=" ",
             has_header=False,
             skip_rows=5,
-            columns=[0,1,3],
-            new_columns=["src","tgt","timestamp"]
+            columns=[0, 1, 3],
+            new_columns=["src", "tgt", "timestamp"]
         )
 df = df.with_row_index(name="edge_id")
 
