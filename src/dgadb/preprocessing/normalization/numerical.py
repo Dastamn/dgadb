@@ -4,13 +4,14 @@ from typing import Dict
 
 # TODO fix typing
 
+
 class StandardNormalizer():
 
     def __init__(self):
-            self.mean_ = {}
-            self.std_ = {}
-            self.columns = []
-    
+        self.mean_ = {}
+        self.std_ = {}
+        self.columns = []
+
     def fit(self, df: pl.DataFrame, columns: list[str]) -> None:
         self.columns = columns
         for col in columns:
@@ -21,12 +22,13 @@ class StandardNormalizer():
 
     def transform(self, df: pl.DataFrame) -> pl.DataFrame:
         if not self.columns:
-            raise RuntimeError("StandardNormalizer must be fitted before transform.")
+            raise RuntimeError(
+                "StandardNormalizer must be fitted before transform.")
         return df.with_columns([
             ((pl.col(col) - self.mean_[col]) / self.std_[col]).alias(col)
             for col in self.columns
         ])
-    
+
     def inverse_transform(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns([
             ((pl.col(col) * self.std_[col]) + self.mean_[col]).alias(col)
@@ -36,7 +38,7 @@ class StandardNormalizer():
     def get_params(self) -> dict:
         return {"mean_": self.mean_, "std_": self.std_}
 
-    
+
 class MinMaxNormalizer():
 
     def __init__(self, feature_range=(0, 1)):
@@ -56,10 +58,11 @@ class MinMaxNormalizer():
             self.data_max_[col] = col_max
             self.min_[col] = self.feature_range[0]
             self.max_[col] = self.feature_range[1]
-    
+
     def transform(self, df: pl.DataFrame) -> pl.DataFrame:
         if not self.columns:
-            raise RuntimeError("MinMaxNormalizer must be fitted before transform.")
+            raise RuntimeError(
+                "MinMaxNormalizer must be fitted before transform.")
         return df.with_columns([
             (
                 ((pl.col(col) - self.data_min_[col]) /
@@ -68,17 +71,18 @@ class MinMaxNormalizer():
             ).alias(col)
             for col in self.columns
         ])
-    
+
     def inverse_transform(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns([
             (
                 ((pl.col(col) - self.min_[col]) /
                  (self.max_[col] - self.min_[col])) *
-                (self.data_max_[col] - self.data_min_[col]) + self.data_min_[col]
+                (self.data_max_[col] - self.data_min_[col]) +
+                self.data_min_[col]
             ).alias(col)
             for col in self.columns
         ])
-    
+
     def get_params(self) -> dict:
         return {
             "feature_range": self.feature_range,

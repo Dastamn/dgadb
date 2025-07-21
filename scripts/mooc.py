@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import requests, tarfile, io
+import requests
+import tarfile
+import io
 import polars as pl
 import os
 
@@ -12,7 +14,7 @@ if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 
 print("Downloading...")
-url="https://snap.stanford.edu/data/act-mooc.tar.gz"
+url = "https://snap.stanford.edu/data/act-mooc.tar.gz"
 r = requests.get(url)
 r.raise_for_status()
 
@@ -24,9 +26,10 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
             f,
             separator="\t",
             has_header=True,
-            columns=[0,1,2,3],
+            columns=[0, 1, 2, 3],
         )
-        df_edges = df_edges.rename({"ACTIONID":"edge_id","USERID":"src", "TARGETID":"tgt", "TIMESTAMP":"timestamp"})
+        df_edges = df_edges.rename(
+            {"ACTIONID": "edge_id", "USERID": "src", "TARGETID": "tgt", "TIMESTAMP": "timestamp"})
         # one set of ids for all types
         n_src = df_edges["src"].n_unique()
         df_edges = df_edges.with_columns(
@@ -43,20 +46,21 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
             .alias("node_type")
         )
 
-
     features = tar.getmember("act-mooc/mooc_action_features.tsv")
     with tar.extractfile(features) as f:
         df_edge_features = pl.read_csv(
             f,
             separator="\t",
             has_header=True,
-            columns=[0,1,2,3,4],
+            columns=[0, 1, 2, 3, 4],
         )
-        df_edge_features = df_edge_features.unpivot(["FEATURE0", "FEATURE1", "FEATURE2", "FEATURE3"], index=["ACTIONID"], variable_name="feature_id")
+        df_edge_features = df_edge_features.unpivot(["FEATURE0", "FEATURE1", "FEATURE2", "FEATURE3"], index=[
+                                                    "ACTIONID"], variable_name="feature_id")
 
-        df_edge_features = df_edge_features.with_columns(pl.col("feature_id").str.extract(r"(\d+)").cast(pl.Int64))
+        df_edge_features = df_edge_features.with_columns(
+            pl.col("feature_id").str.extract(r"(\d+)").cast(pl.Int64))
 
-        df_edge_features = df_edge_features.rename({"ACTIONID":"edge_id"})
+        df_edge_features = df_edge_features.rename({"ACTIONID": "edge_id"})
 
     labels = tar.getmember("act-mooc/mooc_action_labels.tsv")
     with tar.extractfile(labels) as f:
@@ -64,9 +68,10 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
             f,
             separator="\t",
             has_header=True,
-            columns=[0,1],
+            columns=[0, 1],
         )
-        df_edge_labels = df_edge_labels.rename({"ACTIONID":"edge_id", "LABEL":"label"})
+        df_edge_labels = df_edge_labels.rename(
+            {"ACTIONID": "edge_id", "LABEL": "label"})
 
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 df_edges.write_parquet(file_path_edges)

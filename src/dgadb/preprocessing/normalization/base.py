@@ -1,6 +1,7 @@
 from typing import List, runtime_checkable, Protocol
 import polars as pl
 
+
 @runtime_checkable
 class BaseNormalizer(Protocol):
 

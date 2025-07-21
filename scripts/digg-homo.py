@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import requests, zipfile, io
+import requests
+import zipfile
+import io
 import polars as pl
 import os
 
@@ -12,7 +14,7 @@ if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 
 print("Downloading...")
-url="https://nrvis.com/download/data/dynamic/ia-digg-reply.zip"
+url = "https://nrvis.com/download/data/dynamic/ia-digg-reply.zip"
 # same as http://konect.cc/networks/munmun_digg_reply/
 
 r = requests.get(url)
@@ -26,8 +28,8 @@ with zipfile.ZipFile(io.BytesIO(r.content)) as z:
             skip_lines=1,
             separator=" ",
             has_header=False,
-            columns=[0,1,3],
-            new_columns=["src","tgt","timestamp"]
+            columns=[0, 1, 3],
+            new_columns=["src", "tgt", "timestamp"]
         )
         df = df.with_row_index(name="edge_id")
 

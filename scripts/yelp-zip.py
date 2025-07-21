@@ -7,11 +7,11 @@ base_path = os.environ["BASE_PATH"]
 req_path = os.path.join(base_path, "raw/yelp-zip/yelpzip.csv")
 
 if not os.path.exists(req_path):
-        raise FileNotFoundError(
-            f"Required file not found: {req_path}\n Download the required file at https://www.scidb.cn/en/detail?dataSetId=76673646fb7241f58aada7b9f24b25fe and place it in the raw folder."
-        )
+    raise FileNotFoundError(
+        f"Required file not found: {req_path}\n Download the required file at https://www.scidb.cn/en/detail?dataSetId=76673646fb7241f58aada7b9f24b25fe and place it in the raw folder."
+    )
 else:
-      print("Raw file found!")
+    print("Raw file found!")
 
 print("Processing...")
 
@@ -25,8 +25,9 @@ df = pl.read_csv(
     separator=",",
     skip_rows=1,
     has_header=False,
-    columns=[0,1,2,3,4,5,6],
-    new_columns=["edge_id", "src","tgt","rating", "label", "timestamp", "text"]
+    columns=[0, 1, 2, 3, 4, 5, 6],
+    new_columns=["edge_id", "src", "tgt",
+                 "rating", "label", "timestamp", "text"]
 )
 
 df_edges = df.select(["edge_id", "src", "tgt", "timestamp"]).with_columns([
@@ -38,22 +39,22 @@ df_edge_features_num = (
           ["rating"],
           index=["edge_id"],
           variable_name="feature_id"
-      )
-      .with_columns(
+    )
+    .with_columns(
           pl.lit(0).cast(pl.Int64).alias("feature_id")
-      )
+    )
 )
 df_edge_features_str = (
     df.select(["edge_id", "text"])
       .unpivot(
-            ["text"],
-            index=["edge_id"],
-            variable_name="feature_id"
-        )
-        .with_columns(
-            pl.lit(0).cast(pl.Int64).alias("feature_id")
-        )
+        ["text"],
+        index=["edge_id"],
+        variable_name="feature_id"
     )
+    .with_columns(
+        pl.lit(0).cast(pl.Int64).alias("feature_id")
+    )
+)
 
 df_edge_labels = df.select(["edge_id", "label"]).with_columns(
     pl.when(pl.col("label") == -1)
@@ -68,9 +69,11 @@ file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 df_edges.write_parquet(file_path_edges)
 file_path_edge_labels = os.path.join(dataset_dir, "edge_labels.parquet")
 df_edge_labels.write_parquet(file_path_edge_labels)
-file_path_edge_features_num = os.path.join(dataset_dir, "edge_features_num.parquet")
+file_path_edge_features_num = os.path.join(
+    dataset_dir, "edge_features_num.parquet")
 df_edge_features_num.write_parquet(file_path_edge_features_num)
-file_path_edge_features_str = os.path.join(dataset_dir, "edge_features_str.parquet")
+file_path_edge_features_str = os.path.join(
+    dataset_dir, "edge_features_str.parquet")
 df_edge_features_str.write_parquet(file_path_edge_features_str)
 
 
