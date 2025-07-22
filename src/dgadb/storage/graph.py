@@ -29,14 +29,15 @@ class Graph:
                 self._validate_and_set(k, v, is_node=False)
 
         # assign global ids if not given
-        if "e_id" not in self._edges:
-            num_edges = self._edges["e_pairs"].shape[1]
-            self._edges["e_id"] = torch.arange(num_edges, dtype=torch.long)
+        if "e_pairs" in self._edges:
+            if "e_id" not in self._edges:
+                num_edges = self._edges["e_pairs"].shape[1]
+                self._edges["e_id"] = torch.arange(num_edges, dtype=torch.long)
 
-        if "n_id" not in self._nodes and len(self._nodes) > 0:
-            node_ids = torch.unique(self._edges["e_pairs"])
-            self._nodes["n_id"] = torch.arange(
-                node_ids.size(0), dtype=torch.long)
+            if "n_id" not in self._nodes and len(self._nodes) > 0:
+                node_ids = torch.unique(self._edges["e_pairs"])
+                self._nodes["n_id"] = torch.arange(
+                    node_ids.size(0), dtype=torch.long)
 
     def _validate_and_set(self, key: str, value: torch.Tensor, is_node: bool):
         if not isinstance(value, torch.Tensor):
