@@ -1,0 +1,3 @@
+window_size: 100
+train_ratio: 0.70
+val_ratio: 0.15
