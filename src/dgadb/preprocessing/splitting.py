@@ -15,28 +15,33 @@ def generate_data_splits(
     logger.info(
         f"Generating data splits: train_ratio={train_ratio}, val_ratio={val_ratio}, snapshot_col={snapshot_col}")
 
-    ids = dfs["edges"].select(snapshot_col).unique()
-    if "nodes" in dfs and snapshot_col in dfs["nodes"].columns:
-        ids = ids.vstack(dfs["nodes"].select(snapshot_col).unique())
-    ids = ids.unique().sort(by=snapshot_col)
+    timestamps = dfs["edges"]["timestamp"]
 
-    n = ids.height
+    n = len(timestamps)
     n_train = int(n * train_ratio)
     n_val = int(n * val_ratio) if val_ratio else 0
     n_test = n - n_train - n_val
 
-    splits = (
-        ["train"] * n_train +
-        (["val"] * n_val if n_val > 0 else []) +
-        ["test"] * n_test
-    )[:n]
+    train_mask = [True] * n_train + [False] * (n - n_train)
+    val_mask = [False] * n
+    test_mask = [False] * n
+
+    if n_val > 0:
+        val_mask[n_train:n_train + n_val] = [True] * n_val
+        test_mask[n_train + n_val:] = [True] * n_test
+    else:
+        test_mask[n_train:] = [True] * n_test
+
+    # Add masks to df
+    dfs["edges"] = dfs["edges"].with_columns([
+        pl.Series("train_mask", train_mask),
+        pl.Series("test_mask", test_mask)
+    ])
+    if n_val > 0:
+        dfs["edges"] = dfs["edges"].with_columns(
+            [pl.Series("val_mask", val_mask)])
 
     logger.info(
         f"Assigned splits: {n_train} train, {n_val} val, {n_test} test (total {n})")
-
-    ids = ids.with_columns([
-        pl.Series("split", splits)
-    ])
-    return ids
-
+    return dfs
 # TODO add choice to use fixed snapshot numbers instead of ratios
