@@ -38,7 +38,7 @@ model.train()
 preds, labels, inf_time = model.inference("test")
 
 # here we would add some evaluation metric function/class thingy
-roc_auc = roc_auc_score(labels, preds)
-logger.info(f"Test ROC-AUC Score: {roc_auc:.4f}")
+auc_score = roc_auc_score(labels, preds)
+logger.info(f"Test ROC-AUC Score: {auc_score:.4f}")
 
 
