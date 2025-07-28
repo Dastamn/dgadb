@@ -7,13 +7,12 @@ logger = logging.getLogger(__name__)
 
 def generate_data_splits(
     dfs: Dict[str, pl.DataFrame],
-    snapshot_col: str = "snapshot_id",
     train_ratio: float = 0.7,
     val_ratio: Optional[float] = None
 ) -> pl.DataFrame:
 
     logger.info(
-        f"Generating data splits: train_ratio={train_ratio}, val_ratio={val_ratio}, snapshot_col={snapshot_col}")
+        f"Generating data splits: train_ratio={train_ratio}, val_ratio={val_ratio}")
 
     timestamps = dfs["edges"]["timestamp"]
 
