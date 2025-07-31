@@ -1,22 +1,61 @@
+import logging
 import math
-import logging
 import time
-import torch
+from collections.abc import Callable
+
 import numpy as np
-from .SLADE_TGN import SLADE_TGN
-from .utils.utils import get_neighbor_finder
-from .utils.data_processing import SLADEData
-from .evaluation.evaluation import eval_anomaly_node_detection
 import pandas as pd
+import torch
 from tqdm import tqdm
-import logging
+
+from .evaluation.evaluation import eval_anomaly_node_detection
+from .SLADE_TGN import SLADE_TGN
+from .utils.data_processing import SLADEData
+from .utils.utils import get_neighbor_finder
 
 logger = logging.getLogger(__name__)
 
 
 class SLADEModel:
-    def __init__(self, device, hyperparams, epoch_evaluation_metric):
+    """Wrap SLADE model.
 
+    This class provides a standardized interface for the SLADE temporal gnn model.
+
+    Attributes:
+        device (torch.device): Device to run computations on.
+        epoch_evaluation_metric (callable): Function to evaluate model performance in epochs.
+        dcl_tgn (SLADE_TGN): The underlying SLADE model.
+        optimizer (torch.optim.Optimizer): Optimizer for training.
+        scheduler (torch.optim.lr_scheduler): Learning rate scheduler.
+        has_val (bool): Whether validation data is available.
+
+    Args:
+        device (torch.device): Device to run computations on.
+        hyperparams (dict): Dictionary containing model hyperparameters including
+            batch_size, num_neighbors, num_epoch, learning_rate, memory settings, etc.
+        epoch_evaluation_metric (callable): Function that takes (labels, predictions)
+            and returns a scalar evaluation metric.
+
+    """
+
+    def __init__(
+        self,
+        device: torch.device,
+        hyperparams: dict[str, any],
+        epoch_evaluation_metric: Callable[[np.ndarray, np.ndarray], float],
+    ) -> None:
+        """Initialize SLADEModel with device, hyperparameters, and evaluation metric.
+
+        Sets up the model configuration and stores hyperparameters learning.
+
+        Args:
+            device (torch.device): Device to run computations on.
+            hyperparams (dict): Dictionary containing model hyperparameters such as
+                batch_size, num_neighbors, learning_rate, memory_dim, etc.
+            epoch_evaluation_metric (callable): Function that takes (labels, predictions)
+                and returns a scalar metric for evaluation during training.
+
+        """
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
 
@@ -35,11 +74,11 @@ class SLADEModel:
         self.memory_dim = hyperparams.get("memory_dim", 256)
         self.lr_decay = hyperparams.get("lr_decay", 0.8)
         self.weight_decay = hyperparams.get("weight_decay", 0.0001)
-        self.memory_agg_type = hyperparams.get("memory_agg_type", 'TGAT')
+        self.memory_agg_type = hyperparams.get("memory_agg_type", "TGAT")
         self.negative_memory_type = hyperparams.get(
-            "negative_memory_type", 'train')
-        self.message_updater = hyperparams.get("message_updater", 'mlp')
-        self.memory_updater = hyperparams.get("memory_updater", 'gru')
+            "negative_memory_type", "train")
+        self.message_updater = hyperparams.get("message_updater", "mlp")
+        self.memory_updater = hyperparams.get("memory_updater", "gru")
         self.srf = hyperparams.get("srf", 0.1)
         self.drf = hyperparams.get("drf", 0.1)
         self.only_drift_loss_score = hyperparams.get(
@@ -53,34 +92,56 @@ class SLADEModel:
         self.n_runs = hyperparams.get("n_runs", 1)
         self.seed = hyperparams.get("seed", 0)
 
-    def setup(self, df: pd.DataFrame):
+    def setup(self, df: pd.DataFrame) -> None:
+        """Set up data processing and initialize the SLADE model.
 
-        sources = df["src"].values
-        destinations = df["tgt"].values
-        edge_idxs = df["edge_id"].values
-        labels = df["label"].values
-        timestamps = df["timestamp"].values
+        Processes the input DataFrame into SLADE data format, creates neighbor finders
+        for different data splits, initializes the SLADE_TGN model, and sets up
+        optimizers and schedulers.
 
-        train_mask = df["train_mask"].values
-        test_mask = df["test_mask"].values
+        Args:
+            df (pd.DataFrame): Input DataFrame containing columns: src, tgt, edge_id,
+                label, timestamp, train_mask, test_mask, and optionally val_mask.
+
+        """
+        sources = df["src"].to_numpy()
+        destinations = df["tgt"].to_numpy()
+        edge_idxs = df["edge_id"].to_numpy()
+        labels = df["label"].to_numpy()
+        timestamps = df["timestamp"].to_numpy()
+
+        train_mask = df["train_mask"].to_numpy()
+        test_mask = df["test_mask"].to_numpy()
         self.has_val = "val_mask" in df.columns
         if self.has_val:
-            val_mask = df["val_mask"].values
+            val_mask = df["val_mask"].to_numpy()
 
         self.full_data = SLADEData(
             sources, destinations, timestamps, edge_idxs, labels)
-        self.train_data = SLADEData(sources[train_mask], destinations[train_mask], timestamps[train_mask],
-                                    edge_idxs[train_mask], labels[train_mask])
+        self.train_data = SLADEData(sources[train_mask],
+                                    destinations[train_mask],
+                                    timestamps[train_mask],
+                                    edge_idxs[train_mask],
+                                    labels[train_mask])
 
-        self.test_data = SLADEData(sources[test_mask], destinations[test_mask], timestamps[test_mask],
-                                   edge_idxs[test_mask], labels[test_mask])
+        self.test_data = SLADEData(sources[test_mask],
+                                   destinations[test_mask],
+                                   timestamps[test_mask],
+                                   edge_idxs[test_mask],
+                                   labels[test_mask])
 
         if self.has_val:
-            self.val_data = SLADEData(sources[val_mask], destinations[val_mask], timestamps[val_mask],
-                                      edge_idxs[val_mask], labels[val_mask])
+            self.val_data = SLADEData(sources[val_mask],
+                                      destinations[val_mask],
+                                      timestamps[val_mask],
+                                      edge_idxs[val_mask],
+                                      labels[val_mask])
             train_val_mask = train_mask | val_mask
-            self.train_val_data = SLADEData(sources[train_val_mask], destinations[train_val_mask], timestamps[train_val_mask],
-                                            edge_idxs[train_val_mask], labels[train_val_mask])
+            self.train_val_data = SLADEData(sources[train_val_mask],
+                                            destinations[train_val_mask],
+                                            timestamps[train_val_mask],
+                                            edge_idxs[train_val_mask],
+                                            labels[train_val_mask])
 
         max_idx = max(self.full_data.unique_nodes)
 
@@ -98,12 +159,24 @@ class SLADEModel:
         self.dst_neighbors, _, self.dst_neighbors_time = self.train_ngh_finder.get_temporal_neighbor_tqdm(
             self.train_data.destinations, self.train_data.timestamps, self.num_neighbors)
 
-        self.dcl_tgn = SLADE_TGN(neighbor_finder=self.train_ngh_finder, n_nodes=self.full_data.n_unique_nodes, n_edges=self.full_data.n_interactions,
-                                 device=self.device, n_layers=self.num_layer, n_heads=self.num_heads,
-                                 dropout=self.drop_out, message_dimension=self.message_dim, memory_dimension=self.memory_dim, n_neighbors=self.num_neighbors,
-                                 memory_agg_type=self.memory_agg_type, negative_memory_type=self.negative_memory_type, message_updater=self.message_updater,
-                                 memory_updater=self.memory_updater, src_reg_factor=self.srf, dst_reg_factor=self.drf,
-                                 only_drift_loss=self.only_drift_loss_score, only_recovery_loss=self.only_recovery_loss_score)
+        self.dcl_tgn = SLADE_TGN(neighbor_finder=self.train_ngh_finder,
+                                 n_nodes=self.full_data.n_unique_nodes,
+                                 n_edges=self.full_data.n_interactions,
+                                 device=self.device,
+                                 n_layers=self.num_layer,
+                                 n_heads=self.num_heads,
+                                 dropout=self.drop_out,
+                                 message_dimension=self.message_dim,
+                                 memory_dimension=self.memory_dim,
+                                 n_neighbors=self.num_neighbors,
+                                 memory_agg_type=self.memory_agg_type,
+                                 negative_memory_type=self.negative_memory_type,
+                                 message_updater=self.message_updater,
+                                 memory_updater=self.memory_updater,
+                                 src_reg_factor=self.srf,
+                                 dst_reg_factor=self.drf,
+                                 only_drift_loss=self.only_drift_loss_score,
+                                 only_recovery_loss=self.only_recovery_loss_score)
 
         self.dcl_tgn = self.dcl_tgn.to(self.device)
 
@@ -133,7 +206,13 @@ class SLADEModel:
         self.negative_train_nodes = torch.from_numpy(np.array(list(set(
             self.train_data.destinations) | set(self.train_data.sources)))).long().to(self.device)
 
-    def train(self):
+    def train(self) -> None:
+        """Train the SLADE model.
+
+        Performs epoch-based training with mini-batches. Computes contrastive loss
+        between node embeddings. Updates memory states and evaluates on validation
+        data (if available) after each epoch.
+        """
         logger.info(f"Starting training for {self.num_epoch} epochs...")
         for epoch in range(self.num_epoch):
             self.dcl_tgn.memory.__init_memory__()
@@ -186,7 +265,25 @@ class SLADEModel:
             logger.info("Epoch {} - mloss: {:.4f} {} auc: {:.4f}".format(
                 str(epoch), sum(m_loss)/len(m_loss), "val", epoch_score))
 
-    def inference(self, split: str):
+    def inference(self, split: str) -> tuple[np.ndarray, np.ndarray, float]:
+        """Run inference on the specified data split.
+
+        Evaluates the trained model on train, validation, or test data and returns
+        anomaly scores, ground truth labels, and inference timing.
+
+        Args:
+            split (str): Data split to evaluate on. Options are "train", "val", "test".
+
+        Returns:
+            tuple: A tuple containing:
+                - pred_score (np.ndarray): Predicted anomaly scores
+                - labels (np.ndarray): Ground truth binary labels
+                - inf_time (float): Inference time in seconds
+
+        Raises:
+            ValueError: If the specified split is not available.
+
+        """
         inf_start = time.time()
 
         if split == "train":
