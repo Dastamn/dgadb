@@ -1,0 +1,10 @@
+# Assume Python 3.9
+target-version = "py311"
+
+line-length = 120
+
+select = [
+    "ALL", # include all the rules, including new ones
+]
+[lint]
+ignore = ["G004"]

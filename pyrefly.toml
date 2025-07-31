@@ -1,0 +1,8 @@
+project-includes = ["src", "scripts"]
+project-excludes = ["**/*venv/**/*"]
+
+site-package-path = ["venv/lib/python3.11/site-packages"]
+
+python-version = "3.11"
+python-interpreter = "venv/bin/python3"
+

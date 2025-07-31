@@ -5,3 +5,5 @@ venv/
 
 /data/
 /raw/
+
+.DS_store

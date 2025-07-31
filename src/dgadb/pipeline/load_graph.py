@@ -26,5 +26,3 @@ def load_graph(name: str) -> Graph:
 
     data = normalize_dataframes(data, config)
     return build_graph(data, snapshot_split_map=snapshot_split_map)
-
-    # TODO add logging EVERYWHERE
