@@ -5,7 +5,8 @@ from typing import Optional, Literal
 def normalize_timestamps(
     df: pl.DataFrame,
     timestamp_col: str = "timestamp",
-    normalized_timestamps_col: str = "timestamp_norm"
+    normalized_timestamp_col: str = "timestamp_norm",
+    replace: bool = True
 ) -> pl.DataFrame:
     """
     Normalizes a timestamp column.
@@ -19,14 +20,16 @@ def normalize_timestamps(
     Args:
         df: The input Polars DataFrame.
         timestamp_col: The name of the column containing the timestamps.
-        normalized_timestamps_col: The name of the column containing the normalized timestamps.
+        normalized_timestamp_col: The name of the column containing the normalized timestamps.
+        replace: Whether to replace the intial `timestamp_col` values or append a new `normalized_timestamp_col`.
 
     Returns:
-        A new DataFrame with an added `normalized_timestamps_col` (UInt64) column.
+        A new DataFrame with an added `normalized_timestamp_col` (UInt64) column.
     """
     if timestamp_col not in df.columns:
         raise ValueError(f"Column '{timestamp_col}' not found in DataFrame.")
 
+    tar_col = timestamp_col if replace else normalized_timestamp_col
     dtype = df[timestamp_col].dtype
     timestamp_series = df[timestamp_col]
 
@@ -67,7 +70,7 @@ def normalize_timestamps(
     else:
         raise TypeError(f"Unsupported timestamp dtype: {dtype}.")
 
-    return df.with_columns(normalized_timestamp_series.alias(normalized_timestamps_col))
+    return df.with_columns(normalized_timestamp_series.alias(tar_col))
 
 
 def generate_data_splits(
