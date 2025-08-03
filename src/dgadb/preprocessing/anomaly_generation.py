@@ -5,11 +5,12 @@ import polars as pl
 import torch
 import numpy as np
 import random
+from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
 
 
 def generate_anomalies_no_timestamp(data: torch.Tensor, train_percent: float, anomaly_percent: float):
     """
-    Generates a synthetic graph anomaly detection dataset from a list of edges. 
+    Generates a synthetic graph anomaly detection dataset from a list of edges.
     Implements the method described in [Li Zheng et al., 2019], with reference to its public implementation.
 
     This function takes a complete set of graph edges and splits it into a
@@ -124,8 +125,6 @@ Temporal GCN", Li Zheng et al., IJCAI, 2019.
     return train_edges, synthetic_test_edges
 
 
-_REQUIRED_COLS = ["src", "tgt", "timestamp", "train_mask", "test_mask"]
-
 _ANOMALY_TYPES = [
     "temporal",
     "contextual",
@@ -139,6 +138,7 @@ class AnomalyGenerator:
     def __init__(
             self,
             edges: pl.DataFrame,
+            edge_features: np.ndarray,
             anom_ratio: float,
             anom_type: Literal[
                 "temporal",
@@ -147,26 +147,20 @@ class AnomalyGenerator:
                 "structural-contextual",
                 "temporal-structural-contextual",
                 "combination"
-            ]
+            ],
+            timestamp_col: str = "timestamp"
     ) -> None:
         if not 0.0 <= anom_ratio <= 1.0:
             raise ValueError("'anomaly_percent' must be between 0.0 and 1.0.")
 
-        missing = [col for col in _REQUIRED_COLS if col not in edges.columns]
-        if missing:
-            raise ValueError(f"Missing column(s): {missing}")
+        if anom_type not in [*_ANOMALY_TYPES, "combination"]:
+            raise ValueError(f"Unknown anomaly type: '{anom_type}'.")
 
-        self.edges = edges if edges["timestamp"].is_sorted() \
-            else edges.sort("timestamp")
+        self.edges = edges if edges[timestamp_col].is_sorted() \
+            else edges.sort(timestamp_col)
 
-        # self.train_edges = edges.filter(pl.col("train_mask"))
-        # self.test_edges = edges.filter(pl.col("test_mask"))
-        # self.val_edges = (
-        #     edges.filter(pl.col("val_mask"))
-        #     if "val_mask" in edges.columns
-        #     else None
-        # )
-
+        self.timestamp_col = timestamp_col
+        self.edge_features = edge_features
         self.anom_ratio = anom_ratio
         self.anom_types = (
             _ANOMALY_TYPES
@@ -179,7 +173,8 @@ class AnomalyGenerator:
 
     def _build_edge_lookups(self) -> None:
         unique_edges = self.edges.unique(subset=["src", "tgt"])
-        unique_edges_ts = self.edges.unique(subset=["src", "tgt", "timestamp"])
+        unique_edges_ts = self.edges.unique(
+            subset=["src", "tgt", self.timestamp_col])
 
         self.observed_edges = set(zip(
             unique_edges["src"],
@@ -188,7 +183,7 @@ class AnomalyGenerator:
         self.observed_edges_with_timestamps = set(zip(
             unique_edges_ts["src"],
             unique_edges_ts["tgt"],
-            unique_edges_ts["timestamp"]
+            unique_edges_ts[self.timestamp_col]
         ))
 
     def _compute_temporal_properties(self) -> None:
@@ -200,7 +195,8 @@ class AnomalyGenerator:
         """
         # Compute time deltas
         train_edges = self.edges.filter(pl.col("train_mask"))
-        unique_timestamps = train_edges["timestamp"].unique().to_numpy()
+        unique_timestamps = train_edges[self.timestamp_col].unique().to_numpy()
+
         if len(unique_timestamps) < 2:
             self.time_deltas = np.array([], dtype=int)
         else:
@@ -212,26 +208,6 @@ class AnomalyGenerator:
         else:
             # The granularity is the greatest common divisor of all time deltas
             self.granularity = reduce(gcd, self.time_deltas)
-
-    # def _compute_edge_probabilities(self, edges: torch.Tensor) -> np.ndarray:
-    #     """
-    #     Computes edge probabilities with respect to their counts.
-    #     More frequent edges have lower probability.
-
-    #     Args:
-    #         edges (torch.Tensor): A tensor of shape (n_edges, 2) where each row is a [source, destination] pair.
-
-    #     Returns:
-    #         torch.Tensor: A 1D tensor of shape (n_edges,) containing the probability for each edge
-    #                     in the input tensor.
-    #     """
-    #     # 'inverse_indices' maps each edge in the original 'edges' tensor to its index in 'unique_edges'
-    #     _, inverse_indices, counts = torch.unique(
-    #         edges, dim=0, return_inverse=True, return_counts=True)
-    #     # (1/counts) * (1/sqrt(counts))
-    #     unique_weights = torch.pow(counts, -1.5)
-    #     edge_weights = unique_weights[inverse_indices]
-    #     return edge_weights / (edge_weights.sum() + 1e-10)
 
     def _compute_edge_probabilities(self, edges: pl.DataFrame) -> np.ndarray:
         """
@@ -269,6 +245,12 @@ class AnomalyGenerator:
 
         return edge_weights / (total_weight + 1e-10)
 
+    def _sample_random_edge(self, edges: pl.DataFrame, edge_features: np.ndarray, edge_p: np.ndarray) -> tuple[int, int, int, np.ndarray]:
+        ind = np.random.choice(len(edges), 1, p=edge_p)[0]
+        src, tgt, t = edges.select(["src", "tgt", self.timestamp_col]).row(ind)
+        f = edge_features[ind, :]
+        return src, tgt, t, f
+
     def _generate_plausible_timestamp(self, first_t: int, last_t: int, random_time_walk_max_step: int = 11) -> int:
         # Find the first possible base point at or after 'first_t'
         start_base_point = (first_t + self.granularity - 1) // self.granularity
@@ -300,30 +282,68 @@ class AnomalyGenerator:
 
         return int(np.clip(current_t, first_t, last_t))
 
-    def _generate_anomalous_samples(self, use_val_split: bool = False):
-        if use_val_split:
-            if "val_mask" not in self.edges.columns:
-                raise ValueError("'val_mask' not found.")
-            eval_edges = self.edges.filter(pl.col("val_mask"))
+    def sample_contextually_inconsistent_feature(
+        self,
+        f: np.ndarray,
+        edge_features: np.ndarray,
+        distance_metric: Literal["cosine", "l2"] = "cosine",
+        sample_size: int = 10
+    ) -> np.ndarray:
+        # Sample random edge features
+        mask = np.random.choice(
+            edge_features.shape[0], sample_size, replace=False)
+        random_edge_features = edge_features[mask, :]
+
+        distances = None
+        f_ = f.reshape(1, -1)
+        if distance_metric == "cosine":
+            distances = cosine_distances(f_, random_edge_features)
+        elif distance_metric == "l2":
+            distances = euclidean_distances(f_, random_edge_features)
         else:
-            eval_edges = self.edges.filter(pl.col("test_mask"))
+            raise NotImplementedError(f"'{distance_metric}' is not supported!")
+
+        # Return most dissimilar
+        return random_edge_features[np.argmax(distances)]
+
+    def _generate_anomalous_samples(self, use_val_split: bool = False):
+        """
+        """
+        eval_mask_col = "val_mask" if use_val_split else "test_mask"
+        if eval_mask_col not in self.edges.columns:
+            raise ValueError(f"'{eval_mask_col}' not found.")
+
+        eval_edges = self.edges.filter(pl.col(eval_mask_col))
 
         num_anomalies = int(len(eval_edges) * self.anom_ratio)
 
-        first_t = eval_edges["timestamp"].first()
-        last_t = eval_edges["timestamp"].last()
+        if len(eval_edges) == 0 or num_anomalies == 0:
+            # Return original data with 0 label
+            return self.edges.with_columns(pl.lit(0).alias("label")), self.edge_features
+
+        eval_mask = self.edges[eval_mask_col].to_numpy()
+        eval_edge_features = self.edge_features[eval_mask]
+
+        first_t = eval_edges[self.timestamp_col].first()
+        last_t = eval_edges[self.timestamp_col].last()
 
         eval_edge_p = self._compute_edge_probabilities(eval_edges)
+
+        anom_src_array = []
+        anom_tgt_array = []
+        anom_t_array = []
+        anom_f_array = []
 
         for _ in range(num_anomalies):
             anom_type = random.choice(self.anom_types)
 
             if anom_type == "temporal":
-                self._generate_one_temporal_anomaly(
-                    eval_edges, first_t, last_t, eval_edge_p)
+                anom_src, anom_tgt, anom_t, anom_f = self._generate_one_temporal_anomaly(
+                    eval_edges, eval_edge_features, first_t, last_t, eval_edge_p)
 
             elif anom_type == "contextual":
-                pass
+                anom_src, anom_tgt, anom_t, anom_f = self._generate_one_contextual_anomaly(
+                    eval_edges, eval_edge_features, eval_edge_p)
 
             elif anom_type == "temporal-contextual":
                 pass
@@ -331,20 +351,84 @@ class AnomalyGenerator:
             elif anom_type == "structural-contextual":
                 pass
 
-            elif anom_type == "temporal-structural-contextual":
+            else:  # temporal-structural-contextual
                 pass
 
-    def _generate_one_temporal_anomaly(self, eval_edges: pl.DataFrame, first_t: int, last_t: int, edge_p: np.ndarray, max_num_tries: int = 100):
-        ind = np.random.choice(len(self.edges), 1, p=edge_p)
-        anom_src, anom_tgt, _ = eval_edges.row(ind)
+            anom_src_array.append(anom_src)
+            anom_tgt_array.append(anom_tgt)
+            anom_t_array.append(anom_t)
+            anom_f_array.append(anom_f)
+
+        data = [
+            pl.Series("src", anom_src_array, dtype=pl.Int64),
+            pl.Series("tgt", anom_tgt_array, dtype=pl.Int64),
+            pl.Series(self.timestamp_col, anom_t_array, dtype=pl.UInt64),
+            pl.Series("train_mask", [False] * num_anomalies, dtype=pl.Boolean),
+            pl.Series("test_mask", [not use_val_split]
+                      * num_anomalies, dtype=pl.Boolean),
+            pl.Series("label", [1] * num_anomalies, dtype=pl.Int8),
+        ]
+
+        if use_val_split:
+            data.append(
+                pl.Series("val_mask", [True] * num_anomalies, dtype=pl.Boolean))
+
+        labeled_anom_edges = pl.DataFrame(data)
+
+        labeled_normal_edges = self.edges.select([d.name for d in data if d.name != "label"]).with_columns(
+            pl.lit(0, dtype=pl.Int8).alias("label"))
+
+        labeled_edges_with_index = pl.concat(
+            [labeled_normal_edges, labeled_anom_edges],
+            how="vertical"
+        ) \
+            .with_row_index() \
+            .sort(self.timestamp_col)
+        sorted_index = labeled_edges_with_index["index"].to_numpy()
+
+        anom_edge_features = np.vstack(anom_f_array)
+        all_edge_features = np.concatenate(
+            [self.edge_features, anom_edge_features], axis=0)
+
+        out_edges = labeled_edges_with_index.drop("index")
+        out_features = all_edge_features[sorted_index]
+
+        return out_edges, out_features
+
+    def _generate_one_temporal_anomaly(
+            self,
+            eval_edges: pl.DataFrame,
+            eval_edge_features: np.ndarray,
+            first_t: int,
+            last_t: int,
+            edge_p: np.ndarray,
+            max_num_tries: int = 100
+    ) -> tuple[int, int, int, np.ndarray]:
+        src, tgt, _, f = self._sample_random_edge(
+            eval_edges, eval_edge_features, edge_p)
         anom_t = None
         num_tries = 0
         while (
             anom_t is None
-            or (anom_src, anom_tgt, anom_t) in self.observed_edges_with_timestamps
+            or (src, tgt, anom_t) in self.observed_edges_with_timestamps
             and (num_tries < max_num_tries)
         ):
             anom_t = self._generate_plausible_timestamp(first_t, last_t)
             num_tries += 1
 
-        return anom_src, anom_tgt, anom_t
+        return src, tgt, anom_t, f
+
+    def _generate_one_contextual_anomaly(
+        self,
+        eval_edges: pl.DataFrame,
+        eval_edge_features: np.ndarray,
+        edge_p: np.ndarray,
+        sample_size: int = 10
+    ) -> tuple[int, int, int, np.ndarray]:
+        # Sample random edge
+        src, tgt, t, f = self._sample_random_edge(
+            eval_edges, eval_edge_features, edge_p)
+        anom_f = self.sample_contextually_inconsistent_feature(
+            f, eval_edge_features, "cosine", sample_size)
+
+        return src, tgt, t, anom_f
