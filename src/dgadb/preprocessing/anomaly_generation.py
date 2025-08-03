@@ -6,6 +6,8 @@ import torch
 import numpy as np
 import random
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
+import logging
+logger = logging.getLogger(__name__)
 
 
 def generate_anomalies_no_timestamp(data: torch.Tensor, train_percent: float, anomaly_percent: float):
@@ -139,35 +141,14 @@ class AnomalyGenerator:
             self,
             edges: pl.DataFrame,
             edge_features: np.ndarray,
-            anom_ratio: float,
-            anom_type: Literal[
-                "temporal",
-                "contextual",
-                "temporal-contextual",
-                "structural-contextual",
-                "temporal-structural-contextual",
-                "combination"
-            ],
             timestamp_col: str = "timestamp"
     ) -> None:
-        if not 0.0 <= anom_ratio <= 1.0:
-            raise ValueError("'anomaly_percent' must be between 0.0 and 1.0.")
+        if "label" in edges.columns:
+            logging.warning("Edges dataframe already has a label column.")
 
-        if anom_type not in [*_ANOMALY_TYPES, "combination"]:
-            raise ValueError(f"Unknown anomaly type: '{anom_type}'.")
-
-        self.edges = edges if edges[timestamp_col].is_sorted() \
-            else edges.sort(timestamp_col)
-
+        self.edges = edges
         self.timestamp_col = timestamp_col
         self.edge_features = edge_features
-        self.anom_ratio = anom_ratio
-        self.anom_types = (
-            _ANOMALY_TYPES
-            if anom_type == "combination"
-            else [anom_type]
-        )
-
         self._build_edge_lookups()
         self._compute_temporal_properties()
 
@@ -306,58 +287,98 @@ class AnomalyGenerator:
         # Return most dissimilar
         return random_edge_features[np.argmax(distances)]
 
-    def _generate_anomalous_samples(self, use_val_split: bool = False):
+    def _generate_anomalous_samples(
+            self,
+            anom_ratio: float,
+            anom_type: Literal[
+                "temporal",
+                "contextual",
+                "temporal-contextual",
+                "structural-contextual",
+                "temporal-structural-contextual",
+                "combination"
+            ],
+            use_val_split: bool = False
+    ):
         """
+        Generates and combines anomalous samples with normal edges for model evaluation.
+
+        Args:
+            anom_ratio (float): The proportion of anomalous edges to generate relative
+                                to the size of the evaluation set. Must be between 0.0 and 1.0.
+            anom_type (str): The type of anomalies to generate. Can be a specific type
+                             or "combination" to mix all types.
+            use_val_split (bool, optional): If True, targets the validation set.
+                                            Otherwise, targets the test set. Defaults to False.
+
+        Returns:
+            Tuple[pl.DataFrame, np.ndarray]:
+            - A Polars DataFrame of all edges (normal and anomalous), sorted by timestamp,
+              with a 'label' column (0 for normal, 1 for anomalous).
+            - A NumPy array of corresponding edge features, sorted in the same order.
         """
+        if not 0.0 <= anom_ratio <= 1.0:
+            raise ValueError("'anom_ratio' must be between 0.0 and 1.0.")
+
+        if anom_type not in [*_ANOMALY_TYPES, "combination"]:
+            raise ValueError(f"Unknown anomaly type: '{anom_type}'.")
+
         eval_mask_col = "val_mask" if use_val_split else "test_mask"
         if eval_mask_col not in self.edges.columns:
             raise ValueError(f"'{eval_mask_col}' not found.")
 
-        eval_edges = self.edges.filter(pl.col(eval_mask_col))
+        anom_types = _ANOMALY_TYPES if anom_type == "combination" else [
+            anom_type]
 
-        num_anomalies = int(len(eval_edges) * self.anom_ratio)
+        logging.info(
+            f"Starting anomaly generation for '{eval_mask_col}' with ratio {anom_ratio} and type(s) {anom_types}.")
+
+        eval_edges = self.edges.filter(pl.col(eval_mask_col))
+        num_anomalies = int(len(eval_edges) * anom_ratio)
 
         if len(eval_edges) == 0 or num_anomalies == 0:
             # Return original data with 0 label
+            logging.warning(
+                f"No evaluation edges found or num_anomalies is 0. Returning original data.")
             return self.edges.with_columns(pl.lit(0).alias("label")), self.edge_features
 
+        logging.info(f"Generating {num_anomalies} anomalies...")
+
+        # TODO: zero_copy_only raises an error, must store split masks separately (@Dastamn)
         eval_mask = self.edges[eval_mask_col].to_numpy()
         eval_edge_features = self.edge_features[eval_mask]
 
-        first_t = eval_edges[self.timestamp_col].first()
-        last_t = eval_edges[self.timestamp_col].last()
+        first_t = eval_edges[self.timestamp_col].min()
+        last_t = eval_edges[self.timestamp_col].max()
 
         eval_edge_p = self._compute_edge_probabilities(eval_edges)
+        chosen_anom_types = random.choices(anom_types, k=num_anomalies)
 
-        anom_src_array = []
-        anom_tgt_array = []
-        anom_t_array = []
-        anom_f_array = []
+        anom_src_array = np.empty(num_anomalies, dtype=np.int64)
+        anom_tgt_array = np.empty(num_anomalies, dtype=np.int64)
+        anom_t_array = np.empty(num_anomalies, dtype=np.uint64)
+        anom_f_array = np.empty(
+            (num_anomalies, self.edge_features.shape[1]), dtype=self.edge_features.dtype)
 
-        for _ in range(num_anomalies):
-            anom_type = random.choice(self.anom_types)
+        for i in range(num_anomalies):
+            anom_type_i = chosen_anom_types[i]
 
-            if anom_type == "temporal":
-                anom_src, anom_tgt, anom_t, anom_f = self._generate_one_temporal_anomaly(
+            if anom_type_i == "temporal":
+                anom_src_array[i], anom_tgt_array[i], anom_t_array[i], anom_f_array[i] = self._generate_one_temporal_anomaly(
                     eval_edges, eval_edge_features, first_t, last_t, eval_edge_p)
 
-            elif anom_type == "contextual":
-                anom_src, anom_tgt, anom_t, anom_f = self._generate_one_contextual_anomaly(
+            elif anom_type_i == "contextual":
+                anom_src_array[i], anom_tgt_array[i], anom_t_array[i], anom_f_array[i] = self._generate_one_contextual_anomaly(
                     eval_edges, eval_edge_features, eval_edge_p)
 
-            elif anom_type == "temporal-contextual":
+            elif anom_type_i == "temporal-contextual":
                 pass
 
-            elif anom_type == "structural-contextual":
+            elif anom_type_i == "structural-contextual":
                 pass
 
             else:  # temporal-structural-contextual
                 pass
-
-            anom_src_array.append(anom_src)
-            anom_tgt_array.append(anom_tgt)
-            anom_t_array.append(anom_t)
-            anom_f_array.append(anom_f)
 
         data = [
             pl.Series("src", anom_src_array, dtype=pl.Int64),
@@ -373,25 +394,22 @@ class AnomalyGenerator:
             data.append(
                 pl.Series("val_mask", [True] * num_anomalies, dtype=pl.Boolean))
 
-        labeled_anom_edges = pl.DataFrame(data)
-
-        labeled_normal_edges = self.edges.select([d.name for d in data if d.name != "label"]).with_columns(
+        anom_edges = pl.DataFrame(data)
+        normal_edges = self.edges.select([d.name for d in data if d.name != "label"]).with_columns(
             pl.lit(0, dtype=pl.Int8).alias("label"))
 
-        labeled_edges_with_index = pl.concat(
-            [labeled_normal_edges, labeled_anom_edges],
-            how="vertical"
-        ) \
-            .with_row_index() \
-            .sort(self.timestamp_col)
-        sorted_index = labeled_edges_with_index["index"].to_numpy()
+        combined_edges_with_index = pl.concat(
+            [normal_edges, anom_edges], how="vertical").with_row_index().sort(self.timestamp_col)
+        sorted_index = combined_edges_with_index["index"].to_numpy()
 
-        anom_edge_features = np.vstack(anom_f_array)
-        all_edge_features = np.concatenate(
-            [self.edge_features, anom_edge_features], axis=0)
+        combined_edge_features = np.concatenate(
+            [self.edge_features, anom_f_array], axis=0)
 
-        out_edges = labeled_edges_with_index.drop("index")
-        out_features = all_edge_features[sorted_index]
+        out_edges = combined_edges_with_index.drop("index")
+        out_features = combined_edge_features[sorted_index]
+
+        logging.info(
+            f"Successfully generated {num_anomalies} anomalies. Final dataset has {len(out_edges)} total edges.")
 
         return out_edges, out_features
 
