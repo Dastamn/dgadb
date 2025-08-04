@@ -55,7 +55,7 @@ class Graph:
 
         if "n_id" not in self._nodes and len(self._nodes) > 0:
             self._nodes["n_id"] = torch.arange(node_ids.size(0), dtype=torch.long)
-            
+
         if "n_feat" not in self._nodes:
             self._nodes["n_feat"] = torch.eye(node_ids.size(0))
 

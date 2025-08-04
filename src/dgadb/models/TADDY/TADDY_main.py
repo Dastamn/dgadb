@@ -95,9 +95,11 @@ class TADDYModel:
         logger.info(f"Setup started...")
 
         n_nodes = g.num_nodes
-        #self.window_size = g.window_size
+        # self.window_size = g.window_size
         self.window_size = 3
-        logger.info(f"Starting the processing of snapshots with window_size: {self.window_size} and num_snapshots: {g.num_snapshots}")
+        logger.info(
+            f"Starting the processing of snapshots with window_size: {self.window_size} and num_snapshots: {g.num_snapshots}"
+        )
 
         # per-snapshot edge pairs and labels
         rows = []
@@ -106,7 +108,7 @@ class TADDYModel:
         labels = []
         edges = []
         degrees = np.zeros(n_nodes, dtype=np.int32)
-        
+
         for snap in tqdm(g.snapshots(all_nodes=True), desc="Processing snapshots", leave=True, total=g.num_snapshots):
             this_e_pairs = snap.e_pairs
             this_edges = this_e_pairs.T.cpu().numpy()
@@ -131,7 +133,7 @@ class TADDYModel:
                 degrees[n] += 1
 
         # build idx and index_id_map CHECK THIS
-        #idx = g.n_id.cpu().numpy()
+        # idx = g.n_id.cpu().numpy()
         idx = g.n_id.cpu().numpy()
         index_id_map = {i: i for i in idx}
 
@@ -254,7 +256,7 @@ class TADDYModel:
 
         self._compute_embeddings()
         self.data_dict["raw_embeddings"] = None
-        
+
         for epoch in range(self.num_epoch):
             t_epoch_begin = time.time()
 
@@ -262,7 +264,7 @@ class TADDYModel:
             negatives = self.method_obj.negative_sampling(
                 self.data_dict["edges"][: max(self.data_dict["snap_train"]) + 1]
             )
-            
+
             _, _, hop_embeddings_neg, int_embeddings_neg, time_embeddings_neg = self.method_obj.generate_embedding(
                 negatives
             )
@@ -270,7 +272,9 @@ class TADDYModel:
             self.method_obj.train()
             loss_train = 0
 
-            for snap in tqdm(self.data_dict["snap_train"], desc=f"Going through snapshots in epoch {epoch}", leave=True):
+            for snap in tqdm(
+                self.data_dict["snap_train"], desc=f"Going through snapshots in epoch {epoch}", leave=True
+            ):
                 if self.embeddings["wl"][snap] is None:
                     continue
 

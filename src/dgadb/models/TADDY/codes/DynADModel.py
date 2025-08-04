@@ -63,7 +63,7 @@ class DynADModel(BertPreTrainedModel):
 
     def negative_sampling(self, edges):
         negative_edges = []
-        node_list = self.data['idx']
+        node_list = self.data["idx"]
         num_node = node_list.shape[0]
         for snap_edge in edges:
             num_edge = snap_edge.shape[0]
