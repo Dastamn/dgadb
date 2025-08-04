@@ -405,7 +405,9 @@ class AnomalyGenerator:
         combined_edge_features = np.concatenate(
             [self.edge_features, anom_f_array], axis=0)
 
-        out_edges = combined_edges_with_index.drop("index")
+        out_edges = combined_edges_with_index.with_columns(
+            pl.arange(0, combined_edges_with_index.height).alias("edge_id")
+        ).drop("index")
         out_features = combined_edge_features[sorted_index]
 
         logging.info(
