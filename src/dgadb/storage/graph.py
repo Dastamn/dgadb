@@ -2,9 +2,10 @@ import torch
 from typing import Optional, Dict, Any
 import polars as pl
 
-N_KEYS = {"n_feat", "n_type", "n_id", "n_label", "n_snapshot_id"}
+N_KEYS = {"n_feat", "n_type", "n_id",
+          "n_label", "n_snapshot_id", "n_timestamp", "n_train_mask", "n_val_mask", "n_test_mask"}
 E_KEYS = {"e_pairs", "e_weight", "e_feat",
-          "e_type", "e_id", "e_label", "e_snapshot_id"}
+          "e_type", "e_id", "e_label", "e_snapshot_id", "e_timestamp", "e_train_mask", "e_val_mask", "e_test_mask"}
 
 
 class Graph:
@@ -12,13 +13,11 @@ class Graph:
         self,
         nodes: Optional[Dict[str, torch.Tensor]] = None,
         edges: Optional[Dict[str, torch.Tensor]] = None,
-        timestamps: Optional[Dict[str, pl.DataFrame]] = None,
-        snapshot_split_map: Optional[pl.DataFrame] = None
+        window_size: Optional[int] = None
     ):
         self._nodes: Dict[str, torch.Tensor] = {}
         self._edges: Dict[str, torch.Tensor] = {}
-        self.timestamps: Dict[str, pl.DataFrame] = timestamps
-        self.snapshot_split_map = snapshot_split_map
+        self.window_size = window_size
 
         if nodes:
             for k, v in nodes.items():
@@ -29,14 +28,15 @@ class Graph:
                 self._validate_and_set(k, v, is_node=False)
 
         # assign global ids if not given
-        if "e_id" not in self._edges:
-            num_edges = self._edges["e_pairs"].shape[1]
-            self._edges["e_id"] = torch.arange(num_edges, dtype=torch.long)
+        if "e_pairs" in self._edges:
+            if "e_id" not in self._edges:
+                num_edges = self._edges["e_pairs"].shape[1]
+                self._edges["e_id"] = torch.arange(num_edges, dtype=torch.long)
 
-        if "n_id" not in self._nodes and len(self._nodes) > 0:
-            node_ids = torch.unique(self._edges["e_pairs"])
-            self._nodes["n_id"] = torch.arange(
-                node_ids.size(0), dtype=torch.long)
+            if "n_id" not in self._nodes and len(self._nodes) > 0:
+                node_ids = torch.unique(self._edges["e_pairs"])
+                self._nodes["n_id"] = torch.arange(
+                    node_ids.size(0), dtype=torch.long)
 
     def _validate_and_set(self, key: str, value: torch.Tensor, is_node: bool):
         if not isinstance(value, torch.Tensor):
@@ -59,7 +59,7 @@ class Graph:
         raise AttributeError(f"Graph object has no attribute '{name}'")
 
     def __setattr__(self, name: str, value: Any):
-        if name in {"_nodes", "_edges", "timestamps", "snapshot_split_map"}:
+        if name in {"_nodes", "_edges", "window_size"}:
             super().__setattr__(name, value)
         elif name in N_KEYS:
             self._validate_and_set(name, value, is_node=True)
@@ -72,7 +72,7 @@ class Graph:
         node_keys = ", ".join(self._nodes.keys())
         edge_keys = ", ".join(self._edges.keys())
         timestamp_keys = ", ".join(self.timestamps.keys())
-        return f"<Graph:\n  Nodes: [{node_keys}]\n  Edges: [{edge_keys}]\n  Timestamps: [{timestamp_keys}]>"
+        return f"<Graph:\n  Nodes: [{node_keys}]\n  Edges: [{edge_keys}]\n>"
 
     def node_dict(self) -> Dict[str, torch.Tensor]:
         return self._nodes.copy()
@@ -87,56 +87,48 @@ class Graph:
             self._edges[k] = self._edges[k].to(device)
         return self
 
-    def node_timestamps(self) -> Optional[pl.DataFrame]:
-        return self.timestamps.get("nodes", None)
+    def snapshots(self, all_nodes: bool = False):
+        snapshot_id = 0
+        num_snapshots = self.num_snapshots()
 
-    def edge_timestamps(self) -> Optional[pl.DataFrame]:
-        return self.timestamps.get("edges", None)
+        while snapshot_id < num_snapshots:
 
-    def set_node_timestamps(self, df: pl.DataFrame):
-        self.timestamps["nodes"] = df
+            e_mask = (self._edges["e_snapshot_id"] <= snapshot_id)
+            e_idx = e_mask.nonzero(as_tuple=True)[0]
+            edges_sub = {}
+            for k, v in self._edges.items():
+                if k == "e_pairs":
+                    edges_sub[k] = v[:, e_idx]
+                elif v.shape[0] == e_mask.shape[0]:
+                    edges_sub[k] = v[e_idx]
 
-    def set_edge_timestamps(self, df: pl.DataFrame):
-        self.timestamps["edges"] = df
+            if "n_snapshot_id" in self._nodes:
+                # if nodes have timestamps we filter these too
+                n_mask = (self._nodes["n_snapshot_id"] <= snapshot_id)
+                n_idx = n_mask.nonzero(as_tuple=True)[0]
+                nodes_sub = {
+                    k: v[n_idx] for k, v in self._nodes.items() if v.shape[0] == n_mask.shape[0]
+                }
 
-    def get_snapshot(self, snapshot_id: int, all_nodes: bool = False):
-        e_mask = (self._edges["e_snapshot_id"] <= snapshot_id)
-        e_idx = e_mask.nonzero(as_tuple=True)[0]
-        edges_sub = {}
-        for k, v in self._edges.items():
-            if k == "e_pairs":
-                edges_sub[k] = v[:, e_idx]  # For 2D [2, num_edges]
-            elif v.shape[0] == e_mask.shape[0]:
-                edges_sub[k] = v[e_idx]
-
-        if "n_snapshot_id" in self._nodes:
-            n_mask = (self._nodes["n_snapshot_id"] <= snapshot_id)
-            n_idx = n_mask.nonzero(as_tuple=True)[0]
-            nodes_sub = {
-                k: v[n_idx] for k, v in self._nodes.items() if v.shape[0] == n_mask.shape[0]
-            }
-
-        else:
-            if all_nodes:
-                nodes_sub = self._nodes
             else:
+                if all_nodes:
+                    # include all nodes
+                    nodes_sub = self._nodes
+                else:
+                    # just include nodes present in current edges
+                    edge_node_ids = torch.unique(edges_sub["e_pairs"])
+                    id_map = {id.item(): i for i,
+                              id in enumerate(edge_node_ids)}
+                    nodes_sub = {}
+                    mask = torch.tensor(
+                        [x.item() in id_map for x in self._nodes["n_id"]])
+                    n_idx = mask.nonzero(as_tuple=True)[0]
+                    for k, v in self._nodes.items():
+                        if v.shape[0] == mask.shape[0]:
+                            nodes_sub[k] = v[n_idx]
 
-                # just include nodes present in current edges
-                edge_node_ids = torch.unique(edges_sub["e_pairs"])
-                id_map = {id.item(): i for i, id in enumerate(edge_node_ids)}
-                # only keep nodes whose n_id is in edge_node_ids
-                nodes_sub = {}
-                mask = torch.tensor(
-                    [x.item() in id_map for x in self._nodes["n_id"]])
-                n_idx = mask.nonzero(as_tuple=True)[0]
-                for k, v in self._nodes.items():
-                    if v.shape[0] == mask.shape[0]:
-                        nodes_sub[k] = v[n_idx]
-
-        return Graph(
-            nodes=nodes_sub,
-            edges=edges_sub
-        )
+            yield Graph(nodes=nodes_sub, edges=edges_sub)
+            snapshot_id += 1
 
     @property
     def num_nodes(self) -> int:
@@ -169,6 +161,16 @@ class Graph:
         return torch.tensor([0])
 
     @property
+    def num_snapshots(self) -> int:
+        if "n_snapshot_id" in self._nodes or "e_snapshot_id" in self._edges:
+            if "n_snapshot_id" in self._nodes:
+                n_snapshots = torch.max(self._nodes["n_snapshot_id"]).item()
+            if "e_snapshot_id" in self._edges:
+                e_snapshots = torch.max(self._edges["e_snapshot_id"]).item()
+            return max(n_snapshots, e_snapshots)
+        return 0
+
+    @property
     def edge_types(self):
         if "e_type" in self._edges:
             return self._edges["e_type"].unique().cpu()
@@ -186,5 +188,4 @@ class Graph:
             return self._edges["e_feat"].shape[1]
         return 0
 
-# TODO add translators to turn them into pyg objects??
 # TODO make it so that different edge/node types can have differet feature dims
