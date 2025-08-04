@@ -15,8 +15,7 @@ repos:
     # Run the formatter.
     - id: ruff-format
 
-- repo: https://github.com/UserNobody14/pyrefly-precommit
-  rev: '0.0.2'
+- repo: https://github.com/facebook/pyrefly
+  rev: 0.26.0
   hooks:
-    - id: pyrefly
-      args: ["--python-interpreter", ".venv/bin/python3"]
+    - id: pyrefly-typecheck

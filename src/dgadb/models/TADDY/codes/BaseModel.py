@@ -1,9 +1,10 @@
 import torch
 from transformers.models.bert.modeling_bert import BertPreTrainedModel, BertPooler
-from codes.Component import EdgeEncoding, TransformerEncoder
+from src.dgadb.models.TADDY.codes.Component import EdgeEncoding, TransformerEncoder
 
 
 BertLayerNorm = torch.nn.LayerNorm
+
 
 class BaseModel(BertPreTrainedModel):
     data = None
@@ -28,8 +29,17 @@ class BaseModel(BertPreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    def setting_preparation(self, input_ids=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None, inputs_embeds=None, encoder_hidden_states=None, encoder_attention_mask=None,):
-
+    def setting_preparation(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+    ):
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
@@ -53,7 +63,9 @@ class BaseModel(BertPreTrainedModel):
                 batch_size, seq_length = input_shape
                 seq_ids = torch.arange(seq_length, device=device)
                 causal_mask = seq_ids[None, None, :].repeat(batch_size, seq_length, 1) <= seq_ids[None, :, None]
-                causal_mask = causal_mask.to(torch.long)  # not converting to long will cause errors with pytorch version < 1.3
+                causal_mask = causal_mask.to(
+                    torch.long
+                )  # not converting to long will cause errors with pytorch version < 1.3
                 extended_attention_mask = causal_mask[:, None, :, :] * attention_mask[:, None, None, :]
             else:
                 extended_attention_mask = attention_mask[:, None, None, :]
@@ -84,7 +96,9 @@ class BaseModel(BertPreTrainedModel):
                     )
                 )
 
-            encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+            encoder_extended_attention_mask = encoder_extended_attention_mask.to(
+                dtype=next(self.parameters()).dtype
+            )  # fp16 compatibility
             encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * -10000.0
         else:
             encoder_extended_attention_mask = None
@@ -103,17 +117,22 @@ class BaseModel(BertPreTrainedModel):
 
         return token_type_ids, extended_attention_mask, encoder_extended_attention_mask, head_mask
 
-
     def forward(self, init_pos_ids, hop_dis_ids, time_dis_ids, head_mask=None):
         if head_mask is None:
             head_mask = [None] * self.config.num_hidden_layers
 
-        embedding_output = self.embeddings(init_pos_ids=init_pos_ids,
-                                           hop_dis_ids=hop_dis_ids, time_dis_ids=time_dis_ids)
-        encoder_outputs = self.encoder(embedding_output, head_mask=head_mask) #这里的输出是tuple，因为在某些设定下要输出别的信息（中间分析用）
+        embedding_output = self.embeddings(
+            init_pos_ids=init_pos_ids, hop_dis_ids=hop_dis_ids, time_dis_ids=time_dis_ids
+        )
+        encoder_outputs = self.encoder(
+            embedding_output, head_mask=head_mask
+        )  # 这里的输出是tuple，因为在某些设定下要输出别的信息（中间分析用）
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output)
-        outputs = (sequence_output, pooled_output,) + encoder_outputs[1:]
+        outputs = (
+            sequence_output,
+            pooled_output,
+        ) + encoder_outputs[1:]
         return outputs
 
     def run(self):

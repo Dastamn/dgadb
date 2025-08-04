@@ -1,3 +1,8 @@
 window_size: 100
 train_ratio: 0.70
 val_ratio: 0.15
+
+anomalies:
+  type: [c, t]
+  ratio: [0.05]
+  use_val_split: False
