@@ -68,6 +68,10 @@ class TADDYModel:
         self.memory_dim = hyperparams.get("memory_dim", 256)
         self.lr_decay = hyperparams.get("lr_decay", 0.8)
         self.weight_decay = hyperparams.get("weight_decay", 0.0001)
+        self.window_size: int | None = None
+        self.optimizer: torch.optim.Optimizer| None = None
+        self.method_obj: DynADModel | None = None
+        self.data_dict: dict | None = None
 
         # model specific
         self.c = hyperparams.get("c", 0.15)
@@ -86,6 +90,7 @@ class TADDYModel:
                 train/test and snapshots.
 
         """
+        assert self.method_obj is not None, "Call setup() before train()"
         n_nodes = g.num_node
         self.window_size = g.window_size
 
@@ -160,7 +165,7 @@ class TADDYModel:
         self.method_obj.lr = self.learning_rate
 
         self.optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+            params=self.method_obj.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
     def _build_adjacencies(
         self,
@@ -168,9 +173,9 @@ class TADDYModel:
         cols: list[np.ndarray],
         weights: list[np.ndarray],
         n_nodes: int,
-    ) -> tuple[list[torch.sparse.FloatTensor], list[np.ndarray]]:
+    ) -> tuple[list[torch.Tensor], list[np.ndarray]]:
         """Build and preprocess adjacency matrices for all graph snapshots."""
-        def _preprocess_adj(adj: sp.csr_matrix) -> torch.sparse.FloatTensor:
+        def _preprocess_adj(adj: sp.csr_matrix) -> torch.Tensor:
             # add selfloop, symmetric normalize, torch sparse tensor
             adj = adj + adj.T.multiply(adj < adj.T) - adj.multiply(adj < adj.T)
             adj = adj + sp.eye(adj.shape[0])
@@ -186,7 +191,7 @@ class TADDYModel:
                 np.vstack((adj_normalized.row, adj_normalized.col)).astype(np.int64))
             values = torch.from_numpy(adj_normalized.data)
             shape = torch.Size(adj_normalized.shape)
-            return torch.sparse.FloatTensor(indices, values, shape)
+            return torch.sparse_coo_tensor(indices, values, shape)
 
         adjs = []
         eigen_adjs = []
@@ -224,12 +229,18 @@ class TADDYModel:
             "time": time_embeddings,
         }
 
+    def _ensure_setup(self) -> None:
+        """Ensure setup() has been called."""
+        if any(x is None for x in [self.optimizer, self.method_obj, self.data_dict, self.window_size]):
+            raise RuntimeError("Model not properly initialized. Call setup() before train() or inference().")
+
     def train(self) -> None:
         """Train the TADDY model using the configured data and hyperparameters.
 
         Performs embedding computation, negative sampling, and iterative training
         with evaluation at each epoch.
         """
+        self._ensure_setup()
         logger.info(f"Starting training for {self.num_epoch} epochs...")
 
         self.method_obj.train_model(self.optimizer, self.num_epoch)
@@ -315,6 +326,8 @@ class TADDYModel:
             ValueError: If the specified split is not supported.
 
         """
+        self._ensure_setup()
+
         inf_start = time.time()
         self.method_obj.eval()
 

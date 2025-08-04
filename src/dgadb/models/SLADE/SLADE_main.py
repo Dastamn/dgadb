@@ -7,11 +7,12 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
+from typing import Any
 
-from .evaluation.evaluation import eval_anomaly_node_detection
-from .SLADE_TGN import SLADE_TGN
-from .utils.data_processing import SLADEData
-from .utils.utils import get_neighbor_finder
+from src.dgadb.models.SLADE.evaluation.evaluation import eval_anomaly_node_detection
+from src.dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
+from src.dgadb.models.SLADE.utils.data_processing import SLADEData
+from src.dgadb.models.SLADE.utils.utils import NeighborFinder, get_neighbor_finder
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class SLADEModel:
     def __init__(
         self,
         device: torch.device,
-        hyperparams: dict[str, any],
+        hyperparams: dict[str, Any],
         epoch_evaluation_metric: Callable[[np.ndarray, np.ndarray], float],
     ) -> None:
         """Initialize SLADEModel with device, hyperparameters, and evaluation metric.
@@ -91,6 +92,47 @@ class SLADEModel:
             "test_inference_time", False)
         self.n_runs = hyperparams.get("n_runs", 1)
         self.seed = hyperparams.get("seed", 0)
+
+        # Initialize attributes for other methods
+        self.has_val: bool | None = None
+        self.full_data: SLADEData | None = None
+        self.train_data: SLADEData | None = None
+        self.test_data: SLADEData | None = None
+        self.val_data: SLADEData | None = None
+        self.train_val_data: SLADEData | None = None
+
+        # Neighbor finders
+        self.train_ngh_finder: NeighborFinder | None = None
+        self.val_ngh_finder: NeighborFinder | None = None
+        self.full_ngh_finder: NeighborFinder | None = None
+
+        # Neighbor data
+        self.src_neighbors: np.ndarray | None = None
+        self.src_neighbors_time: np.ndarray | None = None
+        self.dst_neighbors: np.ndarray | None = None
+        self.dst_neighbors_time: np.ndarray | None = None
+
+        # Model and training components
+        self.dcl_tgn: SLADE_TGN | None = None
+        self.optimizer: torch.optim.Optimizer | None = None
+        self.scheduler: torch.optim.lr_scheduler.LRScheduler | None = None
+
+        # Training data tensors
+        self.train_data_sources: torch.Tensor | None = None
+        self.train_data_destinations: torch.Tensor | None = None
+        self.train_data_timestamps: torch.Tensor | None = None
+        self.train_data_src_neighbors: torch.Tensor | None = None
+        self.train_data_dst_neighbors: torch.Tensor | None = None
+        self.train_data_src_neighbors_time: torch.Tensor | None = None
+        self.train_data_dst_neighbors_time: torch.Tensor | None = None
+
+        # Training metadata
+        self.num_instance: int | None = None
+        self.num_batch: int | None = None
+        self.negative_train_nodes: torch.Tensor | None = None
+
+        # Training timing
+        self.train_time: float | None = None
 
     def setup(self, df: pd.DataFrame) -> None:
         """Set up data processing and initialize the SLADE model.
@@ -205,14 +247,26 @@ class SLADEModel:
 
         self.negative_train_nodes = torch.from_numpy(np.array(list(set(
             self.train_data.destinations) | set(self.train_data.sources)))).long().to(self.device)
-
+        
+    def _ensure_setup(self) -> None:
+        """Ensure setup() has been called before using the model."""
+        if any(attr is None for attr in [
+            self.dcl_tgn, self.optimizer, self.scheduler, self.num_batch,
+            self.train_data_sources, self.train_data_destinations, self.train_data_timestamps,
+            self.train_data_src_neighbors, self.train_data_dst_neighbors,
+            self.train_data_src_neighbors_time, self.train_data_dst_neighbors_time,
+            self.negative_train_nodes, self.train_ngh_finder
+        ]):
+            raise RuntimeError("Model not properly initialized. Call setup() before train() or inference().")
+        
     def train(self) -> None:
         """Train the SLADE model.
 
-        Performs epoch-based training with mini-batches. Computes contrastive loss
+        Performs epoch-based training with mini batches. Computes contrastive loss
         between node embeddings. Updates memory states and evaluates on validation
-        data (if available) after each epoch.
+        set (if available) after each epoch.
         """
+        self._ensure_setup()
         logger.info(f"Starting training for {self.num_epoch} epochs...")
         for epoch in range(self.num_epoch):
             self.dcl_tgn.memory.__init_memory__()
@@ -284,6 +338,7 @@ class SLADEModel:
             ValueError: If the specified split is not available.
 
         """
+        self._ensure_setup()
         inf_start = time.time()
 
         if split == "train":
