@@ -1,4 +1,4 @@
-window_size: 1000
+window_size: 15000000
 train_ratio: 0.70
 val_ratio: 0.15
 

@@ -1,7 +1,7 @@
 import logging
 import time
 from collections.abc import Callable
-
+from tqdm import tqdm
 import numpy as np
 import scipy.sparse as sp
 import torch
@@ -95,8 +95,9 @@ class TADDYModel:
         logger.info(f"Setup started...")
 
         n_nodes = g.num_nodes
-        self.window_size = g.window_size
-        logger.info(f"Window_size: {self.window_size}")
+        #self.window_size = g.window_size
+        self.window_size = 3
+        logger.info(f"Starting the processing of snapshots with window_size: {self.window_size} and num_snapshots: {g.num_snapshots}")
 
         # per-snapshot edge pairs and labels
         rows = []
@@ -105,10 +106,10 @@ class TADDYModel:
         labels = []
         edges = []
         degrees = np.zeros(n_nodes, dtype=np.int32)
-
-        for snap in g.snapshots(all_nodes=True):
+        
+        for snap in tqdm(g.snapshots(all_nodes=True), desc="Processing snapshots", leave=True, total=g.num_snapshots):
             this_e_pairs = snap.e_pairs
-            this_edges = this_e_pairs.T
+            this_edges = this_e_pairs.T.cpu().numpy()
             rows.append(this_e_pairs[0])
             cols.append(this_e_pairs[1])
 
@@ -121,7 +122,7 @@ class TADDYModel:
 
             # add labels if present
             if hasattr(snap, "e_label"):
-                labels.append(snap.e_label)
+                labels.append(snap.e_label.cpu().numpy())
             else:
                 labels.append(snap.n_label)
 
@@ -130,6 +131,7 @@ class TADDYModel:
                 degrees[n] += 1
 
         # build idx and index_id_map CHECK THIS
+        #idx = g.n_id.cpu().numpy()
         idx = g.n_id.cpu().numpy()
         index_id_map = {i: i for i in idx}
 
@@ -143,7 +145,7 @@ class TADDYModel:
 
         # pack it all up
         self.data_dict = {
-            "X": g.n_feat,
+            "X": g.n_feat.cpu().numpy(),
             "A": adjs,
             "S": eigen_adjs,
             "index_id_map": index_id_map,
@@ -205,7 +207,7 @@ class TADDYModel:
         adjs = []
         eigen_adjs = []
 
-        for i in range(len(rows)):
+        for i in tqdm(range(len(rows)), desc="Building adjacencies", leave=True):
             adj = sp.csr_matrix((weights[i], (rows[i], cols[i])), shape=(n_nodes, n_nodes), dtype=np.float32)
             adjs.append(_preprocess_adj(adj))
             eigen_adj = self.c * np.linalg.inv(np.eye(adj.shape[0]) - (1 - self.c) * adj.toarray())
@@ -250,11 +252,9 @@ class TADDYModel:
         self._ensure_setup()
         logger.info(f"Starting training for {self.num_epoch} epochs...")
 
-        self.method_obj.train_model(self.optimizer, self.num_epoch)
-
         self._compute_embeddings()
         self.data_dict["raw_embeddings"] = None
-
+        
         for epoch in range(self.num_epoch):
             t_epoch_begin = time.time()
 
@@ -262,13 +262,15 @@ class TADDYModel:
             negatives = self.method_obj.negative_sampling(
                 self.data_dict["edges"][: max(self.data_dict["snap_train"]) + 1]
             )
+            
             _, _, hop_embeddings_neg, int_embeddings_neg, time_embeddings_neg = self.method_obj.generate_embedding(
                 negatives
             )
+
             self.method_obj.train()
             loss_train = 0
 
-            for snap in self.data_dict["snap_train"]:
+            for snap in tqdm(self.data_dict["snap_train"], desc=f"Going through snapshots in epoch {epoch}", leave=True):
                 if self.embeddings["wl"][snap] is None:
                     continue
 
@@ -344,7 +346,6 @@ class TADDYModel:
             int_embedding = self.embeddings["int"][snap]
             hop_embedding = self.embeddings["hop"][snap]
             time_embedding = self.embeddings["time"][snap]
-
             with torch.no_grad():
                 output = self.method_obj.forward(int_embedding, hop_embedding, time_embedding, None)
                 output = torch.sigmoid(output)

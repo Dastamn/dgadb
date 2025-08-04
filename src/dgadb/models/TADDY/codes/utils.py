@@ -30,7 +30,6 @@ def compute_zero_WL(node_list, link_list):
 
 # batching + hop + int + time
 def compute_batch_hop(node_list, edges_all, num_snap, Ss, k=5, window_size=1):
-
     batch_hop_dicts = [None] * (window_size-1)
     s_ranking = [0] + list(range(k+1))
 
