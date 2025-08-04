@@ -1,1 +1,1 @@
-from .normalize import normalize_dataframes
+from .normalize import get_normalized_feature_matrices

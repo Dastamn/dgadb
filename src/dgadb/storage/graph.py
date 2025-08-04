@@ -71,7 +71,6 @@ class Graph:
     def __repr__(self):
         node_keys = ", ".join(self._nodes.keys())
         edge_keys = ", ".join(self._edges.keys())
-        timestamp_keys = ", ".join(self.timestamps.keys())
         return f"<Graph:\n  Nodes: [{node_keys}]\n  Edges: [{edge_keys}]\n>"
 
     def node_dict(self) -> Dict[str, torch.Tensor]:
