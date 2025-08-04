@@ -4,8 +4,35 @@ val_ratio: 0.15
 
 edges:
   normalizers:
-    standard:
-     - f0_num
     bow:
-    - name: f0_str
-      max_dim: 32
+      - columns:
+          - f0_str
+        params:
+          max_features: 32
+
+
+# Old format
+# edges:
+#   normalizers:
+#     standard:
+#      - f0_num
+#     bow:
+#     - name: f0_str
+#       max_dim: 32
+
+# New format
+# edges:
+#   normalizers:
+#     std:
+#       - columns:
+#           - f0_num
+#     minmax:
+#       - columns:
+#           - f1_num
+#         params:
+#           feature_range: [0, 1]
+#     bow:
+#       - columns:
+#           - f0_str
+#         params:
+#           max_features: 32
