@@ -27,33 +27,25 @@ df = pl.read_csv(
     skip_lines=1,
     has_header=False,
     null_values=["-"],
-    new_columns=["src", "tgt", "timestamp", "label"] +
-    [f"f{i}" for i in range(172)]
-)
+    new_columns=["src", "tgt", "timestamp", "label"] + [f"f{i}" for i in range(172)],
+).sort(by="timestamp")
 df = df.with_row_index(name="edge_id")
 
 # one set of ids for all types
 n_src = df["src"].max() + 1
-df = df.with_columns(
-    (pl.col("tgt") + n_src).alias("tgt")
-)
+df = df.with_columns((pl.col("tgt") + n_src).alias("tgt"))
 
 df_edges = df.select(["edge_id", "src", "tgt", "timestamp"])
 df_edge_labels = df.select(["edge_id", "label"])
 df_edge_features = df.drop(["src", "tgt", "timestamp", "label"]).unpivot(
-    [f"f{i}" for i in range(172)], index=["edge_id"], variable_name="feature_id")
-df_edge_features = df_edge_features.with_columns(
-    pl.col("feature_id").str.extract(r"(\d+)").cast(pl.Int64))
+    [f"f{i}" for i in range(172)], index=["edge_id"], variable_name="feature_id"
+)
+df_edge_features = df_edge_features.with_columns(pl.col("feature_id").str.extract(r"(\d+)").cast(pl.Int64))
 
 # add node types
 total_nodes = df["tgt"].max() + 1
 df_node_types = pl.DataFrame({"node_id": range(total_nodes)})
-df_node_types = df_node_types.with_columns(
-    pl.when(pl.col("node_id") < n_src)
-      .then(0)
-      .otherwise(1)
-      .alias("node_type")
-)
+df_node_types = df_node_types.with_columns(pl.when(pl.col("node_id") < n_src).then(0).otherwise(1).alias("node_type"))
 
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 df_edges.write_parquet(file_path_edges)

@@ -23,20 +23,12 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:bz2") as tar:
     member = tar.getmember("opsahl-ucsocial/out.opsahl-ucsocial")
     with tar.extractfile(member) as f:
         df = pl.read_csv(
-            f,
-            skip_rows=2,
-            separator=" ",
-            has_header=False,
-            columns=[0, 1, 3],
-            new_columns=["src", "tgt", "timestamp"]
-        )
+            f, skip_rows=2, separator=" ", has_header=False, columns=[0, 1, 3], new_columns=["src", "tgt", "timestamp"]
+        ).sort(by="timestamp")
 df = df.with_row_index(name="edge_id")
 
 # ids starting at 0
-df = df.with_columns([
-    (pl.col("src") - 1).alias("src"),
-    (pl.col("tgt") - 1).alias("tgt")
-])
+df = df.with_columns([(pl.col("src") - 1).alias("src"), (pl.col("tgt") - 1).alias("tgt")])
 
 file_path = os.path.join(dataset_dir, "edges.parquet")
 df.write_parquet(file_path)

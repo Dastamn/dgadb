@@ -23,13 +23,8 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:bz2") as tar:
     member = tar.getmember("enron/out.enron")
     with tar.extractfile(member) as f:
         df = pl.read_csv(
-            f,
-            skip_rows=1,
-            separator=" ",
-            has_header=False,
-            columns=[0, 1, 3],
-            new_columns=["src", "tgt", "timestamp"]
-        )
+            f, skip_rows=1, separator=" ", has_header=False, columns=[0, 1, 3], new_columns=["src", "tgt", "timestamp"]
+        ).sort(by="timestamp")
         df = df.with_row_index(name="edge_id")
 
 file_path = os.path.join(dataset_dir, "edges.parquet")
