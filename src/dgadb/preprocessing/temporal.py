@@ -1,6 +1,7 @@
 import polars as pl
 from typing import Optional, Literal
-
+import logging
+logger = logging.getLogger(__name__)
 
 def normalize_timestamps(
     df: pl.DataFrame,
@@ -128,5 +129,3 @@ def generate_data_splits(
     return edges_with_splits
 
 
-def assign_snapshots(edges: pl.DataFrame, window_size: int, window_type: Literal["structural", "temporal"]) -> pl.DataFrame:
-    pass

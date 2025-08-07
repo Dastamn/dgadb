@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 import torch
 
+
 # WL dict
 def WL_setting_init(node_list, link_list):
     node_color_dict = {}
@@ -22,17 +23,18 @@ def WL_setting_init(node_list, link_list):
 
     return node_color_dict, node_neighbor_dict
 
+
 def compute_zero_WL(node_list, link_list):
     WL_dict = {}
     for i in node_list:
         WL_dict[i] = 0
     return WL_dict
 
+
 # batching + hop + int + time
 def compute_batch_hop(node_list, edges_all, num_snap, Ss, k=5, window_size=1):
-
-    batch_hop_dicts = [None] * (window_size-1)
-    s_ranking = [0] + list(range(k+1))
+    batch_hop_dicts = [None] * (window_size - 1)
+    s_ranking = [0] + list(range(k + 1))
 
     Gs = []
     for snap in range(num_snap):
@@ -51,24 +53,24 @@ def compute_batch_hop(node_list, edges_all, num_snap, Ss, k=5, window_size=1):
         # G.add_edges_from(edges)
 
         for edge in edges:
-            edge_idx = str(snap) + '_' + str(edge[0]) + '_' + str(edge[1])
+            edge_idx = str(snap) + "_" + str(edge[0]) + "_" + str(edge[1])
             batch_hop_dict[edge_idx] = []
             for lookback in range(window_size):
                 # s = np.array(Ss[snap-lookback][edge[0]] + Ss[snap-lookback][edge[1]].todense()).squeeze()
                 s = Ss[snap - lookback][edge[0]] + Ss[snap - lookback][edge[1]]
-                s[edge[0]] = -1000 # don't pick myself
-                s[edge[1]] = -1000 # don't pick myself
+                s[edge[0]] = -1000  # don't pick myself
+                s[edge[1]] = -1000  # don't pick myself
                 top_k_neighbor_index = s.argsort()[-k:][::-1]
 
                 indexs = np.hstack((np.array([edge[0], edge[1]]), top_k_neighbor_index))
 
                 for i, neighbor_index in enumerate(indexs):
                     try:
-                        hop1 = nx.shortest_path_length(Gs[snap-lookback], source=edge[0], target=neighbor_index)
+                        hop1 = nx.shortest_path_length(Gs[snap - lookback], source=edge[0], target=neighbor_index)
                     except:
                         hop1 = 99
                     try:
-                        hop2 = nx.shortest_path_length(Gs[snap-lookback], source=edge[1], target=neighbor_index)
+                        hop2 = nx.shortest_path_length(Gs[snap - lookback], source=edge[1], target=neighbor_index)
                     except:
                         hop2 = 99
                     hop = min(hop1, hop2)
@@ -77,9 +79,9 @@ def compute_batch_hop(node_list, edges_all, num_snap, Ss, k=5, window_size=1):
 
     return batch_hop_dicts
 
+
 # Dict to embeddings
 def dicts_to_embeddings(feats, batch_hop_dicts, wl_dict, num_snap, use_raw_feat=False):
-
     raw_embeddings = []
     wl_embeddings = []
     hop_embeddings = []
@@ -87,7 +89,6 @@ def dicts_to_embeddings(feats, batch_hop_dicts, wl_dict, num_snap, use_raw_feat=
     time_embeddings = []
 
     for snap in range(num_snap):
-
         batch_hop_dict = batch_hop_dicts[snap]
 
         if batch_hop_dict is None:
@@ -105,9 +106,8 @@ def dicts_to_embeddings(feats, batch_hop_dicts, wl_dict, num_snap, use_raw_feat=
         time_ids_list = []
 
         for edge_idx in batch_hop_dict:
-
             neighbors_list = batch_hop_dict[edge_idx]
-            edge = edge_idx.split('_')[1:]
+            edge = edge_idx.split("_")[1:]
             edge[0], edge[1] = int(edge[0]), int(edge[1])
 
             raw_features = []
@@ -118,7 +118,7 @@ def dicts_to_embeddings(feats, batch_hop_dicts, wl_dict, num_snap, use_raw_feat=
 
             for neighbor, intimacy_rank, hop, time in neighbors_list:
                 if use_raw_feat:
-                    raw_features.append(feats[snap-time][neighbor])
+                    raw_features.append(feats[snap - time][neighbor])
                 else:
                     raw_features.append(None)
                 role_ids.append(wl_dict[neighbor])

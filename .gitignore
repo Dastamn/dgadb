@@ -7,3 +7,5 @@ venv/
 /raw/
 
 .DS_store
+
+src/dgadb/models/TADDY/data

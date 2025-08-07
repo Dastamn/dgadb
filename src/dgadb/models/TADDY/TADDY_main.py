@@ -1,15 +1,19 @@
 import logging
+import os
+import pickle
 import time
 from collections.abc import Callable
 
 import numpy as np
+import polars as pl
 import scipy.sparse as sp
 import torch
 import torch.nn.functional as fun
+from numpy.linalg import inv
+from tqdm import tqdm
 
 from src.dgadb.models.TADDY.codes.Component import MyConfig
 from src.dgadb.models.TADDY.codes.DynADModel import DynADModel
-from src.dgadb.storage.graph import Graph
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,7 @@ class TADDYModel:
     def __init__(
         self,
         device: torch.DeviceObjType,
+        meta_dict: dict[str, str | int | float],
         hyperparams: dict[str, int | float],
         epoch_evaluation_metric: Callable[[torch.FloatTensor, torch.FloatTensor], float],
     ) -> None:
@@ -60,16 +65,18 @@ class TADDYModel:
 
         self.batch_size = hyperparams.get("batch_size", 100)
         self.num_neighbors = hyperparams.get("num_neighbors", 5)
-        self.num_epoch = hyperparams.get("num_epoch", 10)
+        self.num_epoch = hyperparams.get("num_epoch", 100)
         self.num_heads = hyperparams.get("num_heads", 2)
         self.drop_out = hyperparams.get("drop_out", 0.1)
         self.gpu = hyperparams.get("gpu", 0)
         self.num_layer = hyperparams.get("num_layer", 1)
-        self.learning_rate = hyperparams.get("learning_rate", 3e-6)
+        self.learning_rate = hyperparams.get("learning_rate", 0.001)
         self.message_dim = hyperparams.get("message_dim", 128)
         self.memory_dim = hyperparams.get("memory_dim", 256)
         self.lr_decay = hyperparams.get("lr_decay", 0.8)
-        self.weight_decay = hyperparams.get("weight_decay", 0.0001)
+        self.weight_decay = hyperparams.get("weight_decay", 5e-4)
+        self.print_freq = hyperparams.get("print_freq", 10)
+        self.print_per_snap = hyperparams.get("print_per_snap", False)
         self.window_size: int | None = None
         self.optimizer: torch.optim.Optimizer | None = None
         self.method_obj: DynADModel | None = None
@@ -78,10 +85,17 @@ class TADDYModel:
         # model specific
         self.c = hyperparams.get("c", 0.15)
 
-        # initialize containers for embeddings
-        self.embeddings = {}
+        self.dataset_name = meta_dict["dataset_name"]
+        self.train_per = meta_dict["train_ratio"]
+        self.anomaly_per = meta_dict["anomaly_ratio"]
 
-    def setup(self, g: Graph) -> None:
+        self.compute_s = True
+        self.window_size = 3
+
+        # initialize containers for embeddings
+        self.embeddings: dict[str, np.ndarray] = {}
+
+    def setup(self, df: pl.DataFrame) -> None:
         """Set up data preprocessing and initialize the model.
 
         Processes the input graph, builds adjacency matrices, and initializes the TADDY model with the specified
@@ -92,68 +106,82 @@ class TADDYModel:
                 train/test and snapshots.
 
         """
-        logger.info(f"Setup started...")
+        logger.info("Setup started...")
 
-        n_nodes = g.num_nodes
-        self.window_size = g.window_size
-        logger.info(f"Window_size: {self.window_size}")
+        train_df = df.filter(pl.col("train_mask"))
+        test_df = df.filter(pl.col("test_mask"))
 
-        # per-snapshot edge pairs and labels
-        rows = []
-        cols = []
-        weights = []
-        labels = []
-        edges = []
-        degrees = np.zeros(n_nodes, dtype=np.int32)
+        all_nodes = np.unique(np.concatenate([df["src"].to_numpy(), df["tgt"].to_numpy()]))
+        n = len(all_nodes)
 
-        for snap in g.snapshots(all_nodes=True):
-            this_e_pairs = snap.e_pairs
-            this_edges = this_e_pairs.T
-            rows.append(this_e_pairs[0])
-            cols.append(this_e_pairs[1])
+        # build adj
+        row = train_df["src"].to_numpy()
+        col = train_df["tgt"].to_numpy()
+        data = np.ones_like(row, dtype=np.int32)
+        train_mat = sp.csr_matrix((data, (row, col)), shape=(n, n))
+        # make undirected and add selfloops
+        train_mat = train_mat + train_mat.transpose() + sp.eye(n)
+        train_mat = train_mat.tolil()
+        # Get headtail: list of neighbors for each node
+        headtail = train_mat.rows
 
-            # add weights if present otherwise just do 1s
-            if hasattr(snap, "e_weight"):
-                weights.append(snap.e_weight.cpu().numpy())
-            else:
-                weights.append(np.ones(this_edges.shape[0], dtype=np.float32))
-            edges.append(this_edges)
+        snapshot_ids = df["snapshot_id"].unique().to_list()
+        train_size = df.filter(pl.col("train_mask")).select("snapshot_id").unique().height
+        test_size = df.filter(pl.col("test_mask")).select("snapshot_id").unique().height
 
-            # add labels if present
-            if hasattr(snap, "e_label"):
-                labels.append(snap.e_label)
-            else:
-                labels.append(snap.n_label)
+        rows, cols, labs, weis = [], [], [], []
 
-            # update degrees
-            for n in this_e_pairs.flatten():
-                degrees[n] += 1
+        for snap_id in snapshot_ids:
+            snap_df = df.filter(pl.col("snapshot_id") == snap_id)
+            row = snap_df["src"].to_numpy().astype(np.int32)
+            col = snap_df["tgt"].to_numpy().astype(np.int32)
+            label = snap_df["label"].to_numpy().astype(np.int32)
+            weight = np.ones_like(row, dtype=np.int32)
+            rows.append(row)
+            cols.append(col)
+            labs.append(label)
+            weis.append(weight)
 
-        # build idx and index_id_map CHECK THIS
-        idx = g.n_id.cpu().numpy()
+        logger.debug(f"Length of snapshot IDs: {len(snapshot_ids)}")
+        logger.debug(f"Number of snapshots {(test_size + train_size)}")
+        test_labels = labs[train_size:]
+        n_anomalies = sum((lbl == 1).sum().item() for lbl in test_labels)
+        logger.debug(f"Number of anomalies in test set: {n_anomalies}")
+
+        test_labels = labs[train_size:]
+        n_test_edges = sum(len(lbl) for lbl in test_labels)
+        n_anomalies = sum((lbl == 1).sum().item() for lbl in test_labels)
+        logger.debug(f"Test edges: {n_test_edges}, Anomalies: {n_anomalies}, Ratio: {n_anomalies / n_test_edges:.4f}")
+
+        degrees = np.array([len(x) for x in headtail])
+        num_snap = test_size + train_size
+
+        edges = [np.vstack((rows[i], cols[i])).T for i in range(num_snap)]
+
+        adjs, eigen_adjs = self._get_adjs(rows, cols, weis, n)
+
+        labs = [torch.LongTensor(label) for label in labs]
+
+        snap_train = list(range(num_snap))[:train_size]
+        snap_test = list(range(num_snap))[train_size:]
+
+        idx = list(range(n))
         index_id_map = {i: i for i in idx}
-
-        # get train/test split
-        train_size = len(torch.unique(g.e_snapshot_id[g.e_train_mask]))
-        snap_train = list(range(train_size))
-        snap_test = list(range(train_size, g.num_snapshots))
-
-        # Process adjacency matrices
-        adjs, eigen_adjs = self._build_adjacencies(rows, cols, weights, n_nodes)
+        idx = np.array(idx)
 
         # pack it all up
         self.data_dict = {
-            "X": g.n_feat,
+            "X": None,
             "A": adjs,
             "S": eigen_adjs,
             "index_id_map": index_id_map,
             "edges": edges,
-            "y": labels,
+            "y": labs,
             "idx": idx,
             "snap_train": snap_train,
             "degrees": degrees,
             "snap_test": snap_test,
-            "num_snap": g.num_snapshots,
+            "num_snap": num_snap,
         }
 
         # prepare model
@@ -174,55 +202,139 @@ class TADDYModel:
         self.method_obj.lr = self.learning_rate
 
         self.optimizer = torch.optim.Adam(
-            params=self.method_obj.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+            params=self.method_obj.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
         )
 
-    def _build_adjacencies(
+    def _normalize(self, mx: sp.spmatrix) -> sp.spmatrix:
+        """Row-normalize sparse matrix"""
+        rowsum = np.array(mx.sum(1))
+        r_inv = np.power(rowsum, -1).flatten()
+        r_inv[np.isinf(r_inv)] = 0.0
+        r_mat_inv = sp.diags(r_inv)
+        mx = r_mat_inv.dot(mx)
+        return mx
+
+    def _normalize_adj(self, adj: sp.spmatrix) -> sp.spmatrix:
+        """Symmetrically normalize adjacency matrix. (0226)"""
+        adj = sp.coo_matrix(adj)
+        rowsum = np.array(adj.sum(1))
+        d_inv_sqrt = np.power(rowsum, -0.5).flatten()
+        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
+        d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+        return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
+
+    def _adj_normalize(self, mx: sp.spmatrix) -> sp.spmatrix:
+        """Row-normalize sparse matrix"""
+        rowsum = np.array(mx.sum(1))
+        r_inv = np.power(rowsum, -0.5).flatten()
+        r_inv[np.isinf(r_inv)] = 0.0
+        r_mat_inv = sp.diags(r_inv)
+        mx = r_mat_inv.dot(mx).dot(r_mat_inv)
+        return mx
+
+    def _sparse_mx_to_torch_sparse_tensor(self, sparse_mx: sp.spmatrix) -> torch.Tensor:
+        """Convert a scipy sparse matrix to a torch sparse tensor."""
+        sparse_mx = sparse_mx.tocoo().astype(np.float32)
+        indices = torch.from_numpy(np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+        values = torch.from_numpy(sparse_mx.data)
+        shape = torch.Size(sparse_mx.shape)
+        return torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float)
+
+    def _encode_onehot(self, labels: list[int] | np.ndarray) -> np.ndarray:
+        classes = set(labels)
+        classes_dict = {c: np.identity(len(classes))[i, :] for i, c in enumerate(classes)}
+        labels_onehot = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)
+        return labels_onehot
+
+    def _sparse_to_tuple(self, sparse_mx: sp.spmatrix | list[sp.spmatrix]) -> tuple | list[tuple]:
+        """Convert sparse matrix to tuple representation. (0226)"""
+
+        def _to_tuple(mx):
+            if not sp.isspmatrix_coo(mx):
+                mx = mx.tocoo()
+            coords = np.vstack((mx.row, mx.col)).transpose()
+            values = mx.data
+            shape = mx.shape
+            return coords, values, shape
+
+        if isinstance(sparse_mx, list):
+            for i in range(len(sparse_mx)):
+                sparse_mx[i] = _to_tuple(sparse_mx[i])
+        else:
+            sparse_mx = _to_tuple(sparse_mx)
+
+        return sparse_mx
+
+    def _preprocess_adj(self, adj: sp.spmatrix) -> torch.Tensor:
+        """Preprocessing of adjacency matrix for simple GCN model and conversion to tuple representation. (0226)"""
+        adj = adj + adj.T.multiply(adj < adj.T) - adj.multiply(adj < adj.T)
+        # adj_np = np.array(adj.todense())
+        adj_normalized = self._normalize_adj(adj + sp.eye(adj.shape[0]))
+        adj_normalized = self._sparse_mx_to_torch_sparse_tensor(adj_normalized)
+        return adj_normalized
+
+    def _get_adjs(
         self,
         rows: list[np.ndarray],
         cols: list[np.ndarray],
         weights: list[np.ndarray],
-        n_nodes: int,
-    ) -> tuple[list[torch.Tensor], list[np.ndarray]]:
-        """Build and preprocess adjacency matrices for all graph snapshots."""
-
-        def _preprocess_adj(adj: sp.csr_matrix) -> torch.Tensor:
-            # add selfloop, symmetric normalize, torch sparse tensor
-            adj = adj + adj.T.multiply(adj < adj.T) - adj.multiply(adj < adj.T)
-            adj = adj + sp.eye(adj.shape[0])
-            # symmetric normalization
-            rowsum = np.array(adj.sum(1)).flatten()
-            d_inv_sqrt = np.power(rowsum, -0.5)
-            d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
-            d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
-            adj_normalized = adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
-            # to torch sparse tensor
-            indices = torch.from_numpy(np.vstack((adj_normalized.row, adj_normalized.col)).astype(np.int64))
-            values = torch.from_numpy(adj_normalized.data)
-            shape = torch.Size(adj_normalized.shape)
-            return torch.sparse_coo_tensor(indices, values, shape)
+        nb_nodes: int,
+    ) -> tuple[list[torch.Tensor], list[np.ndarray | None]]:
+        base_path = os.environ["BASE_PATH"]
+        eigen_file_name = (
+            "src/dgadb/models/TADDY/data/eigen/"
+            + self.dataset_name
+            + "_"
+            + str(self.train_per)
+            + "_"
+            + str(self.anomaly_per)
+            + ".pkl"
+        )
+        full_eigen_path = os.path.join(base_path, eigen_file_name)
+        # Ensure the parent directory exists
+        os.makedirs(os.path.dirname(full_eigen_path), exist_ok=True)
+        if not os.path.exists(full_eigen_path):
+            generate_eigen = True
+            logger.info(f"Generating eigen as: {eigen_file_name}")
+        else:
+            generate_eigen = False
+            logger.info(f"Loading eigen from: {eigen_file_name}")
+            with open(full_eigen_path, "rb") as f:
+                eigen_adjs_sparse = pickle.load(f)
+            eigen_adjs = []
+            for eigen_adj_sparse in eigen_adjs_sparse:
+                eigen_adjs.append(np.array(eigen_adj_sparse.todense()))
 
         adjs = []
-        eigen_adjs = []
+        if generate_eigen:
+            eigen_adjs = []
+            eigen_adjs_sparse = []
 
         for i in range(len(rows)):
-            adj = sp.csr_matrix((weights[i], (rows[i], cols[i])), shape=(n_nodes, n_nodes), dtype=np.float32)
-            adjs.append(_preprocess_adj(adj))
-            eigen_adj = self.c * np.linalg.inv(np.eye(adj.shape[0]) - (1 - self.c) * adj.toarray())
-            np.fill_diagonal(eigen_adj, 0.0)
-            # row normalize
-            rowsum = np.array(eigen_adj.sum(1)).flatten()
-            r_inv = np.power(rowsum, -1)
-            r_inv[np.isinf(r_inv)] = 0.0
-            r_mat_inv = np.diag(r_inv)
-            eigen_adj = r_mat_inv @ eigen_adj
-            eigen_adjs.append(eigen_adj)
+            adj = sp.csr_matrix((weights[i], (rows[i], cols[i])), shape=(nb_nodes, nb_nodes), dtype=np.float32)
+            adjs.append(self._preprocess_adj(adj))
+            if self.compute_s:
+                if generate_eigen:
+                    eigen_adj = self.c * inv((sp.eye(adj.shape[0]) - (1 - self.c) * self._adj_normalize(adj)).toarray())
+                    for p in range(adj.shape[0]):
+                        eigen_adj[p, p] = 0.0
+                    eigen_adj = self._normalize(eigen_adj)
+                    eigen_adjs.append(eigen_adj)
+                    eigen_adjs_sparse.append(sp.csr_matrix(eigen_adj))
+
+            else:
+                eigen_adjs.append(None)
+
+        if generate_eigen:
+            with open(full_eigen_path, "wb") as f:
+                pickle.dump(eigen_adjs_sparse, f, pickle.HIGHEST_PROTOCOL)
 
         return adjs, eigen_adjs
 
     def _compute_embeddings(self) -> None:
         """Compute and cache embeddings for all graph snapshots."""
-        logger.info("Computing embeddings...")
         raw_embeddings, wl_embeddings, hop_embeddings, int_embeddings, time_embeddings = (
             self.method_obj.generate_embedding(
                 self.data_dict["edges"],
@@ -250,8 +362,6 @@ class TADDYModel:
         self._ensure_setup()
         logger.info(f"Starting training for {self.num_epoch} epochs...")
 
-        self.method_obj.train_model(self.optimizer, self.num_epoch)
-
         self._compute_embeddings()
         self.data_dict["raw_embeddings"] = None
 
@@ -260,15 +370,21 @@ class TADDYModel:
 
             # -------------------------
             negatives = self.method_obj.negative_sampling(
-                self.data_dict["edges"][: max(self.data_dict["snap_train"]) + 1]
+                self.data_dict["edges"][: max(self.data_dict["snap_train"]) + 1],
             )
+
             _, _, hop_embeddings_neg, int_embeddings_neg, time_embeddings_neg = self.method_obj.generate_embedding(
-                negatives
+                negatives,
             )
+
             self.method_obj.train()
             loss_train = 0
 
-            for snap in self.data_dict["snap_train"]:
+            for snap in tqdm(
+                self.data_dict["snap_train"],
+                desc=f"Going through snapshots in epoch {epoch}",
+                leave=True,
+            ):
                 if self.embeddings["wl"][snap] is None:
                     continue
 
@@ -276,7 +392,7 @@ class TADDYModel:
                 int_embedding_pos = self.embeddings["int"][snap]
                 hop_embedding_pos = self.embeddings["hop"][snap]
                 time_embedding_pos = self.embeddings["time"][snap]
-                y_pos = self.data_dict["y"][snap].float()
+                y_pos = self.data_dict["y"][snap]
 
                 # negative samples
                 int_embedding_neg = int_embeddings_neg[snap]
@@ -288,11 +404,13 @@ class TADDYModel:
                 int_embedding = torch.vstack((int_embedding_pos, int_embedding_neg))
                 hop_embedding = torch.vstack((hop_embedding_pos, hop_embedding_neg))
                 time_embedding = torch.vstack((time_embedding_pos, time_embedding_neg))
+
                 y = torch.hstack((y_pos, y_neg))
 
                 self.optimizer.zero_grad()
 
                 output = self.method_obj.forward(int_embedding, hop_embedding, time_embedding).squeeze()
+
                 loss = fun.binary_cross_entropy_with_logits(output, y)
                 loss.backward()
                 self.optimizer.step()
@@ -301,63 +419,63 @@ class TADDYModel:
 
             loss_train /= len(self.data_dict["snap_train"]) - self.method_obj.config.window_size + 1
             logger.info(f"Epoch: {epoch + 1}, loss:{loss_train:.4f}, Time: {time.time() - t_epoch_begin:.4f}s")
-
-            preds_full, labels_full, _ = self.inference(split="test")  # do val here when implemented
-            auc_full = self.epoch_evaluation_metric(labels_full, preds_full)
-            logger.info(f"TOTAL AUC:{auc_full:.4f}")
+            if ((epoch + 1) % self.print_freq) == 0:
+                preds_full, labels_full, _ = self.inference(split="test")  # do val here when implemented
+                auc_full = self.epoch_evaluation_metric(labels_full, preds_full)
+                logger.info(f"TOTAL AUC:{auc_full:.4f}")
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
-        """Run inference on the specified data split.
-
-        Uses pre-computed embeddings to generate predictions for the test set
-        and returns both predictions and ground truth labels.
+        """
+        Run inference on the specified data split and return predictions, labels, and inference time.
 
         Args:
-            split (str, optional): Data split to run inference on.
-                Currently supports "test". Defaults to "test".
+            split (str): Which data split to use for inference ("test" or "train"). Default is "test".
 
         Returns:
-            tuple: A tuple containing:
-                - preds_full (np.ndarray): Predicted probabilities
-                - labels_full (np.ndarray): Ground truth labels
-                - inf_time (float): Inference time in seconds
+            tuple:
+                - preds_full (np.ndarray): Model predictions for the entire split.
+                - labels_full (np.ndarray): Ground truth labels for the entire split.
+                - inf_time (float): Total inference time in seconds.
 
-        Raises:
-            ValueError: If the specified split is not supported.
-
+        Notes:
+            - Evaluates the model on each snapshot in the specified split.
+            - If `self.print_per_snap` is True, logs per-snapshot evaluation metrics.
         """
         self._ensure_setup()
-
-        inf_start = time.time()
+        start_time = time.time()
         self.method_obj.eval()
 
         preds = []
-        split_map = {  # "val": self.data_dict["snap_val"], not implemented yet
-            "test": self.data_dict["snap_test"]
-        }
-        if split not in split_map:
-            error_message = f"Split '{split}' not supported. Available: {list(split_map.keys())}"
-            logger.warning(error_message)
-            raise ValueError(error_message)
+        labels = []
+        snap_ids = self.data_dict["snap_" + split]
 
-        for snap in split_map[split]:
+        for snap in snap_ids:
             int_embedding = self.embeddings["int"][snap]
             hop_embedding = self.embeddings["hop"][snap]
             time_embedding = self.embeddings["time"][snap]
-
             with torch.no_grad():
                 output = self.method_obj.forward(int_embedding, hop_embedding, time_embedding, None)
                 output = torch.sigmoid(output)
-            pred = output.squeeze().numpy()
+            pred = output.squeeze().cpu().numpy()
             preds.append(pred)
+            labels.append(self.data_dict["y"][snap].cpu().numpy())
 
-        labels = self.data_dict["y"][min(split_map[split]) : max(split_map[split]) + 1]
-        labels = [y_snap.numpy() for y_snap in labels]
+        if self.print_per_snap:
+            # Per-snapshot AUCs
+            aucs = []
+            for i in range(len(snap_ids)):
+                if len(np.unique(labels[i])) > 1:
+                    auc = self.epoch_evaluation_metric(labels[i], preds[i])
+                else:
+                    auc = float("nan")
+                aucs.append(auc)
+                logger.info(f"Snap: {snap_ids[i]:02d} | Score: {auc:.4f}")
 
+        # Total AUC
         labels_full = np.hstack(labels)
         preds_full = np.hstack(preds)
-        inf_time = time.time() - inf_start
 
+        inf_time = time.time() - start_time
         return preds_full, labels_full, inf_time
 
 
