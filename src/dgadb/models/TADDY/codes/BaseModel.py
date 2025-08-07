@@ -38,7 +38,6 @@ class BaseModel(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         encoder_hidden_states=None,
-        encoder_attention_mask=None,
     ):
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -82,19 +81,7 @@ class BaseModel(BertPreTrainedModel):
         if self.config.is_decoder and encoder_hidden_states is not None:
             encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
-            if encoder_attention_mask is None:
-                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-
-            if encoder_attention_mask.dim() == 3:
-                encoder_extended_attention_mask = encoder_attention_mask[:, None, :, :]
-            elif encoder_attention_mask.dim() == 2:
-                encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
-            else:
-                raise ValueError(
-                    "Wrong shape for encoder_hidden_shape (shape {}) or encoder_attention_mask (shape {})".format(
-                        encoder_hidden_shape, encoder_attention_mask.shape
-                    )
-                )
+            
 
             encoder_extended_attention_mask = encoder_extended_attention_mask.to(
                 dtype=next(self.parameters()).dtype

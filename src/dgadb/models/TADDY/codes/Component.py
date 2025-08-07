@@ -52,14 +52,14 @@ class TransformerEncoder(nn.Module):
         self.output_hidden_states = config.output_hidden_states
         self.layer = nn.ModuleList([TransformerLayer(config) for _ in range(config.num_hidden_layers)])
 
-    def forward(self, hidden_states, attention_mask=None, head_mask=None, encoder_hidden_states=None, encoder_attention_mask=None):
+    def forward(self, hidden_states, attention_mask=None, head_mask=None, encoder_hidden_states=None):
         all_hidden_states = ()
         all_attentions = ()
         for i, layer_module in enumerate(self.layer):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            layer_outputs = layer_module(hidden_states, attention_mask, head_mask[i], encoder_hidden_states, encoder_attention_mask)
+            layer_outputs = layer_module(hidden_states, attention_mask, head_mask[i], encoder_hidden_states)
             hidden_states = layer_outputs[0]
 
             if self.output_attentions:
@@ -116,7 +116,6 @@ class TransformerLayer(nn.Module):
         attention_mask=None,
         head_mask=None,
         encoder_hidden_states=None,
-        encoder_attention_mask=None,
     ):
         self_attention_outputs = self.attention(hidden_states, attention_mask, head_mask)
         attention_output = self_attention_outputs[0]
@@ -124,7 +123,7 @@ class TransformerLayer(nn.Module):
 
         if self.is_decoder and encoder_hidden_states is not None:
             cross_attention_outputs = self.crossattention(
-                attention_output, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask
+                attention_output, attention_mask, head_mask, encoder_hidden_states
             )
             attention_output = cross_attention_outputs[0]
             outputs = outputs + cross_attention_outputs[1:]
