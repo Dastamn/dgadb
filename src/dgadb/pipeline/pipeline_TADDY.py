@@ -8,7 +8,15 @@ from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.preprocessing.snapshotting import assign_snapshots
 from src.dgadb.utils import load_config
 from src.dgadb.preprocessing.temporal import generate_data_splits
-from dgadb.preprocessing.structural import make_undirected, remove_self_loops, remove_duplicates, reindex_nodes, remove_duplicates_train, remove_self_loops_train, make_undirected_train
+from dgadb.preprocessing.structural import (
+    make_undirected,
+    remove_self_loops,
+    remove_duplicates,
+    reindex_nodes,
+    remove_duplicates_train,
+    remove_self_loops_train,
+    make_undirected_train,
+)
 from src.dgadb.preprocessing.anomaly_generation import AnomalyGenerator
 from src.dgadb.preprocessing.temporal import normalize_timestamps
 
@@ -26,8 +34,12 @@ train_ratio = config["train_ratio"]
 val_ratio = config.get("val_ratio", None)
 anomaly_ratio = config.get("anomaly_ratio", 0.00)
 
-meta_dict = {"dataset_name": dataset, "train_ratio": train_ratio,
-             "val_ratio": val_ratio, "anomaly_ratio": anomaly_ratio}
+meta_dict = {
+    "dataset_name": dataset,
+    "train_ratio": train_ratio,
+    "val_ratio": val_ratio,
+    "anomaly_ratio": anomaly_ratio,
+}
 
 data = load_df(dataset)
 data["edges"] = generate_data_splits(data["edges"], train_ratio, val_ratio)
@@ -36,8 +48,7 @@ data["edges"] = data["edges"].drop("label")
 data["edges"] = normalize_timestamps(data["edges"])
 
 ag = AnomalyGenerator(data["edges"], edge_features=edge_features)
-data["edges"], edge_features = ag._generate_anomalous_samples(
-    anomaly_ratio, "temporal")
+data["edges"], edge_features = ag._generate_anomalous_samples(anomaly_ratio, "temporal")
 
 data = make_undirected(data)
 data = remove_self_loops(data)
@@ -52,8 +63,7 @@ data = assign_snapshots(data, snapshot_size=snapshot_size)
 device = "mps"
 hyperparams = {}
 
-model = TADDYModel(device, meta_dict, hyperparams,
-                   epoch_evaluation_metric=roc_auc_score)
+model = TADDYModel(device, meta_dict, hyperparams, epoch_evaluation_metric=roc_auc_score)
 
 model.setup(data["edges"])
 model.train()

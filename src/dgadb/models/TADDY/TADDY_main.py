@@ -61,8 +61,7 @@ class TADDYModel:
         """
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
-        logger.info(
-            f"Initializing TADDYModel with device={self.device} and hyperparams={hyperparams}")
+        logger.info(f"Initializing TADDYModel with device={self.device} and hyperparams={hyperparams}")
 
         self.batch_size = hyperparams.get("batch_size", 100)
         self.num_neighbors = hyperparams.get("num_neighbors", 5)
@@ -112,8 +111,7 @@ class TADDYModel:
         train_df = df.filter(pl.col("train_mask"))
         test_df = df.filter(pl.col("test_mask"))
 
-        all_nodes = np.unique(np.concatenate(
-            [df["src"].to_numpy(), df["tgt"].to_numpy()]))
+        all_nodes = np.unique(np.concatenate([df["src"].to_numpy(), df["tgt"].to_numpy()]))
         n = len(all_nodes)
 
         # build adj
@@ -128,10 +126,8 @@ class TADDYModel:
         headtail = train_mat.rows
 
         snapshot_ids = df["snapshot_id"].unique().to_list()
-        train_size = df.filter(pl.col("train_mask")).select(
-            "snapshot_id").unique().height
-        test_size = df.filter(pl.col("test_mask")).select(
-            "snapshot_id").unique().height
+        train_size = df.filter(pl.col("train_mask")).select("snapshot_id").unique().height
+        test_size = df.filter(pl.col("test_mask")).select("snapshot_id").unique().height
 
         rows, cols, labs, weis = [], [], [], []
 
@@ -147,7 +143,7 @@ class TADDYModel:
             weis.append(weight)
 
         logger.debug(f"Length of snapshot IDs: {len(snapshot_ids)}")
-        logger.debug(f"Number of snapshots {(test_size+train_size)}")
+        logger.debug(f"Number of snapshots {(test_size + train_size)}")
         test_labels = labs[train_size:]
         n_anomalies = sum((lbl == 1).sum().item() for lbl in test_labels)
         logger.debug(f"Number of anomalies in test set: {n_anomalies}")
@@ -155,8 +151,7 @@ class TADDYModel:
         test_labels = labs[train_size:]
         n_test_edges = sum(len(lbl) for lbl in test_labels)
         n_anomalies = sum((lbl == 1).sum().item() for lbl in test_labels)
-        logger.debug(
-            f"Test edges: {n_test_edges}, Anomalies: {n_anomalies}, Ratio: {n_anomalies / n_test_edges:.4f}")
+        logger.debug(f"Test edges: {n_test_edges}, Anomalies: {n_anomalies}, Ratio: {n_anomalies / n_test_edges:.4f}")
 
         degrees = np.array([len(x) for x in headtail])
         num_snap = test_size + train_size
@@ -175,9 +170,19 @@ class TADDYModel:
         idx = np.array(idx)
 
         # pack it all up
-        self.data_dict = {"X": None, "A": adjs, "S": eigen_adjs, "index_id_map": index_id_map, "edges": edges,
-                          "y": labs, "idx": idx, "snap_train": snap_train, "degrees": degrees,
-                          "snap_test": snap_test, "num_snap": num_snap}
+        self.data_dict = {
+            "X": None,
+            "A": adjs,
+            "S": eigen_adjs,
+            "index_id_map": index_id_map,
+            "edges": edges,
+            "y": labs,
+            "idx": idx,
+            "snap_train": snap_train,
+            "degrees": degrees,
+            "snap_test": snap_test,
+            "num_snap": num_snap,
+        }
 
         # prepare model
         my_config = MyConfig(
@@ -197,14 +202,16 @@ class TADDYModel:
         self.method_obj.lr = self.learning_rate
 
         self.optimizer = torch.optim.Adam(
-            params=self.method_obj.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay,
+            params=self.method_obj.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
         )
 
     def _normalize(self, mx: sp.spmatrix) -> sp.spmatrix:
         """Row-normalize sparse matrix"""
         rowsum = np.array(mx.sum(1))
         r_inv = np.power(rowsum, -1).flatten()
-        r_inv[np.isinf(r_inv)] = 0.
+        r_inv[np.isinf(r_inv)] = 0.0
         r_mat_inv = sp.diags(r_inv)
         mx = r_mat_inv.dot(mx)
         return mx
@@ -214,7 +221,7 @@ class TADDYModel:
         adj = sp.coo_matrix(adj)
         rowsum = np.array(adj.sum(1))
         d_inv_sqrt = np.power(rowsum, -0.5).flatten()
-        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
         d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
         return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
 
@@ -222,7 +229,7 @@ class TADDYModel:
         """Row-normalize sparse matrix"""
         rowsum = np.array(mx.sum(1))
         r_inv = np.power(rowsum, -0.5).flatten()
-        r_inv[np.isinf(r_inv)] = 0.
+        r_inv[np.isinf(r_inv)] = 0.0
         r_mat_inv = sp.diags(r_inv)
         mx = r_mat_inv.dot(mx).dot(r_mat_inv)
         return mx
@@ -230,18 +237,15 @@ class TADDYModel:
     def _sparse_mx_to_torch_sparse_tensor(self, sparse_mx: sp.spmatrix) -> torch.Tensor:
         """Convert a scipy sparse matrix to a torch sparse tensor."""
         sparse_mx = sparse_mx.tocoo().astype(np.float32)
-        indices = torch.from_numpy(
-            np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+        indices = torch.from_numpy(np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
         values = torch.from_numpy(sparse_mx.data)
         shape = torch.Size(sparse_mx.shape)
         return torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float)
 
     def _encode_onehot(self, labels: list[int] | np.ndarray) -> np.ndarray:
         classes = set(labels)
-        classes_dict = {c: np.identity(len(classes))[i, :] for i, c in
-                        enumerate(classes)}
-        labels_onehot = np.array(list(map(classes_dict.get, labels)),
-                                 dtype=np.int32)
+        classes_dict = {c: np.identity(len(classes))[i, :] for i, c in enumerate(classes)}
+        labels_onehot = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)
         return labels_onehot
 
     def _sparse_to_tuple(self, sparse_mx: sp.spmatrix | list[sp.spmatrix]) -> tuple | list[tuple]:
@@ -272,15 +276,22 @@ class TADDYModel:
         return adj_normalized
 
     def _get_adjs(
-            self,
-            rows: list[np.ndarray],
-            cols: list[np.ndarray],
-            weights: list[np.ndarray],
-            nb_nodes: int,
-        ) -> tuple[list[torch.Tensor], list[np.ndarray | None]]:
+        self,
+        rows: list[np.ndarray],
+        cols: list[np.ndarray],
+        weights: list[np.ndarray],
+        nb_nodes: int,
+    ) -> tuple[list[torch.Tensor], list[np.ndarray | None]]:
         base_path = os.environ["BASE_PATH"]
-        eigen_file_name = "src/dgadb/models/TADDY/data/eigen/" + self.dataset_name + \
-            "_" + str(self.train_per) + "_" + str(self.anomaly_per) + ".pkl"
+        eigen_file_name = (
+            "src/dgadb/models/TADDY/data/eigen/"
+            + self.dataset_name
+            + "_"
+            + str(self.train_per)
+            + "_"
+            + str(self.anomaly_per)
+            + ".pkl"
+        )
         full_eigen_path = os.path.join(base_path, eigen_file_name)
         # Ensure the parent directory exists
         os.makedirs(os.path.dirname(full_eigen_path), exist_ok=True)
@@ -302,16 +313,13 @@ class TADDYModel:
             eigen_adjs_sparse = []
 
         for i in range(len(rows)):
-            adj = sp.csr_matrix((weights[i], (rows[i], cols[i])), shape=(
-                nb_nodes, nb_nodes), dtype=np.float32)
+            adj = sp.csr_matrix((weights[i], (rows[i], cols[i])), shape=(nb_nodes, nb_nodes), dtype=np.float32)
             adjs.append(self._preprocess_adj(adj))
             if self.compute_s:
                 if generate_eigen:
-                    eigen_adj = self.c * \
-                        inv((sp.eye(adj.shape[0]) - (1 - self.c)
-                            * self._adj_normalize(adj)).toarray())
+                    eigen_adj = self.c * inv((sp.eye(adj.shape[0]) - (1 - self.c) * self._adj_normalize(adj)).toarray())
                     for p in range(adj.shape[0]):
-                        eigen_adj[p, p] = 0.
+                        eigen_adj[p, p] = 0.0
                     eigen_adj = self._normalize(eigen_adj)
                     eigen_adjs.append(eigen_adj)
                     eigen_adjs_sparse.append(sp.csr_matrix(eigen_adj))
@@ -343,8 +351,7 @@ class TADDYModel:
     def _ensure_setup(self) -> None:
         """Ensure setup() has been called."""
         if any(x is None for x in [self.optimizer, self.method_obj, self.data_dict, self.window_size]):
-            raise RuntimeError(
-                "Model not properly initialized. Call setup() before train() or inference().")
+            raise RuntimeError("Model not properly initialized. Call setup() before train() or inference().")
 
     def train(self) -> None:
         """Train the TADDY model using the configured data and hyperparameters.
@@ -363,8 +370,7 @@ class TADDYModel:
 
             # -------------------------
             negatives = self.method_obj.negative_sampling(
-                self.data_dict["edges"][: max(
-                    self.data_dict["snap_train"]) + 1],
+                self.data_dict["edges"][: max(self.data_dict["snap_train"]) + 1],
             )
 
             _, _, hop_embeddings_neg, int_embeddings_neg, time_embeddings_neg = self.method_obj.generate_embedding(
@@ -375,7 +381,9 @@ class TADDYModel:
             loss_train = 0
 
             for snap in tqdm(
-                self.data_dict["snap_train"], desc=f"Going through snapshots in epoch {epoch}", leave=True,
+                self.data_dict["snap_train"],
+                desc=f"Going through snapshots in epoch {epoch}",
+                leave=True,
             ):
                 if self.embeddings["wl"][snap] is None:
                     continue
@@ -393,19 +401,15 @@ class TADDYModel:
                 y_neg = torch.ones(int_embedding_neg.size()[0])
 
                 # combine positive and negative
-                int_embedding = torch.vstack(
-                    (int_embedding_pos, int_embedding_neg))
-                hop_embedding = torch.vstack(
-                    (hop_embedding_pos, hop_embedding_neg))
-                time_embedding = torch.vstack(
-                    (time_embedding_pos, time_embedding_neg))
+                int_embedding = torch.vstack((int_embedding_pos, int_embedding_neg))
+                hop_embedding = torch.vstack((hop_embedding_pos, hop_embedding_neg))
+                time_embedding = torch.vstack((time_embedding_pos, time_embedding_neg))
 
                 y = torch.hstack((y_pos, y_neg))
 
                 self.optimizer.zero_grad()
 
-                output = self.method_obj.forward(
-                    int_embedding, hop_embedding, time_embedding).squeeze()
+                output = self.method_obj.forward(int_embedding, hop_embedding, time_embedding).squeeze()
 
                 loss = fun.binary_cross_entropy_with_logits(output, y)
                 loss.backward()
@@ -413,15 +417,11 @@ class TADDYModel:
 
                 loss_train += loss.detach().item()
 
-            loss_train /= len(self.data_dict["snap_train"]) - \
-                self.method_obj.config.window_size + 1
-            logger.info(
-                f"Epoch: {epoch + 1}, loss:{loss_train:.4f}, Time: {time.time() - t_epoch_begin:.4f}s")
+            loss_train /= len(self.data_dict["snap_train"]) - self.method_obj.config.window_size + 1
+            logger.info(f"Epoch: {epoch + 1}, loss:{loss_train:.4f}, Time: {time.time() - t_epoch_begin:.4f}s")
             if ((epoch + 1) % self.print_freq) == 0:
-                preds_full, labels_full, _ = self.inference(
-                    split="test")  # do val here when implemented
-                auc_full = self.epoch_evaluation_metric(
-                    labels_full, preds_full)
+                preds_full, labels_full, _ = self.inference(split="test")  # do val here when implemented
+                auc_full = self.epoch_evaluation_metric(labels_full, preds_full)
                 logger.info(f"TOTAL AUC:{auc_full:.4f}")
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
@@ -447,15 +447,14 @@ class TADDYModel:
 
         preds = []
         labels = []
-        snap_ids = self.data_dict["snap_"+split]
+        snap_ids = self.data_dict["snap_" + split]
 
         for snap in snap_ids:
             int_embedding = self.embeddings["int"][snap]
             hop_embedding = self.embeddings["hop"][snap]
             time_embedding = self.embeddings["time"][snap]
             with torch.no_grad():
-                output = self.method_obj.forward(
-                    int_embedding, hop_embedding, time_embedding, None)
+                output = self.method_obj.forward(int_embedding, hop_embedding, time_embedding, None)
                 output = torch.sigmoid(output)
             pred = output.squeeze().cpu().numpy()
             preds.append(pred)

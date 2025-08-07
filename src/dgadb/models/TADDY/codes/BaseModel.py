@@ -81,7 +81,6 @@ class BaseModel(BertPreTrainedModel):
         if self.config.is_decoder and encoder_hidden_states is not None:
             encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
-            
 
             encoder_extended_attention_mask = encoder_extended_attention_mask.to(
                 dtype=next(self.parameters()).dtype
