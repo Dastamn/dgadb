@@ -126,8 +126,9 @@ Temporal GCN", Li Zheng et al., IJCAI, 2019.
 
     return train_edges, synthetic_test_edges
 
-
+from typing import Optional
 _ANOMALY_TYPES = [
+    "structural",
     "temporal",
     "contextual",
     "temporal-contextual",
@@ -291,6 +292,7 @@ class AnomalyGenerator:
             self,
             anom_ratio: float,
             anom_type: Literal[
+                "structural",
                 "temporal",
                 "contextual",
                 "temporal-contextual",
@@ -363,6 +365,10 @@ class AnomalyGenerator:
         for i in range(num_anomalies):
             anom_type_i = chosen_anom_types[i]
 
+            if anom_type_i == "structural":
+                anom_src_array[i], anom_tgt_array[i], anom_t_array[i], anom_f_array[i] = self._generate_one_structural_anomaly(
+                    eval_edges, eval_edge_features, eval_edge_p, window_size=25)
+
             if anom_type_i == "temporal":
                 anom_src_array[i], anom_tgt_array[i], anom_t_array[i], anom_f_array[i] = self._generate_one_temporal_anomaly(
                     eval_edges, eval_edge_features, first_t, last_t, eval_edge_p)
@@ -414,6 +420,38 @@ class AnomalyGenerator:
             f"Successfully generated {num_anomalies} anomalies. Final dataset has {len(out_edges)} total edges.")
 
         return out_edges, out_features
+    
+    def _generate_one_structural_anomaly(self,
+            eval_edges: pl.DataFrame,
+            eval_edge_features: np.ndarray,
+            edge_p: np.ndarray,
+            window_size: int = 10,
+            max_num_tries: int = 100
+    ) -> tuple[int, int, int, np.ndarray]:
+        # TODO @Dastamn: refactor
+        ind = np.random.choice(len(eval_edges), 1, p=edge_p)[0]
+        src, _, t = eval_edges.select(["src", "tgt", self.timestamp_col]).row(ind)
+        f = eval_edge_features[ind, :]
+        anom_tgt, num_tries = None, 0
+        ind_window = np.array(
+            [
+                x
+                for x in range(-window_size, window_size + 1)
+                if x != 0
+            ]
+        )
+        while (anom_tgt is None) or (
+            ((src, anom_tgt) in self.observed_edges) and (num_tries < max_num_tries)
+        ):
+            neighbor_edge_ind = np.clip(
+                ind + np.random.choice(ind_window, 1)[0],
+                a_min=0,
+                a_max=len(eval_edges) - 1,
+            )
+            anom_tgt, = eval_edges.select("tgt").row(neighbor_edge_ind)
+            num_tries += 1
+        
+        return src, anom_tgt, t, f
 
     def _generate_one_temporal_anomaly(
             self,
