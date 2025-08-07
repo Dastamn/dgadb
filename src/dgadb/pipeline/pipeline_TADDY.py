@@ -8,7 +8,7 @@ from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.preprocessing.snapshotting import assign_snapshots
 from src.dgadb.utils import load_config
 from src.dgadb.preprocessing.temporal import generate_data_splits
-from dgadb.preprocessing.structural import (
+from src.dgadb.preprocessing.structural import (
     make_undirected,
     remove_self_loops,
     remove_duplicates,
@@ -31,8 +31,8 @@ dataset = "bitcoin-alpha"
 config = load_config(dataset)
 snapshot_size = config["snapshot_size"]
 train_ratio = config["train_ratio"]
-val_ratio = config.get("val_ratio", None)
-anomaly_ratio = config.get("anomaly_ratio", 0.00)
+val_ratio = config.get("val_ratio", 0.0)
+anomaly_ratio = config.get("anomaly_ratio", 0.01)
 
 meta_dict = {
     "dataset_name": dataset,
@@ -43,8 +43,11 @@ meta_dict = {
 
 data = load_df(dataset)
 data["edges"] = generate_data_splits(data["edges"], train_ratio, val_ratio)
-edge_features = data["edges"].select(["ff0_num"]).to_numpy()
-data["edges"] = data["edges"].drop("label")
+edge_features=None
+if dataset=="bitcoin-alpha" or dataset=="bitcoin-otc":
+    edge_features = data["edges"].select(["ff0_num"]).to_numpy()
+    data["edges"] = data["edges"].drop("label")
+
 data["edges"] = normalize_timestamps(data["edges"])
 
 ag = AnomalyGenerator(data["edges"], edge_features=edge_features)
@@ -70,4 +73,4 @@ model.train()
 
 preds, labels, inf_time = model.inference("test")
 auc_full = roc_auc_score(labels, preds)
-logger.info(f"TOTAL AUC: {auc_full:.4f}")
+logger.info(f"Total auc on test: {auc_full:.4f}")

@@ -88,6 +88,8 @@ class TADDYModel:
         self.dataset_name = meta_dict["dataset_name"]
         self.train_per = meta_dict["train_ratio"]
         self.anomaly_per = meta_dict["anomaly_ratio"]
+        self.val_per = meta_dict["val_ratio"]
+        self.has_val = True if self.val_per > 0 else False
 
         self.compute_s = True
         self.window_size = 3
@@ -127,6 +129,7 @@ class TADDYModel:
 
         snapshot_ids = df["snapshot_id"].unique().to_list()
         train_size = df.filter(pl.col("train_mask")).select("snapshot_id").unique().height
+        val_size = df.filter(pl.col("val_mask")).select("snapshot_id").unique().height if self.has_val else 0
         test_size = df.filter(pl.col("test_mask")).select("snapshot_id").unique().height
 
         rows, cols, labs, weis = [], [], [], []
@@ -143,18 +146,15 @@ class TADDYModel:
             weis.append(weight)
 
         logger.debug(f"Length of snapshot IDs: {len(snapshot_ids)}")
-        logger.debug(f"Number of snapshots {(test_size + train_size)}")
-        test_labels = labs[train_size:]
-        n_anomalies = sum((lbl == 1).sum().item() for lbl in test_labels)
-        logger.debug(f"Number of anomalies in test set: {n_anomalies}")
-
-        test_labels = labs[train_size:]
+        logger.debug(f"Number of snapshots {(test_size + train_size + val_size)}")
+        val_labels = labs[train_size:(train_size + val_size)] if self.has_val else []
+        test_labels = labs[(train_size + val_size):]
         n_test_edges = sum(len(lbl) for lbl in test_labels)
         n_anomalies = sum((lbl == 1).sum().item() for lbl in test_labels)
         logger.debug(f"Test edges: {n_test_edges}, Anomalies: {n_anomalies}, Ratio: {n_anomalies / n_test_edges:.4f}")
 
         degrees = np.array([len(x) for x in headtail])
-        num_snap = test_size + train_size
+        num_snap = test_size + train_size + val_size
 
         edges = [np.vstack((rows[i], cols[i])).T for i in range(num_snap)]
 
@@ -163,7 +163,8 @@ class TADDYModel:
         labs = [torch.LongTensor(label) for label in labs]
 
         snap_train = list(range(num_snap))[:train_size]
-        snap_test = list(range(num_snap))[train_size:]
+        snap_val = list(range(num_snap))[train_size:(train_size+val_size)]
+        snap_test = list(range(num_snap))[(train_size+val_size):]
 
         idx = list(range(n))
         index_id_map = {i: i for i in idx}
@@ -179,6 +180,7 @@ class TADDYModel:
             "y": labs,
             "idx": idx,
             "snap_train": snap_train,
+            "snap_val": snap_val,
             "degrees": degrees,
             "snap_test": snap_test,
             "num_snap": num_snap,
@@ -286,9 +288,11 @@ class TADDYModel:
         eigen_file_name = (
             "src/dgadb/models/TADDY/data/eigen/"
             + self.dataset_name
-            + "_"
+            + "_t"
             + str(self.train_per)
-            + "_"
+            + "_v"
+            + str(self.val_per)
+            + "_a"
             + str(self.anomaly_per)
             + ".pkl"
         )
@@ -419,10 +423,11 @@ class TADDYModel:
 
             loss_train /= len(self.data_dict["snap_train"]) - self.method_obj.config.window_size + 1
             logger.info(f"Epoch: {epoch + 1}, loss:{loss_train:.4f}, Time: {time.time() - t_epoch_begin:.4f}s")
+            split = "val" if self.has_val else "test"
             if ((epoch + 1) % self.print_freq) == 0:
-                preds_full, labels_full, _ = self.inference(split="test")  # do val here when implemented
+                preds_full, labels_full, _ = self.inference(split=split)  # do val here when implemented
                 auc_full = self.epoch_evaluation_metric(labels_full, preds_full)
-                logger.info(f"TOTAL AUC:{auc_full:.4f}")
+                logger.info(f"Total auc on {split}: {auc_full:.4f}")
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
         """
