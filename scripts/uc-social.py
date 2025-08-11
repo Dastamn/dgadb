@@ -8,7 +8,7 @@ import os
 print("UC-Social")
 
 base_path = os.environ["BASE_PATH"]
-dataset_dir = os.path.dirname(f"{base_path}/data/up-social/")
+dataset_dir = os.path.dirname(f"{base_path}/data/uc-social/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 
