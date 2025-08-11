@@ -1,14 +1,6 @@
-window_size: 100
+snapshot_size: 100
 train_ratio: 0.7
-val_ratio: 0.15
-
-edges:
-  normalizers:
-    bow:
-      - columns:
-          - f0_str
-        params:
-          max_features: 32
+anomaly_ratio: 0.05
 
 
 # Old format

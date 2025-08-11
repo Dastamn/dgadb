@@ -1,3 +1,4 @@
 snapshot_size: 1000
 train_ratio: 0.70
-anomaly_ratio: 0.01
+val_ratio: 0.15
+anomaly_ratio: 0.05
