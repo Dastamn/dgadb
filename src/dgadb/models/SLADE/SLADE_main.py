@@ -312,12 +312,16 @@ class SLADEModel:
             logger.info(f"Training finished in {self.train_time:.2f} seconds.")
 
             self.scheduler.step()
-
-            pred_score, labels, _ = self.inference("val")
+            if self.has_val:
+                split = "val"
+            else:
+                split = "test"
+            pred_score, labels, _ = self.inference(split=split)
+                
             epoch_score = self.epoch_evaluation_metric(labels, pred_score)
 
             logger.info("Epoch {} - mloss: {:.4f} {} auc: {:.4f}".format(
-                str(epoch), sum(m_loss)/len(m_loss), "val", epoch_score))
+                str(epoch), sum(m_loss)/len(m_loss), split, epoch_score))
 
     def inference(self, split: str) -> tuple[np.ndarray, np.ndarray, float]:
         """Run inference on the specified data split.
@@ -340,6 +344,7 @@ class SLADEModel:
         """
         self._ensure_setup()
         inf_start = time.time()
+        self.dcl_tgn.memory.__init_memory__() # Memory needs to be cleared!
 
         if split == "train":
             self.dcl_tgn.set_neighbor_finder(self.train_ngh_finder)
