@@ -381,8 +381,10 @@ class AnomalyGenerator:
             pl.Series("label", [1] * num_anomalies, dtype=pl.Int8),
         ]
 
-        if use_val_split:
+        if "val_mask" in self.edges.columns or use_val_split:
+            data.pop(-1)
             data.append(pl.Series("val_mask", [True] * num_anomalies, dtype=pl.Boolean))
+            data.append(pl.Series("label", [1] * num_anomalies, dtype=pl.Int8))
 
         anom_edges = pl.DataFrame(data)
         normal_edges = self.edges.select([d.name for d in data if d.name != "label"]).with_columns(
