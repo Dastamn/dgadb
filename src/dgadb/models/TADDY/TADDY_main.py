@@ -65,7 +65,7 @@ class TADDYModel:
 
         self.batch_size = hyperparams.get("batch_size", 100)
         self.num_neighbors = hyperparams.get("num_neighbors", 5)
-        self.num_epoch = hyperparams.get("num_epoch", 100)
+        self.num_epoch = hyperparams.get("num_epoch", 20)
         self.num_heads = hyperparams.get("num_heads", 2)
         self.drop_out = hyperparams.get("drop_out", 0.1)
         self.gpu = hyperparams.get("gpu", 0)
