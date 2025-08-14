@@ -372,10 +372,13 @@ class AnomalyGenerator:
             else:  # temporal-structural-contextual
                 pass
 
+        # Get the original timestamp column data type to ensure compatibility
+        original_timestamp_dtype = self.edges[self.timestamp_col].dtype
+        
         data = [
             pl.Series("src", anom_src_array, dtype=pl.Int64),
             pl.Series("tgt", anom_tgt_array, dtype=pl.Int64),
-            pl.Series(self.timestamp_col, anom_t_array, dtype=pl.UInt64),
+            pl.Series(self.timestamp_col, anom_t_array, dtype=original_timestamp_dtype),
             pl.Series("train_mask", [False] * num_anomalies, dtype=pl.Boolean),
             pl.Series("test_mask", [not use_val_split] * num_anomalies, dtype=pl.Boolean),
             pl.Series("label", [1] * num_anomalies, dtype=pl.Int8),
