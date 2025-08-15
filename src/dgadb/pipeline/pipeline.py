@@ -1,10 +1,18 @@
-from .load_graph import load_graph
 import logging
+
+from src.dgadb.preprocessing.pipeline import Pipeline
+
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-graph = load_graph("yelp-zip")
-print(graph)
+
+if __name__ == "__main__":
+    config_name = "yelp-zip-example"
+
+    pipeline = Pipeline.from_config(config_name, force_rerun=False)
+
+    g = pipeline.run()
+    g.describe()
