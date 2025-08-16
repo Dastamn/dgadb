@@ -1,12 +1,6 @@
 import polars as pl
-from typing import Optional, Literal, Any, NamedTuple
+from typing import Optional, Literal, Any
 from dataclasses import dataclass, field
-
-
-class _GraphActiveNodes(NamedTuple):
-    train: set[int]
-    val: set[int]
-    test: set[int]
 
 
 @dataclass
@@ -16,74 +10,29 @@ class SplitData:
 
 
 @dataclass
-class GraphMetadata:
-    # Core columns
-    e_src_col: str = "src"
-    e_tgt_col: str = "tgt"
-    e_time_col: str = "timestamp"
-    e_id_col: str = "edge_id"
-
-    n_time_col: str = "timestamp"
-    n_id_col: str = "node_id"
-
-    f_id_col: str = "feature_id"
-    f_val_col: str = "value"
-    f_col_prefix: str = "feat"
-
-    # State flags (set by pipeline steps)
-    is_split: bool = False
-    is_sanitized: bool = False
-    is_feature_normalized: bool = False
-    is_timestamp_normalized: bool = False
-
-    # Artifacts from Pipeline steps
-    split_col: Optional[str] = None  # from TemporalSplitter
-    node_mapping: Optional["pl.DataFrame"] = None  # From GraphSanitizer
-    active_nodes: Optional[dict[str, set[int]]] = None  # From TemporalSplitter
-
-    extra: dict[str, Any] = field(default_factory=dict)
-
-    def get(self, key: str) -> Any | None:
-        return getattr(self, key, self.extra.get(key))
-
-    def set(self, key: str, value: Any) -> None:
-        if key in self.__dict__:
-            setattr(self, key, value)
-        else:
-            self.extra[key] = value
-
-    def update(self, metadata: dict[str, Any]) -> None:
-        self.__dict__.update(**metadata)
-
-    def validate_columns(self, edge_df: pl.DataFrame, node_df: Optional[pl.DataFrame]) -> None:
-        def _validate(col: str, expected_cols: list[str], source: Literal["edge", "node"]):
-            if col not in expected_cols:
-                raise ValueError(f"'{col}' not in {source} DataFrame, expected: {expected_cols}")
-
-        for k, v in self.__dict__.items():
-            if k.startswith("e_"):
-                _ = [_validate(c, edge_df.columns, "edge") for c in edge_df.columns]
-            elif k.startswith("n_") and node_df is not None:
-                _ = [_validate(c, node_df.columns, "node") for c in node_df.columns]
-                pass
-            else:
-                continue
-
-    def keys(self) -> list[str]:
-        return [*self.__dict__.keys(), *self.extra.keys()]
-
-
-@dataclass
 class GraphDataContainer:
     edges: pl.DataFrame
     nodes: Optional[pl.DataFrame]
-    metadata: GraphMetadata = field(default_factory=GraphMetadata)
+
+    e_src_col: str
+    e_tgt_col: str
+    e_time_col: str
+    e_id_col: str
+
+    n_time_col: str
+    n_id_col: str
+
+    feat_id_col: str
+    feat_val_col: str
+    feat_col_prefix: str
+
+    metadata: dict = field(default_factory=dict)
 
     def _get_split_data(self, split_name: Literal["train", "test", "val"]) -> SplitData:
-        if not self.metadata.is_split:
+        if not self.is_split:
             raise AttributeError("Data is not split.")
 
-        split_col = self.metadata.split_col
+        split_col = self.split_col
         if not split_col:
             raise ValueError("'split_col' not found in metadata.")
 
@@ -94,7 +43,8 @@ class GraphDataContainer:
             # For static nodes, we return the full node set
             # For dynamic nodes, we filter by split
             if split_col in self.nodes.columns:
-                split_nodes = self.nodes.filter(pl.col(split_col) == split_name)
+                split_nodes = self.nodes.filter(
+                    pl.col(split_col) == split_name)
             else:
                 split_nodes = self.nodes
 
@@ -113,40 +63,21 @@ class GraphDataContainer:
         return self._get_split_data("test")
 
     @property
-    def active_nodes(self) -> _GraphActiveNodes:
-        if not self.metadata.is_split:
-            raise AttributeError("Data is not split.")
-
-        active_nodes = self.metadata.active_nodes
-        if active_nodes is None:
-            raise ValueError("'active_nodes' not found in metadata after splitting.")
-
-        return _GraphActiveNodes(**active_nodes)
-
-    @property
     def edge_timestamps(self) -> pl.Series:
-        return self.edges[self.metadata.e_time_col]
+        return self.edges[self.e_time_col]
 
     @property
     def node_timestamps(self) -> Optional[pl.Series]:
         return (
-            self.nodes[self.metadata.n_time_col]
-            if self.nodes is not None and self.metadata.n_time_col in self.nodes.columns
+            self.nodes[self.n_time_col]
+            if self.nodes is not None and self.n_time_col in self.nodes.columns
             else None
         )
 
-    def set_metadata(self, key: str, value: Any) -> None:
-        self.metadata.set(key, value)
+    def update_metadata(self, metadata: dict):
+        self.metadata.update(metadata)
 
     def describe(self) -> None:
-        def _pretty_print(key: str, value: Any):
-            if isinstance(value, (list, set, dict)):
-                print(f"  - {key}: <{type(value).__name__} of length {len(value)}>")
-            elif isinstance(value, pl.DataFrame):
-                print(f"  - {key}: <Polars DataFrame of shape {value.shape}>")
-            else:
-                print(f"  - {key}: {value}")
-
         print("--- GraphDataContainer Summary ---")
         print(f"Edges DataFrame of shape {self.edges.shape}")
         if self.nodes is not None:
@@ -155,17 +86,27 @@ class GraphDataContainer:
             print("Nodes DataFrame: None")
 
         print("\nMetadata:")
-        for key, value in self.metadata.__dict__.items():
-            if key == "extra" or value is None:
-                continue
-            _pretty_print(key, value)
-
-        if self.metadata.extra:
-            print("\nExtra Metadata:")
-            for key, value in self.metadata.extra.items():
-                _pretty_print(key, value)
+        for key, value in self.metadata.items():
+            if isinstance(value, (list, set, dict)):
+                print(
+                    f"  - {key}: <{type(value).__name__} of length {len(value)}>")
+            elif isinstance(value, pl.DataFrame):
+                print(f"  - {key}: <Polars DataFrame of shape {value.shape}>")
+            else:
+                print(f"  - {key}: {value}")
 
         print("---------------------------------")
+
+    def __getattr__(self, name):
+        metadata = object.__getattribute__(self, "metadata")
+        return metadata.get(name, None)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self.__dataclass_fields__ or name == "metadata":
+            super().__setattr__(name, value)
+        else:
+            metadata = object.__getattribute__(self, "metadata")
+            metadata[name] = value
 
     def __repr__(self) -> str:
         node_shape = self.nodes.shape if self.nodes is not None else "None"

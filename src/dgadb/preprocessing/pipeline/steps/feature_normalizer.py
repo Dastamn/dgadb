@@ -17,7 +17,7 @@ class FeatureNormalizer(PipelineStep):
         if data is None:
             raise ValueError("Input data is None.")
 
-        if not data.metadata.is_split:
+        if not data.is_split:
             raise ValueError("Data must be split.")
 
         if not self.normalizer_configs and not self.normalizer_specs:
@@ -25,14 +25,17 @@ class FeatureNormalizer(PipelineStep):
 
     def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
         assert data is not None
-        self.logger.info("Starting feature normalization for nodes and edges...")
+        self.logger.info(
+            "Starting feature normalization for nodes and edges...")
 
         normalizer_specs = self.normalizer_specs
         if self.normalizer_configs:
-            normalizer_specs.extend([prepare_normalizer(config) for config in self.normalizer_configs])
+            normalizer_specs.extend([prepare_normalizer(config)
+                                    for config in self.normalizer_configs])
 
         for normalizer, columns, target in normalizer_specs:
-            self.logger.info(f"Applying '{normalizer.__class__.__name__}' to {target} features: {columns}")
+            self.logger.info(
+                f"Applying '{normalizer.__class__.__name__}' to {target} features: {columns}")
 
             train_data = data.train_data
 
@@ -45,11 +48,13 @@ class FeatureNormalizer(PipelineStep):
                 df_to_normalize = data.nodes
 
                 if train_df is None or df_to_normalize is None:
-                    self.logger.warning(f"Target is 'node' but no node data found. Skipping.")
+                    self.logger.warning(
+                        f"Target is 'node' but no node data found. Skipping.")
                     continue
 
             else:
-                error = NotImplementedError(f"Unknown target provided: '{target}'")
+                error = NotImplementedError(
+                    f"Unknown target provided: '{target}'")
                 self.logger.error(error)
                 raise
 
@@ -64,4 +69,4 @@ class FeatureNormalizer(PipelineStep):
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
-        data.set_metadata("is_feature_normalized", True)
+        data.is_feature_normalized = True

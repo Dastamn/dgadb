@@ -8,17 +8,16 @@ dataset:
 pipeline:
   cache_dir: pipeline_cache/yelp-zip
   steps:
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        
     - name: TimestampNormalizer
 
     - name: TemporalSplitter
       params:
         train_ratio: 0.7
         val_ratio: 0.1
-
-    - name: GraphSanitizer
-      params:
-        reindex_nodes: true
-        remove_self_loops: true
 
     - name: FeatureNormalizer
       params:
