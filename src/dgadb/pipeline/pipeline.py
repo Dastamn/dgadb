@@ -12,7 +12,10 @@ logging.basicConfig(
 if __name__ == "__main__":
     config_name = "yelp-zip-example"
 
-    pipeline = Pipeline.from_config(config_name, force_rerun=False)
+    pipeline = Pipeline.from_config(config_name, force_rerun=True)
 
     g = pipeline.run()
     g.describe()
+
+    temporal_graph = g.to_temporal_graph_data()
+    temporal_graph.describe()
