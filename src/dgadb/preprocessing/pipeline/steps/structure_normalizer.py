@@ -74,7 +74,7 @@ class StructureNormalizer(PipelineStep):
                 .rename({f"new_{node_id_col}": node_id_col})
             )
 
-        return edge_df, node_df, node_mapping
+        return remapped_edges_df, remapped_nodes_df, node_mapping
 
     def validate(self, data: GraphDataContainer | None) -> None:
         if data is None:
@@ -86,9 +86,6 @@ class StructureNormalizer(PipelineStep):
         src_col = data.e_src_col
         tgt_col = data.e_tgt_col
         time_col = data.e_time_col
-
-        self.logger.info(
-            f"Normalizing graph structure with configuration: {self.__dict__}")
 
         if self.reindex_nodes:
             self.logger.info(
@@ -143,8 +140,6 @@ class StructureNormalizer(PipelineStep):
             raise NotImplementedError(
                 f"Unknown directionality '{self.directionality}'")
 
-        data.edges = data.edges.sort(time_col)
-
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
@@ -152,5 +147,7 @@ class StructureNormalizer(PipelineStep):
             "directionality": self.directionality,
             "reindex_nodes": self.reindex_nodes,
             "remove_self_loops": self.remove_self_loops,
-            "remove_duplicates": self.remove_duplicates
+            "remove_duplicates": self.remove_duplicates,
+            "node_mapping": self.node_mapping,
+            "num_nodes": len(self.node_mapping) if self.node_mapping is not None else None
         })
