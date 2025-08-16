@@ -9,7 +9,7 @@ from ..utils import load_config
 
 def load_graph(name: str) -> Graph:
     config = load_config(name)
-    window_size = config["window_size"]
+    snapshot_size = config.get("snapshot_size", config.get("window_size", 1000))
     train_ratio = config["train_ratio"]
     val_ratio = config.get("val_ratio", None)
 
@@ -23,9 +23,9 @@ def load_graph(name: str) -> Graph:
     data["edges"] = edges
 
     node_features, edge_features = get_normalized_feature_matrices(
-        data["nodes"], data["edges"], config)
+        data.get("nodes"), data["edges"], config)
 
-    data = assign_snapshots(data, window_size=window_size)
+    data = assign_snapshots(data, snapshot_size=snapshot_size)
 
     # snapshot_split_map = generate_data_splits(
     #     data, train_ratio=train_ratio, val_ratio=val_ratio)
@@ -37,4 +37,4 @@ def load_graph(name: str) -> Graph:
 
     # data = normalize_dataframes(data, config)
 
-    return build_graph(data, node_features, edge_features, window_size)
+    return build_graph(data, node_features, edge_features, snapshot_size)

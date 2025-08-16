@@ -1,10 +1,9 @@
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Optional, Dict
 
 import numpy as np
-import polars as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +11,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from torch_geometric.nn import Node2Vec
 from tqdm import tqdm
+
+from src.dgadb.storage.graph import Graph
 
 logger = logging.getLogger(__name__)
 
@@ -77,68 +78,38 @@ class Node2VecModel:
         self.classifier_max_iter = hyperparams.get("classifier_max_iter", 1000)
         
         # Initialize components
-        self.node2vec: Node2Vec | None = None
-        self.classifier: LogisticRegression | None = None
-        self.optimizer: torch.optim.Optimizer | None = None
+        self.node2vec: Optional[Node2Vec] = None
+        self.classifier: Optional[LogisticRegression] = None
+        self.optimizer: Optional[torch.optim.Optimizer] = None
         
         # Data containers
-        self.edge_index: torch.Tensor | None = None
-        self.node_embeddings: torch.Tensor | None = None
-        self.train_data: dict | None = None
-        self.test_data: dict | None = None
-        self.val_data: dict | None = None
+        self.edge_index: Optional[torch.Tensor] = None
+        self.node_embeddings: Optional[torch.Tensor] = None
+        self.train_data: Optional[Dict[str, torch.Tensor]] = None
+        self.test_data: Optional[Dict[str, torch.Tensor]] = None
+        self.val_data: Optional[Dict[str, torch.Tensor]] = None
         self.has_val: bool = False
-        self.num_nodes: int | None = None
+        self.num_nodes: Optional[int] = None
         
-    def setup(self, df: pl.DataFrame) -> None:
+    def setup(self, graph: Graph) -> None:
         """Set up data processing and initialize the Node2Vec model.
         
-        Processes the input DataFrame into Node2Vec format, creates edge indices,
-        and initializes the Node2Vec model and optimizer.
-        
         Args:
-            df (pl.DataFrame): Input DataFrame containing columns: src, tgt, 
-                label, train_mask, test_mask, and optionally val_mask.
+            graph (Graph): Graph object containing node and edge data.
         """
         logger.info("Setting up Node2VecModel...")
         
-        # Validate required columns
-        required_cols = ["src", "tgt", "label", "train_mask", "test_mask"]
-        for col in required_cols:
-            if col not in df.columns:
-                raise ValueError(f"Missing required column: {col}")
+        graph.to(self.device)
+        
+        self.num_nodes = graph.num_nodes
         
         # Check for validation split
-        self.has_val = "val_mask" in df.columns
+        self.has_val = hasattr(graph, "e_val_mask")
         
-        # Get all unique nodes and create node mapping
-        all_nodes = np.unique(np.concatenate([df["src"].to_numpy(), df["tgt"].to_numpy()]))
-        self.num_nodes = len(all_nodes)
-        node_mapping = {node: idx for idx, node in enumerate(all_nodes)}
-        
-        logger.info(f"Graph has {self.num_nodes} nodes and {len(df)} edges")
+        logger.info(f"Graph has {self.num_nodes} nodes and {graph.num_edges} edges")
         
         # Create edge index for the entire graph (used for Node2Vec training)
-        src_mapped = df["src"].map_elements(lambda x: node_mapping[x], return_dtype=pl.Int64)
-        tgt_mapped = df["tgt"].map_elements(lambda x: node_mapping[x], return_dtype=pl.Int64)
-        
-        # Create edge index tensor with CUDA error handling
-        try:
-            self.edge_index = torch.stack([
-                torch.tensor(src_mapped.to_numpy(), dtype=torch.long),
-                torch.tensor(tgt_mapped.to_numpy(), dtype=torch.long)
-            ]).to(self.device)
-        except RuntimeError as e:
-            if "CUDA" in str(e):
-                logger.warning(f"CUDA error encountered: {e}")
-                logger.info("Falling back to CPU device")
-                self.device = torch.device("cpu")
-                self.edge_index = torch.stack([
-                    torch.tensor(src_mapped.to_numpy(), dtype=torch.long),
-                    torch.tensor(tgt_mapped.to_numpy(), dtype=torch.long)
-                ]).to(self.device)
-            else:
-                raise e
+        self.edge_index = graph.e_pairs
         
         # Make graph undirected by adding reverse edges
         reverse_edge_index = torch.stack([self.edge_index[1], self.edge_index[0]])
@@ -150,7 +121,7 @@ class Node2VecModel:
         logger.info(f"Created undirected edge index with {self.edge_index.shape[1]} edges")
         
         # Prepare data splits for evaluation
-        self._prepare_data_splits(df, node_mapping)
+        self._prepare_data_splits(graph)
         
         # Initialize Node2Vec model
         self.node2vec = Node2Vec(
@@ -174,34 +145,39 @@ class Node2VecModel:
         
         logger.info("Node2VecModel setup completed")
     
-    def _prepare_data_splits(self, df: pl.DataFrame, node_mapping: dict) -> None:
+    def _prepare_data_splits(self, graph: Graph) -> None:
         """Prepare train/test/val data splits for evaluation."""
         
-        def prepare_split(mask_col: str) -> dict:
-            split_df = df.filter(pl.col(mask_col))
-            if len(split_df) == 0:
-                return None
-                
-            src_mapped = split_df["src"].map_elements(lambda x: node_mapping[x], return_dtype=pl.Int64)
-            tgt_mapped = split_df["tgt"].map_elements(lambda x: node_mapping[x], return_dtype=pl.Int64)
-            
-            return {
-                "edge_index": torch.stack([
-                    torch.tensor(src_mapped.to_numpy(), dtype=torch.long),
-                    torch.tensor(tgt_mapped.to_numpy(), dtype=torch.long)
-                ]).to(self.device),
-                "labels": torch.tensor(split_df["label"].to_numpy(), dtype=torch.long).to(self.device)
+        # Prepare training data
+        train_mask = graph.e_train_mask
+        if train_mask.any():
+            self.train_data = {
+                "edge_index": graph.e_pairs[:, train_mask],
+                "labels": graph.e_label[train_mask].long(),
             }
         
-        self.train_data = prepare_split("train_mask")
-        self.test_data = prepare_split("test_mask")
+        # Prepare test data
+        test_mask = graph.e_test_mask
+        if test_mask.any():
+            self.test_data = {
+                "edge_index": graph.e_pairs[:, test_mask],
+                "labels": graph.e_label[test_mask].long(),
+            }
         
+        # Prepare validation data (if available)
         if self.has_val:
-            self.val_data = prepare_split("val_mask")
+            val_mask = graph.e_val_mask
+            if val_mask.any():
+                self.val_data = {
+                    "edge_index": graph.e_pairs[:, val_mask],
+                    "labels": graph.e_label[val_mask].long(),
+                }
         
-        logger.info(f"Prepared data splits - Train: {len(self.train_data['labels']) if self.train_data else 0}, "
-                   f"Test: {len(self.test_data['labels']) if self.test_data else 0}, "
-                   f"Val: {len(self.val_data['labels']) if self.val_data and self.has_val else 0}")
+        train_count = len(self.train_data['labels']) if self.train_data else 0
+        test_count = len(self.test_data['labels']) if self.test_data else 0
+        val_count = len(self.val_data['labels']) if self.val_data and self.has_val else 0
+        
+        logger.info(f"Prepared data splits - Train: {train_count}, Test: {test_count}, Val: {val_count}")
     
     def _ensure_setup(self) -> None:
         """Ensure setup() has been called before using the model."""

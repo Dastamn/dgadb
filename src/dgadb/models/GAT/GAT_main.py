@@ -12,12 +12,13 @@ import time
 import torch
 import torch.nn.functional as F
 import numpy as np
-import polars as pl
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple, Dict
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from torch_geometric.nn import GAT
 from tqdm import tqdm
+
+from src.dgadb.storage.graph import Graph
 
 logger = logging.getLogger(__name__)
 
@@ -72,69 +73,33 @@ class GATModel:
         self.classifier_max_iter = hyperparams.get("classifier_max_iter", 1000)
         
         # Initialize placeholders for setup
-        self.gat = None
-        self.optimizer = None
-        self.edge_index = None
-        self.node_features = None
-        self.node_mapping = None
-        self.reverse_node_mapping = None
-        self.train_data = None
-        self.test_data = None
-        self.val_data = None
-        self.classifier = None
+        self.gat: Optional[GAT] = None
+        self.optimizer: Optional[torch.optim.Adam] = None
+        self.edge_index: Optional[torch.Tensor] = None
+        self.node_features: Optional[torch.Tensor] = None
+        self.train_data: Optional[Dict[str, torch.Tensor]] = None
+        self.test_data: Optional[Dict[str, torch.Tensor]] = None
+        self.val_data: Optional[Dict[str, torch.Tensor]] = None
+        self.classifier: Optional[LogisticRegression] = None
         
         logger.info(f"Initializing GATModel with device={device} and hyperparams={hyperparams}")
     
-    def setup(self, df: pl.DataFrame) -> None:
+    def setup(self, graph: Graph) -> None:
         """Set up data processing and initialize the GAT model.
         
         Args:
-            df: Polars DataFrame containing graph data with required columns:
-                - src: Source node IDs
-                - tgt: Target node IDs  
-                - timestamp: Edge timestamps
-                - label: Binary anomaly labels (0=normal, 1=anomaly)
-                - train_mask: Boolean mask for training edges
-                - test_mask: Boolean mask for test edges
-                - val_mask: Boolean mask for validation edges (optional)
+            graph (Graph): Graph object containing node and edge data.
         """
         logger.info("Setting up GATModel...")
         
-        # Validate input data
-        required_cols = ["src", "tgt", "timestamp", "label", "train_mask", "test_mask"]
-        for col in required_cols:
-            if col not in df.columns:
-                raise ValueError(f"Missing required column: {col}")
+        graph.to(self.device)
         
-        # Create node mapping (map original node IDs to consecutive integers)
-        unique_nodes = set(df["src"].to_list() + df["tgt"].to_list())
-        self.node_mapping = {node: idx for idx, node in enumerate(sorted(unique_nodes))}
-        self.reverse_node_mapping = {idx: node for node, idx in self.node_mapping.items()}
-        num_nodes = len(unique_nodes)
+        num_nodes = graph.num_nodes
         
-        logger.info(f"Graph has {num_nodes} nodes and {len(df)} edges")
+        logger.info(f"Graph has {num_nodes} nodes and {graph.num_edges} edges")
         
         # Create edge index for the entire graph (used for GAT training)
-        src_mapped = df["src"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-        tgt_mapped = df["tgt"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-        
-        # Create edge index tensor with CUDA error handling
-        try:
-            self.edge_index = torch.stack([
-                torch.tensor(src_mapped.to_numpy(), dtype=torch.long),
-                torch.tensor(tgt_mapped.to_numpy(), dtype=torch.long)
-            ]).to(self.device)
-        except RuntimeError as e:
-            if "CUDA" in str(e):
-                logger.warning(f"CUDA error encountered: {e}")
-                logger.info("Falling back to CPU device")
-                self.device = torch.device("cpu")
-                self.edge_index = torch.stack([
-                    torch.tensor(src_mapped.to_numpy(), dtype=torch.long),
-                    torch.tensor(tgt_mapped.to_numpy(), dtype=torch.long)
-                ]).to(self.device)
-            else:
-                raise e
+        self.edge_index = graph.e_pairs
         
         # Make graph undirected by adding reverse edges
         reverse_edge_index = torch.stack([self.edge_index[1], self.edge_index[0]])
@@ -145,13 +110,12 @@ class GATModel:
         
         logger.info(f"Created undirected edge index with {self.edge_index.shape[1]} edges")
         
-        # Create simple node features (can be enhanced with actual node features if available)
-        # For now, use identity matrix as node features
-        self.node_features = torch.eye(num_nodes, dtype=torch.float).to(self.device)
+        # Use node features from the graph object
+        self.node_features = graph.n_feat.to(self.device)
         
         # Initialize GAT model
         self.gat = GAT(
-            in_channels=num_nodes,  # Input feature dimension
+            in_channels=self.node_features.shape[1],  # Input feature dimension
             hidden_channels=self.hidden_channels,
             num_layers=self.num_layers,
             out_channels=self.hidden_channels,  # Output embedding dimension
@@ -163,59 +127,41 @@ class GATModel:
         
         # Setup optimizer
         self.optimizer = torch.optim.Adam(
-            self.gat.parameters(), 
+            self.gat.parameters(),
             lr=self.learning_rate
         )
         
         # Prepare data splits for edge-level tasks
-        self._prepare_data_splits(df)
+        self._prepare_data_splits(graph)
         
         logger.info("GATModel setup completed")
     
-    def _prepare_data_splits(self, df: pl.DataFrame) -> None:
+    def _prepare_data_splits(self, graph: Graph) -> None:
         """Prepare train/test/val data splits for edge-level anomaly detection."""
         
         # Prepare training data
-        train_df = df.filter(pl.col("train_mask"))
-        if len(train_df) > 0:
-            train_src_mapped = train_df["src"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-            train_tgt_mapped = train_df["tgt"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-            
+        train_mask = graph.e_train_mask
+        if train_mask.any():
             self.train_data = {
-                'edge_index': torch.stack([
-                    torch.tensor(train_src_mapped.to_numpy(), dtype=torch.long),
-                    torch.tensor(train_tgt_mapped.to_numpy(), dtype=torch.long)
-                ]).to(self.device),
-                'labels': torch.tensor(train_df["label"].to_numpy(), dtype=torch.float).to(self.device)
+                'edge_index': graph.e_pairs[:, train_mask],
+                'labels': graph.e_label[train_mask].float(),
             }
         
         # Prepare test data
-        test_df = df.filter(pl.col("test_mask"))
-        if len(test_df) > 0:
-            test_src_mapped = test_df["src"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-            test_tgt_mapped = test_df["tgt"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-            
+        test_mask = graph.e_test_mask
+        if test_mask.any():
             self.test_data = {
-                'edge_index': torch.stack([
-                    torch.tensor(test_src_mapped.to_numpy(), dtype=torch.long),
-                    torch.tensor(test_tgt_mapped.to_numpy(), dtype=torch.long)
-                ]).to(self.device),
-                'labels': torch.tensor(test_df["label"].to_numpy(), dtype=torch.float).to(self.device)
+                'edge_index': graph.e_pairs[:, test_mask],
+                'labels': graph.e_label[test_mask].float(),
             }
         
         # Prepare validation data (if available)
-        if "val_mask" in df.columns:
-            val_df = df.filter(pl.col("val_mask"))
-            if len(val_df) > 0:
-                val_src_mapped = val_df["src"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-                val_tgt_mapped = val_df["tgt"].map_elements(lambda x: self.node_mapping[x], return_dtype=pl.Int64)
-                
+        if hasattr(graph, "e_val_mask"):
+            val_mask = graph.e_val_mask
+            if val_mask.any():
                 self.val_data = {
-                    'edge_index': torch.stack([
-                        torch.tensor(val_src_mapped.to_numpy(), dtype=torch.long),
-                        torch.tensor(val_tgt_mapped.to_numpy(), dtype=torch.long)
-                    ]).to(self.device),
-                    'labels': torch.tensor(val_df["label"].to_numpy(), dtype=torch.float).to(self.device)
+                    'edge_index': graph.e_pairs[:, val_mask],
+                    'labels': graph.e_label[val_mask].float(),
                 }
         
         train_count = len(self.train_data['labels']) if self.train_data else 0
@@ -245,9 +191,20 @@ class GATModel:
             loss.backward()
             self.optimizer.step()
             
-            # Log progress
+            # Log progress and validation score
             if (epoch + 1) % max(1, self.num_epochs // 10) == 0:
-                logger.info(f"Epoch {epoch + 1}: loss={loss.item():.4f}")
+                log_msg = f"Epoch {epoch + 1}: loss={loss.item():.4f}"
+                
+                # Add validation score if validation data is available
+                if self.val_data is not None:
+                    try:
+                        val_preds, val_labels, _ = self.inference("val")
+                        val_auc = self.epoch_evaluation_metric(val_labels, val_preds)
+                        log_msg += f", val_auc={val_auc:.4f}"
+                    except Exception as e:
+                        logger.warning(f"Could not compute validation score: {e}")
+                
+                logger.info(log_msg)
         
         logger.info("GAT training completed")
     

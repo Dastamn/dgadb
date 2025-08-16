@@ -8,19 +8,14 @@ anomaly detection via a downstream classifier.
 """
 
 import logging
-import numpy as np
 import sys
 import time
-import polars as pl
 import torch
 from sklearn.metrics import roc_auc_score
 
-from src.dgadb.data.dataset import load_df
 from src.dgadb.models.Node2Vec.Node2Vec_main import Node2VecModel
-from src.dgadb.preprocessing.anomaly_generation import AnomalyGenerator
-from src.dgadb.preprocessing.snapshotting import assign_snapshots
-from src.dgadb.preprocessing.splitting import generate_data_splits
-from src.dgadb.utils import load_config
+from src.dgadb.pipeline.load_graph import load_graph
+from src.dgadb.utils.load_config import load_config
 
 # Configure logging
 logging.basicConfig(
@@ -81,104 +76,17 @@ def main():
     logger.info(f"Model hyperparameters: {hyperparams}")
     
     try:
-        # Step 1: Load dataset
-        logger.info("Step 1: Loading dataset...")
+        # Step 1: Load and preprocess graph data
+        logger.info("Step 1: Loading and preprocessing graph data...")
         start_time = time.time()
         
-        data_dict = load_df(dataset_name)
-        df_edges = data_dict["edges"]
+        graph = load_graph(dataset_name)
+        has_val = hasattr(graph, "e_val_mask")
         
-        logger.info(f"Loaded {len(df_edges)} edges")
-        logger.info(f"Data loading took {time.time() - start_time:.2f} seconds")
+        logger.info(f"Data loading and preprocessing took {time.time() - start_time:.2f} seconds")
         
-        # Step 2: Generate train/test splits
-        logger.info("Step 2: Generating train/test splits...")
-        start_time = time.time()
-        
-        data_dict = generate_data_splits(
-            data_dict,
-            train_ratio=config.get("train_ratio", 0.70),
-            val_ratio=config.get("val_ratio", 0.0)
-        )
-        
-        df_edges = data_dict["edges"]
-        has_val = "val_mask" in df_edges.columns
-        train_count = df_edges.filter(df_edges["train_mask"]).height
-        test_count = df_edges.filter(df_edges["test_mask"]).height
-        val_count = df_edges.filter(df_edges["val_mask"]).height if has_val else 0
-        
-        logger.info(f"Train edges: {train_count}, Test edges: {test_count}, Val edges: {val_count}")
-        logger.info(f"Data splitting took {time.time() - start_time:.2f} seconds")
-        
-        # Step 3: Create temporal snapshots
-        logger.info("Step 3: Creating temporal snapshots...")
-        start_time = time.time()
-        
-        data_dict = assign_snapshots(
-            data_dict,
-            snapshot_size=config.get("snapshot_size", 1000),
-            temporal_snapshots=False  # Use structural snapshots for Node2Vec
-        )
-        
-        df_edges = data_dict["edges"]
-        logger.info(f"Created snapshots with window size: {config.get('snapshot_size', 1000)}")
-        logger.info(f"Snapshotting took {time.time() - start_time:.2f} seconds")
-        
-        # Step 4: Inject anomalies into both train and test sets
-        logger.info("Step 4: Injecting anomalies...")
-        start_time = time.time()
-        
-        # Create dummy edge features for anomaly generation (Node2Vec doesn't use edge features)
-        edge_features = np.ones((len(df_edges), 1))  # Dummy features
-        
-        # First, inject anomalies into training set
-        anomaly_gen = AnomalyGenerator(df_edges, edge_features)
-        
-        # Create a temporary train_mask column for anomaly injection
-        df_edges_with_train_mask = df_edges.with_columns(
-            pl.col("train_mask").alias("test_mask")  # Temporarily use train_mask as test_mask
-        )
-        
-        # Inject anomalies into training set
-        anomaly_gen_train = AnomalyGenerator(df_edges_with_train_mask, edge_features)
-        df_edges_train, _ = anomaly_gen_train._generate_anomalous_samples(
-            anom_ratio=config.get("anomaly_ratio", 0.01) * 0.5,  # Use half the ratio for training
-            anom_type="structural",
-            use_val_split=False,  # This will use the "test_mask" which is actually train_mask
-            temporal_window_size=config.get("temporal_window_size", 100)
-        )
-        
-        # Now inject anomalies into test set with the original data
-        df_edges, _ = anomaly_gen._generate_anomalous_samples(
-            anom_ratio=config.get("anomaly_ratio", 0.01),
-            anom_type="structural",  # Use structural anomalies for Node2Vec
-            use_val_split=False,
-            temporal_window_size=config.get("temporal_window_size", 100)
-        )
-        
-        # Combine the training anomalies with the main dataset
-        # Get only the anomalous edges from training set
-        train_anomalies = df_edges_train.filter((pl.col("label") == 1) & (pl.col("test_mask") == True))
-        if len(train_anomalies) > 0:
-            # Update the train_mask and test_mask for training anomalies
-            train_anomalies = train_anomalies.with_columns([
-                pl.lit(True).alias("train_mask"),
-                pl.lit(False).alias("test_mask")
-            ])
-            # Add training anomalies to the main dataset
-            df_edges = pl.concat([df_edges, train_anomalies], how="vertical").sort("timestamp")
-        
-        # Log anomaly statistics
-        total_anomalies = df_edges.filter(df_edges["label"] == 1).height
-        total_edges = len(df_edges)
-        actual_anomaly_ratio = total_anomalies / total_edges
-        
-        logger.info(f"Injected {total_anomalies} anomalies out of {total_edges} edges")
-        logger.info(f"Actual anomaly ratio: {actual_anomaly_ratio:.4f}")
-        logger.info(f"Anomaly injection took {time.time() - start_time:.2f} seconds")
-        
-        # Step 5: Initialize and setup model
-        logger.info("Step 5: Initializing Node2Vec model...")
+        # Step 2: Initialize and setup model
+        logger.info("Step 2: Initializing Node2Vec model...")
         start_time = time.time()
         
         model = Node2VecModel(
@@ -187,11 +95,11 @@ def main():
             epoch_evaluation_metric=roc_auc_score
         )
         
-        model.setup(df_edges)
+        model.setup(graph)
         logger.info(f"Model initialization took {time.time() - start_time:.2f} seconds")
         
-        # Step 6: Train model
-        logger.info("Step 6: Training Node2Vec model...")
+        # Step 3: Train model
+        logger.info("Step 3: Training Node2Vec model...")
         start_time = time.time()
         
         model.train()
@@ -199,8 +107,8 @@ def main():
         training_time = time.time() - start_time
         logger.info(f"Training completed in {training_time:.2f} seconds")
         
-        # Step 7: Evaluate model
-        logger.info("Step 7: Evaluating model...")
+        # Step 4: Evaluate model
+        logger.info("Step 4: Evaluating model...")
         
         # Test set evaluation
         test_preds, test_labels, test_inf_time = model.inference("test")
@@ -221,6 +129,7 @@ def main():
         logger.info(f"  - Inference Time: {train_inf_time:.2f} seconds")
         
         # Validation set evaluation (if available)
+        val_auc = None
         if has_val:
             val_preds, val_labels, val_inf_time = model.inference("val")
             val_auc = roc_auc_score(val_labels, val_preds)
@@ -229,15 +138,14 @@ def main():
             logger.info(f"  - ROC-AUC Score: {val_auc:.4f}")
             logger.info(f"  - Inference Time: {val_inf_time:.2f} seconds")
         
-        # Step 8: Summary
+        # Step 3: Summary
         logger.info("="*60)
         logger.info("PIPELINE SUMMARY")
         logger.info("="*60)
         logger.info(f"Dataset: {dataset_name}")
         logger.info(f"Model: Node2Vec")
         logger.info(f"Device: {device}")
-        logger.info(f"Total Edges: {total_edges}")
-        logger.info(f"Anomaly Ratio: {actual_anomaly_ratio:.4f}")
+        logger.info(f"Total Edges: {graph.num_edges}")
         logger.info(f"Training Time: {training_time:.2f} seconds")
         logger.info(f"Test AUC: {test_auc:.4f}")
         logger.info(f"Train AUC: {train_auc:.4f}")
@@ -252,8 +160,7 @@ def main():
             "train_auc": train_auc,
             "val_auc": val_auc if has_val else None,
             "training_time": training_time,
-            "total_edges": total_edges,
-            "anomaly_ratio": actual_anomaly_ratio,
+            "total_edges": graph.num_edges,
             "hyperparams": hyperparams
         }
         

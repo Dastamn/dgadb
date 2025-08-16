@@ -1,0 +1,69 @@
+2025-08-16 15:29:25,146 - __main__ - INFO - Starting GAT pipeline for dataset: bitcoin-alpha
+2025-08-16 15:29:25,146 - src.dgadb.utils.load_config - INFO - Loading config: /home/azzedine/Projects/dgadb/configs/bitcoin-alpha.yaml
+2025-08-16 15:29:25,146 - src.dgadb.utils.load_config - INFO - Successfully loaded config: bitcoin-alpha
+2025-08-16 15:29:25,146 - __main__ - INFO - Loaded config: {'snapshot_size': 1000, 'train_ratio': 0.7, 'anomaly_ratio': 0.01}
+2025-08-16 15:29:25,146 - __main__ - INFO - Using device: cuda
+2025-08-16 15:29:25,146 - __main__ - INFO - Model hyperparameters: {'hidden_channels': 64, 'num_layers': 2, 'num_heads': 8, 'dropout': 0.1, 'v2': True, 'num_epoch': 5, 'learning_rate': 0.01, 'classifier_solver': 'lbfgs', 'classifier_max_iter': 1000}
+2025-08-16 15:29:25,146 - __main__ - INFO - Step 1: Loading and preprocessing graph data...
+2025-08-16 15:29:25,146 - src.dgadb.utils.load_config - INFO - Loading config: /home/azzedine/Projects/dgadb/configs/bitcoin-alpha.yaml
+2025-08-16 15:29:25,147 - src.dgadb.utils.load_config - INFO - Successfully loaded config: bitcoin-alpha
+2025-08-16 15:29:25,147 - src.dgadb.data.dataset - INFO - Loading dataset 'bitcoin-alpha' from /home/azzedine/Projects/dgadb/data/bitcoin-alpha
+2025-08-16 15:29:25,147 - src.dgadb.data.dataset - INFO - Loading required edges file: /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edges.parquet
+2025-08-16 15:29:25,152 - src.dgadb.data.dataset - INFO - Loading edge file: /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_labels.parquet
+2025-08-16 15:29:25,155 - src.dgadb.data.dataset - INFO - Optional edge file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_types.parquet
+2025-08-16 15:29:25,155 - src.dgadb.data.dataset - INFO - Optional edge file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_features_cat.parquet
+2025-08-16 15:29:25,155 - src.dgadb.data.dataset - INFO - Loading edge file: /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_features_num.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional edge file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_features_str.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Edges loaded with columns: ['edge_id', 'src', 'tgt', 'timestamp', 'label', 'ff0_num']
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_labels.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_types.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_timestamps.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_features_cat.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_features_num.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_features_str.parquet
+2025-08-16 15:29:25,161 - src.dgadb.data.dataset - INFO - Finished loading all dataframes.
+2025-08-16 15:29:25,166 - src.dgadb.preprocessing.snapshotting - INFO - Assigned structural snapshot_ids to edges
+2025-08-16 15:29:25,167 - src.dgadb.data.builder - INFO - Building Graph object from dataframes.
+2025-08-16 15:29:25,173 - src.dgadb.data.builder - INFO - Edges, their timestamps, and their snapshot_ids are loaded.
+2025-08-16 15:29:25,175 - src.dgadb.data.builder - INFO - Edge label column found.
+2025-08-16 15:29:25,183 - __main__ - INFO - Data loading and preprocessing took 0.04 seconds
+2025-08-16 15:29:25,183 - __main__ - INFO - Step 2: Initializing GAT model...
+2025-08-16 15:29:25,183 - src.dgadb.models.GAT.GAT_main - INFO - Initializing GATModel with device=cuda and hyperparams={'hidden_channels': 64, 'num_layers': 2, 'num_heads': 8, 'dropout': 0.1, 'v2': True, 'num_epoch': 5, 'learning_rate': 0.01, 'classifier_solver': 'lbfgs', 'classifier_max_iter': 1000}
+2025-08-16 15:29:25,183 - src.dgadb.models.GAT.GAT_main - INFO - Setting up GATModel...
+2025-08-16 15:29:25,264 - src.dgadb.models.GAT.GAT_main - INFO - Graph has 3783 nodes and 24186 edges
+2025-08-16 15:29:25,551 - src.dgadb.models.GAT.GAT_main - INFO - Created undirected edge index with 28248 edges
+2025-08-16 15:29:25,634 - src.dgadb.models.GAT.GAT_main - INFO - Prepared data splits - Train: 16930, Test: 7256, Val: 0
+2025-08-16 15:29:25,634 - src.dgadb.models.GAT.GAT_main - INFO - GATModel setup completed
+2025-08-16 15:29:25,634 - __main__ - INFO - Model initialization took 0.45 seconds
+2025-08-16 15:29:25,634 - __main__ - INFO - Step 6: Training GAT model...
+2025-08-16 15:29:25,634 - src.dgadb.models.GAT.GAT_main - INFO - Starting GAT training for 5 epochs...
+2025-08-16 15:29:25,991 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 1: loss=1.3866
+2025-08-16 15:29:26,026 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 2: loss=1.3865
+2025-08-16 15:29:26,061 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 3: loss=1.3859
+2025-08-16 15:29:26,094 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 4: loss=1.3850
+2025-08-16 15:29:26,128 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 5: loss=1.3821
+2025-08-16 15:29:26,128 - src.dgadb.models.GAT.GAT_main - INFO - GAT training completed
+2025-08-16 15:29:26,128 - __main__ - INFO - Training completed in 0.49 seconds
+2025-08-16 15:29:26,128 - __main__ - INFO - Step 7: Evaluating model...
+2025-08-16 15:29:26,128 - src.dgadb.models.GAT.GAT_main - INFO - Training downstream classifier...
+2025-08-16 15:29:26,614 - src.dgadb.models.GAT.GAT_main - INFO - Training AUC: 0.6892
+2025-08-16 15:29:26,637 - __main__ - INFO - Test Results:
+2025-08-16 15:29:26,637 - __main__ - INFO -   - ROC-AUC Score: 0.6981
+2025-08-16 15:29:26,637 - __main__ - INFO -   - Inference Time: 0.51 seconds
+2025-08-16 15:29:26,637 - __main__ - INFO -   - Test Edges: 7256
+2025-08-16 15:29:26,637 - __main__ - INFO -   - Test Anomalies: 89
+2025-08-16 15:29:26,663 - __main__ - INFO - Train Results (for comparison):
+2025-08-16 15:29:26,663 - __main__ - INFO -   - ROC-AUC Score: 0.6892
+2025-08-16 15:29:26,663 - __main__ - INFO -   - Inference Time: 0.02 seconds
+2025-08-16 15:29:26,663 - __main__ - INFO - ============================================================
+2025-08-16 15:29:26,663 - __main__ - INFO - PIPELINE SUMMARY
+2025-08-16 15:29:26,663 - __main__ - INFO - ============================================================
+2025-08-16 15:29:26,664 - __main__ - INFO - Dataset: bitcoin-alpha
+2025-08-16 15:29:26,664 - __main__ - INFO - Model: GAT
+2025-08-16 15:29:26,664 - __main__ - INFO - Device: cuda
+2025-08-16 15:29:26,664 - __main__ - INFO - Total Edges: 24186
+2025-08-16 15:29:26,664 - __main__ - INFO - Training Time: 0.49 seconds
+2025-08-16 15:29:26,664 - __main__ - INFO - Test AUC: 0.6981
+2025-08-16 15:29:26,664 - __main__ - INFO - Train AUC: 0.6892
+2025-08-16 15:29:26,664 - __main__ - INFO - ============================================================
+2025-08-16 15:29:26,664 - __main__ - INFO - Pipeline completed successfully!
