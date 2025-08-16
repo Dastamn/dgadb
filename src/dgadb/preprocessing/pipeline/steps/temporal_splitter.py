@@ -1,4 +1,3 @@
-from typing import Literal
 import numpy as np
 from typing import Optional
 import polars as pl
@@ -21,15 +20,6 @@ class TemporalSplitter(PipelineStep):
         self.split_col = split_col
 
         self.active_nodes: Optional[dict[str, set[int]]] = None
-
-    def _get_split_counts(self, data: GraphDataContainer, level: Literal["node", "edge"]) -> dict[str, int]:
-        split_df = data.edges if level == "edge" else data.nodes
-        if split_df is None:
-            raise ValueError(
-                f"Split data is 'None' ({level}). Did you run '{self.__class__.__name__}' ?")
-
-        vc = split_df[self.split_col].value_counts()
-        return dict(zip(vc[self.split_col].to_list(), vc["count"].to_list()))
 
     def validate(self, data: GraphDataContainer | None) -> None:
         if data is None:
