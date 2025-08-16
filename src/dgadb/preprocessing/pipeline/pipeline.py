@@ -34,7 +34,8 @@ class Pipeline:
 
         for i, step in enumerate(self.steps):
             step_start_time = time.time()
-            self.logger.info(f">>> Running step ({i + 1}/{len(self.steps)}): {step.__class__.__name__}")
+            self.logger.info(
+                f">>> Running step ({i + 1}/{len(self.steps)}): {step.__class__.__name__}")
 
             # Check for saved state
             cached_result = None
@@ -43,7 +44,8 @@ class Pipeline:
                 if result is not None:
                     # A callback returned cached data. We use it and skip this step
                     cached_result = result
-                    self.logger.info(f">>> Step '{step.__class__.__name__}' was skipped by loading a cached result.")
+                    self.logger.info(
+                        f">>> Step '{step.__class__.__name__}' was skipped by loading a cached result.")
                     break  # Stop checking other callbacks for this step
 
             if cached_result is not None:
@@ -59,13 +61,16 @@ class Pipeline:
                     callback.on_step_end(step, i, data)
 
                 step_duration = time.time() - step_start_time
-                self.logger.info(f">>> Step '{step.__class__.__name__}' completed in {step_duration:.2f} sec.")
+                self.logger.info(
+                    f">>> Step '{step.__class__.__name__}' completed in {step_duration:.2f} sec.")
             except Exception as e:
-                self.logger.critical(f">>> Pipeline execution failed at step '{step.__class__.__name__}'. Reason: {e}")
+                self.logger.critical(
+                    f">>> Pipeline execution failed at step '{step.__class__.__name__}'. Reason: {e}")
                 raise
 
         total_duration = time.time() - pipeline_start_time
-        self.logger.info(f">>> ---- Pipeline execution finished successfully in {total_duration:.2f} sec. ----")
+        self.logger.info(
+            f">>> ---- Pipeline execution finished successfully in {total_duration:.2f} sec. ----")
 
         assert data is not None
         return data
@@ -80,7 +85,8 @@ class Pipeline:
         logger.info(f"Loading config: '{config_path}'")
 
         if not os.path.exists(config_path):
-            error = FileNotFoundError(f"Config file not found: '{config_path}'")
+            error = FileNotFoundError(
+                f"Config file not found: '{config_path}'")
             logger.error(error)
             raise error
 
@@ -93,7 +99,8 @@ class Pipeline:
             raise
 
         if "pipeline" not in config or "steps" not in config["pipeline"]:
-            error = ValueError("Config must contain a 'pipeline.steps' section.")
+            error = ValueError(
+                "Config must contain a 'pipeline.steps' section.")
             logger.error(error)
             raise error
 
@@ -106,24 +113,28 @@ class Pipeline:
             step_params = step_config.get("params", {})
 
             if i == 0 and step_name != DataLoader.__name__:
-                logger.info(f"> Instantiating missing '{DataLoader.__name__}' step with default parameters.")
+                logger.info(
+                    f"> Instantiating missing '{DataLoader.__name__}' step with default parameters.")
 
                 if (
                     "dataset" not in config
                     and "paths" not in config["dataset"]
                     and "structured" not in config["dataset"]["paths"]
                 ):
-                    error = ValueError("Config must contain a 'dataset.paths.structured' section.")
+                    error = ValueError(
+                        "Config must contain a 'dataset.paths.structured' section.")
                     logger.error(error)
                     raise error
 
-                pipeline_steps.append(DataLoader(config["dataset"]["paths"]["structured"]))
+                pipeline_steps.append(DataLoader(
+                    config["dataset"]["paths"]["structured"]))
 
             logger.info(f"> Instantiating step {i + 1}: {step_name}")
             try:
                 step_class = getattr(steps, step_name)
             except AttributeError:
-                logger.error(f"Pipeline step '{step_name}' not found in 'src.preprocessing.step' module.")
+                logger.error(
+                    f"Pipeline step '{step_name}' not found in 'src.preprocessing.step' module.")
                 raise ImportError(f"Cannot find step class: '{step_name}'")
 
             step_is_instanciated = False
@@ -136,17 +147,20 @@ class Pipeline:
                     step_instance = step_class(step_params)
                     step_is_instanciated = True
                 except TypeError as e:
-                    logger.error(f"Mismatched parameters for step '{step_name}'. Check config file: '{config_path}'")
+                    logger.error(
+                        f"Mismatched parameters for step '{step_name}'. Check config file: '{config_path}'")
                     logger.error(e)
                     raise
 
                 if not step_is_instanciated:
-                    logger.error(f"Mismatched parameters for step '{step_name}'. Check config file: '{config_path}'")
+                    logger.error(
+                        f"Mismatched parameters for step '{step_name}'. Check config file: '{config_path}'")
                     logger.error(e)
                     raise
 
             if not isinstance(step_instance, PipelineStep):
-                raise TypeError(f"Class '{step_name}' is not a valid subclass of 'PipelineStep'.")
+                raise TypeError(
+                    f"Class '{step_name}' is not a valid subclass of 'PipelineStep'.")
 
             pipeline_steps.append(step_instance)
 
