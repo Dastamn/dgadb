@@ -103,7 +103,7 @@ class GraphDataContainer:
 
         print("---------------------------------")
 
-    def to_temporal_graph_data(self):
+    def to_temporal_graph(self):
         if not self.is_split or not self.split_col:
             raise RuntimeError(
                 "Data has not been split. Cannot create train/val/test masks.")
@@ -170,8 +170,8 @@ class GraphDataContainer:
 
         # Labels default to all-zeros
         # TODO @Dastamn: Handle original labels
-        edge_label = torch.zeros(len(edges_df), dtype=torch.long)
-        node_label = torch.zeros(
+        edge_labels = torch.zeros(len(edges_df), dtype=torch.long)
+        node_labels = torch.zeros(
             self.num_nodes, dtype=torch.long) if self.num_nodes else None
 
         excluded_metadata = {"is_split", "split_col", "node_mapping"}
@@ -183,10 +183,9 @@ class GraphDataContainer:
             tgt=tgt,
             t=t,
             msg=msg,
-            edge_label=edge_label,
+            edge_labels=edge_labels,
             node_attr=node_attr,
-            node_label=node_label,
-            num_nodes=self.num_nodes,
+            node_labels=node_labels,
             train_mask=train_mask,
             val_mask=val_mask,
             test_mask=test_mask,
