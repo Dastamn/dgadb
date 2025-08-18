@@ -416,8 +416,7 @@ class AnomalyInjector:
                     expanded_t[fallback_indices], expanded_msg[fallback_indices])
 
         valid_encoded = encoded_cand[valid_indices]
-        _, unique_indices = torch.unique(
-            valid_encoded, return_inverse=False, return_counts=False)
+        _, unique_indices = torch.unique(valid_encoded, return_inverse=True)
         final_unique_indices = valid_indices[unique_indices]
         num_found_unique = len(final_unique_indices)
 
