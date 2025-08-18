@@ -1,5 +1,6 @@
-import polars as pl
 import os
+import polars as pl
+from pathlib import Path
 from .base import PipelineStep
 from ..container import GraphDataContainer
 
@@ -132,4 +133,4 @@ class DataLoader(PipelineStep):
         )
 
     def update_metadata(self, data: GraphDataContainer) -> None:
-        pass
+        data.dataset_name = Path(self.dataset_dir).name
