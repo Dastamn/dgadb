@@ -8,6 +8,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+
 if __name__ == "__main__":
     config_name = "yelp-zip-example"
     # config_name = "bitcoin-alpha-example"
@@ -20,10 +21,7 @@ if __name__ == "__main__":
     temporal_graph = g.to_temporal_graph()
     temporal_graph.describe()
 
-    # temporal_graph.msg = temporal_graph.msg.to("mps")
-    # print(f'{temporal_graph.msg.device}')
-
     # TODO @Dastamn: Test on GPU
     anom_injector = AnomalyInjector(temporal_graph)
 
-    anom_injector.generate_anomalous_edges("temporal", anom_test_ratio=0.15)
+    anom_injector.generate_anomalous_edges("structural", anom_test_ratio=0.05)
