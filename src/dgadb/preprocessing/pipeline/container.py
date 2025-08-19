@@ -3,7 +3,6 @@ import torch
 import polars as pl
 from typing import Optional, Literal, Any
 from dataclasses import dataclass, field
-
 from src.dgadb.storage import TemporalGraphData
 
 logger = logging.getLogger(__name__)
@@ -120,8 +119,8 @@ class GraphDataContainer:
             logger.warning(
                 "Timestamps have not been normalized. Proceeding with raw timestamps.")
 
-        # Sort by time
-        edges_df = self.edges.sort(self.e_time_col)
+        # Sort by time and src node (for event snapshotting)
+        edges_df = self.edges.sort([self.e_time_col, self.e_src_col])
 
         src = torch.tensor(
             edges_df[self.e_src_col].to_numpy(), dtype=torch.long)
@@ -129,6 +128,8 @@ class GraphDataContainer:
             edges_df[self.e_tgt_col].to_numpy(), dtype=torch.long)
         t = torch.tensor(
             edges_df[self.e_time_col].to_numpy(), dtype=torch.long)
+
+        num_nodes = max(int(src.max()), int(tgt.max())) + 1
 
         # Handle edge features
         edge_feat_cols = [
@@ -158,7 +159,7 @@ class GraphDataContainer:
                     sorted_nodes[node_feat_cols].to_numpy(), dtype=torch.float32)
 
         if node_attr is None:
-            logger.info("No node features selected. 'node_attr' will be None.")
+            logger.info("No node features found, 'node_attr' is None.")
 
         # Create masks
         train_mask = torch.from_numpy(
@@ -170,9 +171,10 @@ class GraphDataContainer:
 
         # Labels default to all-zeros
         # TODO @Dastamn: Handle original labels
-        edge_labels = torch.zeros(len(edges_df), dtype=torch.long)
-        node_labels = torch.zeros(
-            self.num_nodes, dtype=torch.long) if self.num_nodes else None
+        edge_labels = torch.zeros(src.numel(), dtype=torch.long)
+        node_labels = torch.zeros(num_nodes, dtype=torch.long)
+
+        # TODO @Dastamn: Handle weights
 
         excluded_metadata = {"is_split", "split_col", "node_mapping"}
         metadata = {k: v for k, v in self.metadata.items()
