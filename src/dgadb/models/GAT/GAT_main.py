@@ -13,12 +13,12 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from typing import Any, Callable, Optional, Tuple, Dict
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score
 from torch_geometric.nn import GAT
 from tqdm import tqdm
 
 from src.dgadb.storage.graph import Graph
+from src.dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
+from src.dgadb.preprocessing.structural import make_undirected_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class GATModel:
         self.train_data: Optional[Dict[str, torch.Tensor]] = None
         self.test_data: Optional[Dict[str, torch.Tensor]] = None
         self.val_data: Optional[Dict[str, torch.Tensor]] = None
-        self.classifier: Optional[LogisticRegression] = None
+        self.decoder: Optional[EdgeDecoder] = None
         
         logger.info(f"Initializing GATModel with device={device} and hyperparams={hyperparams}")
     
@@ -101,14 +101,9 @@ class GATModel:
         # Create edge index for the entire graph (used for GAT training)
         self.edge_index = graph.e_pairs
         
-        # Make graph undirected by adding reverse edges
-        reverse_edge_index = torch.stack([self.edge_index[1], self.edge_index[0]])
-        self.edge_index = torch.cat([self.edge_index, reverse_edge_index], dim=1)
-        
-        # Remove duplicate edges
-        self.edge_index = torch.unique(self.edge_index, dim=1)
-        
-        logger.info(f"Created undirected edge index with {self.edge_index.shape[1]} edges")
+        # Apply structural preprocessing to make graph undirected and remove duplicates
+        self.edge_index = make_undirected_tensor(self.edge_index)
+        logger.info(f"Applied structural preprocessing: undirected graph with {self.edge_index.shape[1]} edges")
         
         # Use node features from the graph object
         self.node_features = graph.n_feat.to(self.device)
@@ -296,55 +291,49 @@ class GATModel:
         if data is None:
             raise ValueError(f"No data available for split: {split}")
         
-        # Train downstream classifier if not already trained
-        if self.classifier is None:
-            self._train_classifier()
+        # Train downstream decoder if not already trained
+        if self.decoder is None:
+            self._train_decoder()
         
         # Get node embeddings
         self.gat.eval()
         with torch.no_grad():
             node_embeddings = self.gat(self.node_features, self.edge_index)
         
-        # Get edge embeddings for the specified split
-        edge_embeddings = self._get_edge_embeddings(node_embeddings, data['edge_index'])
-        
-        # Predict using trained classifier
-        predictions = self.classifier.predict_proba(edge_embeddings.cpu().numpy())[:, 1]
-        labels = data['labels'].cpu().numpy()
-        
-        inference_time = time.time() - start_time
+        # Use the common decoder for inference
+        predictions, labels, inference_time = inference_with_decoder(
+            self.decoder, node_embeddings, data['edge_index'], data['labels']
+        )
         
         return predictions, labels, inference_time
     
-    def _train_classifier(self) -> None:
-        """Train downstream classifier for anomaly detection."""
-        logger.info("Training downstream classifier...")
+    def _train_decoder(self) -> None:
+        """Train downstream decoder for anomaly detection."""
+        logger.info("Training downstream decoder...")
         
         if self.train_data is None:
-            raise RuntimeError("No training data available for classifier training")
+            raise RuntimeError("No training data available for decoder training")
         
         # Get node embeddings
         self.gat.eval()
         with torch.no_grad():
             node_embeddings = self.gat(self.node_features, self.edge_index)
         
-        # Get edge embeddings for training data
-        train_edge_embeddings = self._get_edge_embeddings(node_embeddings, self.train_data['edge_index'])
-        train_labels = self.train_data['labels'].cpu().numpy()
+        # Initialize decoder
+        self.decoder = EdgeDecoder(embedding_dim=self.hidden_channels).to(self.device)
         
-        # Train logistic regression classifier
-        self.classifier = LogisticRegression(
-            solver=self.classifier_solver,
-            max_iter=self.classifier_max_iter,
-            random_state=42
+        # Train decoder using the common training function
+        train_edge_decoder(
+            decoder=self.decoder,
+            node_embeddings=node_embeddings,
+            train_edge_index=self.train_data['edge_index'],
+            train_labels=self.train_data['labels'],
+            num_epochs=100,
+            learning_rate=0.01,
+            device=self.device
         )
         
-        self.classifier.fit(train_edge_embeddings.cpu().numpy(), train_labels)
-        
-        # Compute training AUC
-        train_preds = self.classifier.predict_proba(train_edge_embeddings.cpu().numpy())[:, 1]
-        train_auc = roc_auc_score(train_labels, train_preds)
-        logger.info(f"Training AUC: {train_auc:.4f}")
+        logger.info("Decoder training completed")
     
     def _get_edge_embeddings(self, node_embeddings: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         """Get edge embeddings by combining node embeddings."""

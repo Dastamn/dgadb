@@ -3,13 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GraphSAGE
 from torch_geometric.utils import negative_sampling
-from sklearn.linear_model import LogisticRegression
 import numpy as np
 from typing import Any, Callable, Optional
 import logging
 import time
 
 from src.dgadb.storage.graph import Graph
+from src.dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
+from src.dgadb.preprocessing.structural import make_undirected_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class GraphSAGEModel(nn.Module):
 
         # Initialize components
         self.graphsage: Optional[GraphSAGE] = None
-        self.classifier: Optional[LogisticRegression] = None
+        self.decoder: Optional[EdgeDecoder] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
 
         # Data containers
@@ -73,9 +74,9 @@ class GraphSAGEModel(nn.Module):
             self.x = self.node_emb.weight
 
         self.edge_index = graph.e_pairs
-        reverse_edge_index = torch.stack([self.edge_index[1], self.edge_index[0]])
-        self.edge_index = torch.cat([self.edge_index, reverse_edge_index], dim=1)
-        self.edge_index = torch.unique(self.edge_index, dim=1)
+        # Apply structural preprocessing to make graph undirected and remove duplicates
+        self.edge_index = make_undirected_tensor(self.edge_index)
+        logger.info(f"Applied structural preprocessing: undirected graph with {self.edge_index.shape[1]} edges")
 
         self._prepare_data_splits(graph)
 
@@ -148,20 +149,29 @@ class GraphSAGEModel(nn.Module):
         destination_node_embeddings = node_embeddings[edge_index[1]]
         return torch.cat([source_node_embeddings, destination_node_embeddings], dim=1)
 
-    def train_classifier(self) -> None:
-        """Trains the downstream classifier on the training data."""
+    def train_decoder(self) -> None:
+        """Trains the downstream decoder on the training data."""
         self._ensure_setup()
-        logger.info("Training the downstream classifier...")
+        logger.info("Training the downstream decoder...")
         
-        train_edge_embeddings = self._get_edge_embeddings(self.train_data["edge_index"])
-        train_edge_labels = self.train_data["edge_label"]
+        # Get node embeddings
+        node_embeddings = self._get_node_embeddings()
         
-        self.classifier = LogisticRegression(
-            solver=self.classifier_solver, max_iter=self.classifier_max_iter
+        # Initialize decoder
+        self.decoder = EdgeDecoder(embedding_dim=self.out_channels).to(self.device)
+        
+        # Train decoder using the common training function
+        train_edge_decoder(
+            decoder=self.decoder,
+            node_embeddings=node_embeddings,
+            train_edge_index=self.train_data["edge_index"],
+            train_labels=self.train_data["edge_label"],
+            num_epochs=100,
+            learning_rate=0.01,
+            device=self.device
         )
-        self.classifier.fit(train_edge_embeddings.cpu().numpy(), train_edge_labels.cpu().numpy())
         
-        logger.info("Downstream classifier training completed")
+        logger.info("Downstream decoder training completed")
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
         """
@@ -176,9 +186,9 @@ class GraphSAGEModel(nn.Module):
         self._ensure_setup()
         start_time = time.time()
 
-        if self.classifier is None:
+        if self.decoder is None:
             # This check is now the pipeline's responsibility.
-            raise RuntimeError("Classifier has not been trained. Call train_classifier() first.")
+            raise RuntimeError("Decoder has not been trained. Call train_decoder() first.")
         
         # 1. Select the correct data split based on the 'split' argument
         if split == "train":
@@ -194,14 +204,14 @@ class GraphSAGEModel(nn.Module):
         
         logger.info(f"Performing inference on '{split}' split...")
         
-        # 2. Get embeddings and labels for the chosen split
-        edge_embeddings = self._get_edge_embeddings(data["edge_index"])
-        true_labels = data["edge_label"].cpu().numpy()
+        # 2. Get node embeddings and use common decoder for inference
+        node_embeddings = self._get_node_embeddings()
         
-        # 3. Get anomaly scores (probabilities) from the classifier
-        anomaly_scores = self.classifier.predict_proba(edge_embeddings.cpu().numpy())[:, 1]
+        # 3. Use the common decoder for inference
+        anomaly_scores, true_labels, inference_time = inference_with_decoder(
+            self.decoder, node_embeddings, data["edge_index"], data["edge_label"]
+        )
         
-        inference_time = time.time() - start_time
         logger.info(f"Inference on '{split}' split completed in {inference_time:.2f}s")
         
         # 4. Return the standard tuple

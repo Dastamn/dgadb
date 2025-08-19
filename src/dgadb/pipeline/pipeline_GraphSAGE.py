@@ -98,9 +98,9 @@ def main():
         # This trains the GNN embeddings
         model.train()
         
-        # NEW: Explicitly train the downstream classifier
-        logger.info("Training downstream anomaly detection classifier...")
-        model.train_classifier()
+        # NEW: Explicitly train the downstream decoder
+        logger.info("Training downstream anomaly detection decoder...")
+        model.train_decoder()
         
         training_time = time.time() - start_time
         logger.info(f"Total training completed in {training_time:.2f} seconds")
