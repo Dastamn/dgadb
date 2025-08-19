@@ -1,3 +1,4 @@
+import copy
 import logging
 import torch
 import torch.nn.functional as F
@@ -6,7 +7,6 @@ from functools import reduce
 from typing import Literal, Optional
 from .utils import cartesian_sample, compute_unique_inverse_count_probabilities
 from src.dgadb.storage import TemporalGraphData
-
 
 _ANOMALY_TYPE_MAP: dict[str, str] = {
     "s": "structural",
@@ -29,28 +29,28 @@ class AnomalyInjector:
         self.temporal_graph = temporal_graph
         self.device = temporal_graph.src.device
 
+        self.logger.info(
+            f"Initializing AnomalyInjector for dataset '{temporal_graph.dataset_name}'...")
+
         self.max_node_id = (
             torch.max(temporal_graph.src.max(), temporal_graph.tgt.max()) + 1
         ).float()
 
-        self.logger.info(f"Building encoded lookup for (src, tgt)...")
         self.encoded_observed_edges = self._encode_edges(
             temporal_graph.src, temporal_graph.tgt, find_unique=True)
         self.logger.info(
-            f"Created lookup tensor with {self.encoded_observed_edges.numel()} unique edges.")
+            f"> Created lookup tensor with {self.encoded_observed_edges.numel()} unique edges.")
 
-        self.logger.info(f"Building encoded lookup for (src, tgt, t)...")
         self.encoded_observed_edges_t = self._encode_edges(
             temporal_graph.src, temporal_graph.tgt, t=temporal_graph.t, find_unique=True)
         self.logger.info(
-            f"Created lookup tensor with {self.encoded_observed_edges_t.numel()} unique timestamped edges.")
+            f"> Created lookup tensor with {self.encoded_observed_edges_t.numel()} unique timestamped edges.")
 
-        self.logger.info("Computing time properties...")
         self.granularity, self.t_deltas, self.t_deltas_size, self.t_deltas_p = \
             self._compute_time_properties(
                 temporal_graph.t[temporal_graph.train_mask])
         self.logger.info(
-            f"Time granularity: {self.granularity}, time deltas size: {self.t_deltas_size}.")
+            f"> Time granularity: {self.granularity}, time deltas size: {self.t_deltas_size}.")
 
         self.first_t = temporal_graph.t.min()
         self.last_t = temporal_graph.t.max()
@@ -214,18 +214,18 @@ class AnomalyInjector:
             distance_metric: Literal["cosine", "l2"] = "cosine",
             sample_size: Optional[int] = 10
     ):
-        device = curr_msg_batch.device
+        # TODO @Dastamn: Sample from struct_window
         batch_size, _ = curr_msg_batch.shape
         num_candidates_in_pool = msg_pool.shape[0]
 
         if sample_size is None or sample_size >= num_candidates_in_pool:
             candidate_indices = torch.arange(
-                num_candidates_in_pool, device=device).expand(batch_size, -1)
+                num_candidates_in_pool, device=self.device).expand(batch_size, -1)
         else:
             candidate_indices = torch.randint(
                 0, num_candidates_in_pool,
                 size=(batch_size, sample_size),
-                device=device
+                device=self.device
             )
 
         # Shape: (batch_size, sample_size, feature_dim)
@@ -246,7 +246,7 @@ class AnomalyInjector:
         most_dissimilar_indices = torch.argmax(distances, dim=1)
 
         # Shape: (batch_size, feature_dim)
-        return candidates[torch.arange(batch_size, device=device), most_dissimilar_indices]
+        return candidates[torch.arange(batch_size, device=self.device), most_dissimilar_indices]
 
     def _generate_structural_anomalies(
         self,
@@ -255,9 +255,9 @@ class AnomalyInjector:
         tgt: torch.Tensor,
         t: torch.Tensor,
         msg: torch.Tensor,
-        window_size: Optional[int | float] = None,
-        oversampling_ratio: float = 1.2,
-        max_num_candidate: int = 500_000
+        struct_window_size: Optional[int | float] = None,
+        struct_max_num_candidate: int = 500_000,
+        struct_oversampling_ratio: float = 1.2
     ):
         if size == 0:
             return (torch.empty(0, dtype=src.dtype, device=self.device),
@@ -266,23 +266,24 @@ class AnomalyInjector:
                     torch.empty(0, msg.shape[1],
                                 dtype=msg.dtype, device=self.device))
 
-        oversampling_ratio = max(1.0, min(oversampling_ratio, 2.0))
+        struct_oversampling_ratio = max(
+            1.0, min(struct_oversampling_ratio, 2.0))
         num_edges = len(src)
 
-        if window_size is not None:
-            if isinstance(window_size, float):
-                if not 0 < window_size <= 1:
-                    raise ValueError("Invalid 'window_size' value.")
+        if struct_window_size is not None:
+            if isinstance(struct_window_size, float):
+                if not 0 < struct_window_size <= 1:
+                    raise ValueError("Invalid 'struct_window_size' value.")
 
-                win_len = int(num_edges * window_size)
+                win_len = int(num_edges * struct_window_size)
             else:
-                if window_size > num_edges:
+                if struct_window_size > num_edges:
                     self.logger.warning(
-                        "'window_size' is larger than the number of provided edges, "
+                        "'struct_window_size' is larger than the number of provided edges, "
                         "Sampling nodes from the entire split.")
-                    window_size = num_edges
+                    struct_window_size = num_edges
 
-                win_len = window_size
+                win_len = struct_window_size
 
             win_len = max(2, win_len)
             start_idx = torch.randint(
@@ -295,15 +296,17 @@ class AnomalyInjector:
                 src[start_idx:end_idx], tgt[start_idx:end_idx], t[start_idx:end_idx], msg[start_idx:end_idx]
 
         else:
-            self.logger.info("Sampling nodes from the entire split.")
+            self.logger.warning(
+                "'struct_window_size' is None. Sampling nodes from the entire split.")
             window_src, window_tgt, window_t, window_msg = src, tgt, t, msg
 
         src_pool = torch.unique(window_src)
         tgt_pool = torch.unique(window_tgt)
 
         num_candidates = src_pool.numel() * tgt_pool.numel()
-        if num_candidates > max_num_candidate:
-            sample_size = int(max_num_candidate * oversampling_ratio)
+        if num_candidates > struct_max_num_candidate:
+            sample_size = int(struct_max_num_candidate *
+                              struct_oversampling_ratio)
             self.logger.info(f"'num_candidates' is too large ({num_candidates}), "
                              f"sampling {sample_size} instead.")
             cand_edges = cartesian_sample(
@@ -322,7 +325,7 @@ class AnomalyInjector:
         num_found = len(valid_indices)
 
         self.logger.info(
-            f"Structural search found {num_found} unique edges from a pool of {total_candidates}.")
+            f"Structural search found {num_found}/{total_candidates} unique edges.")
 
         if num_found == 0:
             self.logger.warning(
@@ -361,8 +364,8 @@ class AnomalyInjector:
             edge_p: torch.Tensor,
             first_t: torch.Tensor,
             last_t: torch.Tensor,
-            e_num_tries: int = 100,
-            t_num_tries: int = 100,
+            e_num_candidates: int = 100,
+            t_num_candidates: int = 100,
             random_time_walk_max_steps: int = 5
     ):
         if size == 0:
@@ -376,22 +379,22 @@ class AnomalyInjector:
                             dtype=msg.dtype, device=self.device)
             )
 
-        cand_num_edges = max(size, e_num_tries)
+        cand_num_edges = max(size, e_num_candidates)
         cand_indices = torch.multinomial(
             edge_p, num_samples=cand_num_edges, replacement=True)
         cand_src, cand_tgt, cand_msg = src[cand_indices], tgt[cand_indices], msg[cand_indices]
 
         cand_t = self._generate_plausible_timestamps(
-            t_num_tries,
+            t_num_candidates,
             first_t,
             last_t,
             random_time_walk_max_steps,
         )
 
         # Shape: (num_base_edges * timestamp_num_tries)
-        expanded_src = cand_src.repeat_interleave(t_num_tries, dim=0)
-        expanded_tgt = cand_tgt.repeat_interleave(t_num_tries, dim=0)
-        expanded_msg = cand_msg.repeat_interleave(t_num_tries, dim=0)
+        expanded_src = cand_src.repeat_interleave(t_num_candidates, dim=0)
+        expanded_tgt = cand_tgt.repeat_interleave(t_num_candidates, dim=0)
+        expanded_msg = cand_msg.repeat_interleave(t_num_candidates, dim=0)
 
         expanded_t = cand_t.repeat(cand_num_edges)
 
@@ -421,9 +424,7 @@ class AnomalyInjector:
         num_found_unique = len(final_unique_indices)
 
         self.logger.info(
-            f"Combinatorial search found {num_found_unique} unique temporal anomalies "
-            f"from a pool of {len(cand_indices)}."
-        )
+            f"Combinatorial search found {num_found_unique}/{len(cand_indices)} unique temporal anomalies.")
 
         if num_found_unique >= size:
             final_indices = final_unique_indices[:size]
@@ -443,17 +444,46 @@ class AnomalyInjector:
 
         return anom_src, anom_tgt, anom_t, anom_msg
 
-    def generate_anomalous_edges(
+    def _generate_contextual_anomalies(
+        self,
+        size: int,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        t: torch.Tensor,
+        msg: torch.Tensor,
+        edge_p: torch.Tensor,
+        distance_metric: Literal["cosine", "l2"] = "cosine",
+        ctx_sample_size: int = 10
+    ):
+        if size == 0:
+            self.logger.warning(
+                "Input size 0 in '_generate_contextual_anomalies', returning empty tensors.")
+            return (
+                torch.empty(0, dtype=src.dtype, device=self.device),
+                torch.empty(0, dtype=tgt.dtype, device=self.device),
+                torch.empty(0, dtype=t.dtype, device=self.device),
+                torch.empty(0, msg.shape[1],
+                            dtype=msg.dtype, device=self.device)
+            )
+        cand_indices = torch.multinomial(
+            edge_p, num_samples=size, replacement=True)
+        cand_src, cand_tgt, cand_t, cand_msg = src[cand_indices], tgt[
+            cand_indices], t[cand_indices], msg[cand_indices]
+        anom_msg = self._sample_contextually_inconsistent_features(
+            cand_msg, msg, distance_metric, ctx_sample_size)
+        random_indices = torch.randint(
+            0, cand_src.numel(), size=(size,), device=self.device)
+
+        return cand_src[random_indices], cand_tgt[random_indices], cand_t[random_indices], anom_msg
+
+    def generate_anomalous_samples(
         self,
         anom_type: str,
         anom_train_ratio: float = 0.0,
         anom_val_ratio: float = 0.0,
         anom_test_ratio: float = 0.05,
         reset_labels: bool = True,
-        e_sample_size: int = 100,
-        t_sample_size: int = 100,
-        random_time_walk_max_steps: int = 5,
-        struct_window_size: Optional[int | float] = 1_000
+        **kwargs
     ) -> TemporalGraphData:
         anom_type = self._validate_and_get_anomaly_type(anom_type)
         anom_ratios = {"train": anom_train_ratio,
@@ -499,14 +529,15 @@ class AnomalyInjector:
 
             if anom_type == "structural":
                 anom_src, anom_tgt, anom_t, anom_msg = self._generate_structural_anomalies(
-                    num_anom, src, tgt, t, msg, window_size=struct_window_size)
+                    num_anom, src, tgt, t, msg, **kwargs)
 
             elif anom_type == "temporal":
                 anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_anomalies(
-                    num_anom, src, tgt, t, msg, edge_p, first_t, last_t, e_sample_size, t_sample_size, random_time_walk_max_steps)
+                    num_anom, src, tgt, t, msg, edge_p, first_t, last_t, **kwargs)
 
             elif anom_type == "contextual":
-                pass
+                anom_src, anom_tgt, anom_t, anom_msg = self._generate_contextual_anomalies(
+                    num_anom, src, tgt, t, msg, edge_p, **kwargs)
 
             elif anom_type == "structural-contextual":
                 pass
@@ -554,10 +585,14 @@ class AnomalyInjector:
         anom_val_mask = torch.cat(val_mask_list)
         anom_test_mask = torch.cat(test_mask_list)
 
-        normal_labels = (self.temporal_graph.edge_labels if not reset_labels
-                         else torch.zeros(self.temporal_graph.num_edges, dtype=torch.long, device=self.device))
+        normal_labels = (
+            torch.zeros(self.temporal_graph.num_edges,
+                        dtype=torch.long, device=self.device)
+            if reset_labels else self.temporal_graph.edge_labels.clone()
+        )
         anom_labels = torch.ones(
             all_anom_src.numel(), dtype=torch.long, device=self.device)
+        # TODO @Dastamn: Add node labels
 
         final_src = torch.cat([self.temporal_graph.src, all_anom_src])
         final_tgt = torch.cat([self.temporal_graph.tgt, all_anom_tgt])
@@ -581,23 +616,17 @@ class AnomalyInjector:
             t=final_t[sort_indices],
             msg=final_msg[sort_indices],
             edge_labels=final_label[sort_indices],
-            node_attr=self.temporal_graph.node_attr,
-            node_labels=self.temporal_graph.node_labels,
+            node_attr=(self.temporal_graph.node_attr.clone()
+                       if self.temporal_graph.node_attr is not None else None),
+            node_labels=(self.temporal_graph.node_labels.clone()
+                         if self.temporal_graph.node_labels is not None else None),
             train_mask=final_train_mask[sort_indices],
             val_mask=final_val_mask[sort_indices],
             test_mask=final_test_mask[sort_indices],
-            metadata=self.temporal_graph.metadata
+            metadata=copy.deepcopy(self.temporal_graph.metadata)
         )
 
         self.logger.info(
             f"Edge anomaly injection complete. New graph has {output_graph.num_edges} total edges.")
 
         return output_graph
-
-    def generate_anomalous_nodes(
-            self,
-            anom_train_ratio: float = 0.0,
-            anom_val_ratio: float = 0.0,
-            anom_test_ratio: float = 0.05
-    ):
-        pass

@@ -10,8 +10,8 @@ logging.basicConfig(
 
 
 if __name__ == "__main__":
-    config_name = "yelp-zip-example"
-    # config_name = "bitcoin-alpha-example"
+    # config_name = "yelp-zip-example"
+    config_name = "bitcoin-alpha-example"
 
     pipeline = Pipeline.from_config(config_name, force_rerun=False)
 
@@ -24,4 +24,7 @@ if __name__ == "__main__":
     # TODO @Dastamn: Test on GPU
     anom_injector = AnomalyInjector(temporal_graph)
 
-    anom_injector.generate_anomalous_edges("structural", anom_test_ratio=0.05)
+    anomalous_temporal_graph = anom_injector.generate_anomalous_samples(
+        "c", anom_test_ratio=0.05, anom_val_ratio=0.05)
+
+    print(anomalous_temporal_graph)
