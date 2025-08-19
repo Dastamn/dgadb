@@ -9,3 +9,4 @@ venv/
 .DS_store
 
 src/dgadb/models/TADDY/data
+src/dgadb/models/GeneralDYG/data
