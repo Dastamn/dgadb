@@ -1,7 +1,7 @@
 import logging
 from src.dgadb.preprocessing.pipeline import Pipeline
 from src.dgadb.preprocessing.anomaly_injector import AnomalyInjector
-
+from src.dgadb.storage import TemporalGraphSnapshotLoader
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,4 +27,10 @@ if __name__ == "__main__":
     anomalous_temporal_graph = anom_injector.generate_anomalous_samples(
         "c", anom_test_ratio=0.05, anom_val_ratio=0.05)
 
-    print(anomalous_temporal_graph)
+    snapshot_loader = TemporalGraphSnapshotLoader(
+        anomalous_temporal_graph, strategy="window", window_size=1000)
+
+    print("Number of snapshots: ", len(snapshot_loader))
+
+    for snap in snapshot_loader:
+        print(snap)
