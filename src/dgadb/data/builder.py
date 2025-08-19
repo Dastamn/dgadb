@@ -70,3 +70,60 @@ def build_graph(
             nodes["n_snapshot_id"] = df_nodes.select("snapshot_id").to_torch(dtype=pl.Int64).flatten()
 
     return Graph(nodes=nodes, edges=edges, window_size=window_size)
+
+
+def build_graph_from_temporal(temporal_graph) -> Graph:
+    """
+    Convert TemporalGraphData to Graph object.
+    
+    This function provides the proper abstraction layer for converting
+    preprocessed temporal graph data into the final Graph object that
+    models expect, following the "black box" principle.
+    
+    Args:
+        temporal_graph: TemporalGraphData object from the preprocessing pipeline
+        
+    Returns:
+        Graph: Properly formatted Graph object ready for model consumption
+    """
+    logger.info("Converting TemporalGraphData to Graph object...")
+    
+    # Prepare edge data
+    edges = {
+        "e_pairs": torch.stack([temporal_graph.src, temporal_graph.tgt]),
+        "e_label": temporal_graph.edge_labels,
+        "e_train_mask": temporal_graph.train_mask,
+        "e_val_mask": temporal_graph.val_mask,
+        "e_test_mask": temporal_graph.test_mask,
+        "e_timestamp": temporal_graph.t,
+    }
+    
+    # Add edge features if available
+    if temporal_graph.msg.numel() > 0:
+        edges["e_feat"] = temporal_graph.msg
+        logger.info(f"Added edge features with shape {temporal_graph.msg.shape}")
+    
+    # Prepare node data
+    nodes = {}
+    if temporal_graph.node_attr is not None:
+        nodes["n_feat"] = temporal_graph.node_attr
+        logger.info(f"Added node features with shape {temporal_graph.node_attr.shape}")
+    else:
+        # Create identity matrix for node features if none provided
+        num_nodes = temporal_graph.num_nodes
+        nodes["n_feat"] = torch.eye(num_nodes)
+        logger.info(f"Created identity node features for {num_nodes} nodes")
+    
+    # Add node labels if available
+    if temporal_graph.node_labels is not None:
+        nodes["n_label"] = temporal_graph.node_labels
+    
+    # Create and return Graph object
+    graph = Graph(nodes=nodes, edges=edges)
+    
+    logger.info(f"Successfully created Graph with {graph.num_nodes} nodes and {graph.num_edges} edges")
+    logger.info(f"Train edges: {edges['e_train_mask'].sum().item()}, "
+                f"Val edges: {edges['e_val_mask'].sum().item()}, "
+                f"Test edges: {edges['e_test_mask'].sum().item()}")
+    
+    return graph

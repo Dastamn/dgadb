@@ -7,12 +7,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from torch_geometric.nn import Node2Vec
 from tqdm import tqdm
 
 from src.dgadb.storage.graph import Graph
+from src.dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +73,17 @@ class Node2VecModel:
         self.learning_rate = hyperparams.get("learning_rate", 0.01)
         self.batch_size = hyperparams.get("batch_size", 128)
         
-        # Classifier hyperparameters
+        # Classifier hyperparameters (deprecated - kept for backward compatibility)
         self.classifier_solver = hyperparams.get("classifier_solver", "lbfgs")
         self.classifier_max_iter = hyperparams.get("classifier_max_iter", 1000)
         
+        # Decoder parameters (new configurable parameters)
+        self.decoder_epochs = hyperparams.get("decoder_epochs", 100)
+        self.decoder_learning_rate = hyperparams.get("decoder_learning_rate", 0.01)
+        
         # Initialize components
         self.node2vec: Optional[Node2Vec] = None
-        self.classifier: Optional[LogisticRegression] = None
+        self.decoder: Optional[EdgeDecoder] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         
         # Data containers
@@ -111,14 +115,8 @@ class Node2VecModel:
         # Create edge index for the entire graph (used for Node2Vec training)
         self.edge_index = graph.e_pairs
         
-        # Make graph undirected by adding reverse edges
-        reverse_edge_index = torch.stack([self.edge_index[1], self.edge_index[0]])
-        self.edge_index = torch.cat([self.edge_index, reverse_edge_index], dim=1)
-        
-        # Remove duplicate edges
-        self.edge_index = torch.unique(self.edge_index, dim=1)
-        
-        logger.info(f"Created undirected edge index with {self.edge_index.shape[1]} edges")
+        # Use edge index as-is from the graph (preprocessing handled by pipeline)
+        logger.info(f"Using edge index with {self.edge_index.shape[1]} edges")
         
         # Prepare data splits for evaluation
         self._prepare_data_splits(graph)
@@ -258,29 +256,32 @@ class Node2VecModel:
         
         return edge_embeddings.cpu().numpy()
     
-    def _train_classifier(self) -> None:
-        """Train the downstream classifier for anomaly detection."""
+    def _train_decoder(self) -> None:
+        """Train the downstream decoder for anomaly detection."""
         if self.train_data is None:
             raise RuntimeError("No training data available")
         
-        # Get edge embeddings for training data
-        train_embeddings = self._get_edge_embeddings(self.train_data["edge_index"])
-        train_labels = self.train_data["labels"].cpu().numpy()
+        logger.info("Training downstream decoder...")
         
-        # Train logistic regression classifier
-        self.classifier = LogisticRegression(
-            solver=self.classifier_solver,
-            max_iter=self.classifier_max_iter,
-            random_state=42
+        # Get node embeddings
+        if self.node_embeddings is None:
+            self._get_node_embeddings()
+        
+        # Initialize decoder
+        self.decoder = EdgeDecoder(embedding_dim=self.embedding_dim).to(self.device)
+        
+        # Train decoder using the common training function with configurable parameters
+        train_edge_decoder(
+            decoder=self.decoder,
+            node_embeddings=self.node_embeddings,
+            train_edge_index=self.train_data["edge_index"],
+            train_labels=self.train_data["labels"].float(),
+            num_epochs=self.decoder_epochs,
+            learning_rate=self.decoder_learning_rate,
+            device=self.device
         )
         
-        logger.info("Training downstream classifier...")
-        self.classifier.fit(train_embeddings, train_labels)
-        
-        # Log training performance
-        train_pred_proba = self.classifier.predict_proba(train_embeddings)[:, 1]
-        train_auc = roc_auc_score(train_labels, train_pred_proba)
-        logger.info(f"Training AUC: {train_auc:.4f}")
+        logger.info("Decoder training completed")
     
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
         """Run inference on the specified data split.
@@ -315,17 +316,17 @@ class Node2VecModel:
         if data is None:
             raise ValueError(f"No data available for split: {split}")
         
-        # Train classifier if not already trained
-        if self.classifier is None:
-            self._train_classifier()
+        # Train decoder if not already trained
+        if self.decoder is None:
+            self._train_decoder()
         
-        # Get embeddings and predictions
-        embeddings = self._get_edge_embeddings(data["edge_index"])
-        labels = data["labels"].cpu().numpy()
+        # Get node embeddings if not available
+        if self.node_embeddings is None:
+            self._get_node_embeddings()
         
-        # Get prediction probabilities
-        pred_proba = self.classifier.predict_proba(embeddings)[:, 1]
-        
-        inf_time = time.time() - start_time
+        # Use the common decoder for inference
+        pred_proba, labels, inf_time = inference_with_decoder(
+            self.decoder, self.node_embeddings, data["edge_index"], data["labels"].float()
+        )
         
         return pred_proba, labels, inf_time

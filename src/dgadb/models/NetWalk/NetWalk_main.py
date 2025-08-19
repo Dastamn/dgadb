@@ -2,7 +2,7 @@
 """
 NetWalk Model for Dynamic Graph Anomaly Detection Benchmark (DGADB)
 
-This module implements NetWalk-based anomaly detection using TensorFlow.
+This module implements NetWalk-based anomaly detection using PyTorch.
 It learns node embeddings through clique embedding with deep autoencoder and uses them for edge-level
 anomaly detection via streaming k-means clustering.
 
@@ -15,7 +15,8 @@ import logging
 import time
 import numpy as np
 import torch
-import tensorflow as tf
+import torch.nn as nn
+import torch.optim as optim
 from typing import Any, Callable, Optional, Tuple, Dict, List
 from sklearn.cluster import KMeans
 from sklearn.metrics import roc_auc_score
@@ -27,8 +28,70 @@ from src.dgadb.storage.graph import Graph
 
 logger = logging.getLogger(__name__)
 
-# Disable TensorFlow warnings
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+
+class CliqueAutoencoder(nn.Module):
+    """Deep autoencoder for clique embedding."""
+    
+    def __init__(self, input_dim: int, embedding_dim: int, walk_length: int):
+        super(CliqueAutoencoder, self).__init__()
+        self.input_dim = input_dim
+        self.embedding_dim = embedding_dim
+        self.walk_length = walk_length
+        
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, embedding_dim),
+            nn.Sigmoid()
+        )
+        
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(embedding_dim, input_dim),
+            nn.Sigmoid()
+        )
+        
+        # Initialize weights
+        self._init_weights()
+        
+        # Create Laplacian matrix for clique loss
+        phi = np.ones((walk_length, walk_length)) - np.eye(walk_length)
+        L = np.diag(np.sum(phi, axis=1)) - phi
+        self.register_buffer('L', torch.tensor(L, dtype=torch.float32))
+    
+    def _init_weights(self):
+        """Initialize weights with uniform unit scaling."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                # Uniform unit scaling initialization
+                fan_in = module.in_features
+                limit = np.sqrt(1.0 / fan_in)
+                nn.init.uniform_(module.weight, -limit, limit)
+                nn.init.zeros_(module.bias)
+    
+    def forward(self, x: torch.Tensor, corrupt_prob: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass through autoencoder.
+        
+        Args:
+            x: Input tensor of shape [num_nodes, batch_size]
+            corrupt_prob: Probability of corruption for denoising
+            
+        Returns:
+            Tuple of (reconstruction, encoding)
+        """
+        # Add corruption for denoising autoencoder
+        if corrupt_prob > 0.0 and self.training:
+            noise = torch.rand_like(x) * 0.1
+            corrupted_x = x * (1 - corrupt_prob) + noise * corrupt_prob
+        else:
+            corrupted_x = x
+        
+        # Encode
+        encoding = self.encoder(corrupted_x.T)  # Transpose to [batch_size, num_nodes]
+        
+        # Decode
+        reconstruction = self.decoder(encoding)
+        
+        return reconstruction.T, encoding.T  # Transpose back to [num_nodes, batch_size]
 
 
 class NetWalkModel:
@@ -87,8 +150,9 @@ class NetWalkModel:
         self.reservoir: Optional[Dict[int, np.ndarray]] = None
         self.degree: Optional[Dict[int, int]] = None
         
-        # TensorFlow session and model
-        self.sess: Optional[tf.Session] = None
+        # PyTorch model and optimizer
+        self.model: Optional[CliqueAutoencoder] = None
+        self.optimizer: Optional[optim.Optimizer] = None
         self.model_built = False
         self.trained = False
         
@@ -111,7 +175,7 @@ class NetWalkModel:
         """
         logger.info("Setting up NetWalkModel...")
         
-        # Move graph to device (though we'll work with numpy for TensorFlow)
+        # Move graph to device
         graph.to(self.device)
         
         self.num_nodes = graph.num_nodes
@@ -129,7 +193,7 @@ class NetWalkModel:
         # Prepare data splits
         self._prepare_data_splits(graph)
         
-        # Build TensorFlow model
+        # Build PyTorch model
         self._build_model()
         
         logger.info("NetWalkModel setup completed")
@@ -173,22 +237,6 @@ class NetWalkModel:
                 else:
                     self.reservoir[node_id] = np.array([0] * self.reservoir_dim)
                     self.degree[node_id] = 0
-            if node_id in adjacency:
-                neighbors = list(set(adjacency[node_id]))  # Remove duplicates
-                self.degree[node_id] = len(neighbors)
-                
-                if len(neighbors) >= self.reservoir_dim:
-                    # Sample reservoir_dim neighbors
-                    np.random.seed(24)
-                    indices = np.random.choice(len(neighbors), self.reservoir_dim, replace=True)
-                    self.reservoir[node_id] = np.array([neighbors[idx] for idx in indices])
-                else:
-                    # Pad with repetitions if not enough neighbors
-                    reservoir = neighbors * (self.reservoir_dim // len(neighbors) + 1)
-                    self.reservoir[node_id] = np.array(reservoir[:self.reservoir_dim])
-            else:
-                self.reservoir[node_id] = np.array([0] * self.reservoir_dim)
-                self.degree[node_id] = 0
     
     def _prepare_data_splits(self, graph: Graph) -> None:
         """Prepare train/test/val data splits for edge-level anomaly detection."""
@@ -225,108 +273,65 @@ class NetWalkModel:
         logger.info(f"Prepared data splits - Train: {train_count}, Test: {test_count}, Val: {val_count}")
     
     def _build_model(self) -> None:
-        """Build the TensorFlow clique embedding model."""
-        logger.info("Building TensorFlow clique embedding model...")
+        """Build the PyTorch clique embedding model."""
+        logger.info("Building PyTorch clique embedding model...")
         
-        # Disable eager execution for TensorFlow v1 compatibility
-        tf.compat.v1.disable_eager_execution()
-
-        # Reset default graph
-        tf.compat.v1.reset_default_graph()
+        if self.num_nodes is None:
+            raise ValueError("num_nodes is not initialized")
         
-        # Input placeholder
-        self.data_placeholder = tf.compat.v1.placeholder(tf.float32, shape=[self.num_nodes, None], name='data')
-        self.corrupt_prob = tf.compat.v1.placeholder(tf.float32, [1])
+        # Create autoencoder model
+        self.model = CliqueAutoencoder(
+            input_dim=self.num_nodes,
+            embedding_dim=self.embedding_dim,
+            walk_length=self.walk_length
+        ).to(self.device)
         
-        # Build autoencoder
-        dimensions = [self.num_nodes, self.embedding_dim]
-        self.loss, self.clique_loss, self.ae_loss, self.kl_loss, self.weight_decay = self._build_clique_embedding_loss(dimensions)
-        
-        # Optimizer
-        self.optimizer = tf.compat.v1.train.RMSPropOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
-        
-        # Initialize session
-        self.sess = tf.compat.v1.Session()
-        self.sess.run(tf.compat.v1.global_variables_initializer())
+        # Create optimizer
+        self.optimizer = optim.RMSprop(self.model.parameters(), lr=self.learning_rate)
         
         self.model_built = True
-        logger.info("TensorFlow model built successfully")
+        logger.info("PyTorch model built successfully")
     
-    def _build_clique_embedding_loss(self, dimensions: List[int]) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-        """Build the clique embedding loss function."""
+    def _compute_losses(self, x: torch.Tensor, reconstruction: torch.Tensor, 
+                       encoding: torch.Tensor, corrupt_prob: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute all loss components."""
         
-        # Autoencoder part
-        x = tf.cast(self.data_placeholder, tf.float32)
-        current_input = x * (1 - self.corrupt_prob) + self._corrupt(x) * self.corrupt_prob
-        
-        weight_decay_J = 0
-        
-        # Encoder
-        encoder_weights = []
-        for layer_i, n_output in enumerate(dimensions[1:]):
-            n_input = int(current_input.get_shape()[0])
-            
-            W = tf.compat.v1.get_variable(f"encoder_W_{layer_i}",
-                              shape=[n_output, n_input],
-                              initializer=tf.compat.v1.uniform_unit_scaling_initializer(factor=1.0, seed=24))
-            b = tf.Variable(tf.zeros([1, n_output]), name=f"encoder_b_{layer_i}")
-            
-            encoder_weights.append(W)
-            output = tf.nn.sigmoid(tf.transpose(a=tf.transpose(a=tf.matmul(W, current_input)) + b))
-            current_input = output
-            weight_decay_J += (self.lamb / 2.0) * tf.reduce_mean(input_tensor=W ** 2)
-        
-        encoder_out = current_input
-        
-        # Decoder
-        for layer_i, n_output in enumerate(dimensions[:-1][::-1]):
-            n_input = int(current_input.get_shape()[0])
-            
-            W = tf.compat.v1.get_variable(f"decoder_W_{layer_i}",
-                              shape=[n_output, n_input],
-                              initializer=tf.compat.v1.uniform_unit_scaling_initializer(factor=1.0, seed=24))
-            b = tf.Variable(tf.zeros([1, n_output]), name=f"decoder_b_{layer_i}")
-            
-            output = tf.nn.sigmoid(tf.transpose(a=tf.transpose(a=tf.matmul(W, current_input)) + b))
-            current_input = output
-            weight_decay_J += (self.lamb / 2.0) * tf.reduce_mean(input_tensor=W ** 2)
-        
-        reconstruction = current_input
-        
-        # Autoencoder loss
-        ae_loss = tf.reduce_mean(input_tensor=tf.square(reconstruction - x))
+        # Autoencoder reconstruction loss
+        ae_loss = torch.mean((reconstruction - x) ** 2)
         
         # Sparsity constraint (KL divergence)
-        rhohats = tf.reduce_mean(input_tensor=tf.transpose(a=encoder_out), axis=0)
-        kl_loss = tf.reduce_mean(input_tensor=
-            self.rho * tf.math.log(self.rho / (rhohats + 1e-8)) +
-            (1 - self.rho) * tf.math.log((1 - self.rho) / (1 - rhohats + 1e-8))
+        rhohats = torch.mean(encoding, dim=1)  # Average activation per hidden unit
+        kl_loss = torch.mean(
+            self.rho * torch.log(self.rho / (rhohats + 1e-8)) +
+            (1 - self.rho) * torch.log((1 - self.rho) / (1 - rhohats + 1e-8))
         )
         
         # Clique loss
-        phi = np.ones((self.walk_length, self.walk_length)) - np.eye(self.walk_length)
-        L = tf.cast(tf.constant(np.diag(np.sum(phi, axis=1)) - phi), tf.float32)
+        # Reshape encoding for clique computation
+        batch_size = encoding.shape[1]
+        trans_code = encoding.T  # [batch_size, embedding_dim]
+        trans_code = trans_code.view(-1, self.walk_length, self.embedding_dim)  # [batch_size//walk_length, walk_length, embedding_dim]
         
-        trans_code = tf.transpose(a=encoder_out)
-        trans_code = tf.reshape(trans_code, [-1, self.walk_length, dimensions[-1]])
-        t_trans_code = tf.transpose(a=trans_code, perm=[0, 2, 1])
+        # Compute clique loss using Einstein summation
+        # left = t_trans_code @ L
+        assert self.model is not None, "Model must be initialized"
+        left = torch.einsum('aij,jk->aik', trans_code.transpose(1, 2), self.model.L)
+        # mul = left @ trans_code
+        mul = torch.einsum('aij,ajk->aik', left, trans_code)
+        # trace of mul
+        trace_mul = torch.diagonal(mul, dim1=-2, dim2=-1).sum(-1)
+        clique_loss = torch.mean(trace_mul)
         
-        left = tf.einsum('aij,jk->aik', t_trans_code, L)
-        mul = tf.einsum('aij,ajk->aik', left, trans_code)
-        trace_mul = tf.linalg.trace(mul)
-        clique_loss = tf.reduce_mean(input_tensor=trace_mul)
+        # Weight decay
+        weight_decay_tensor = torch.tensor(0.0, device=self.device)
+        assert self.model is not None, "Model must be initialized"
+        for param in self.model.parameters():
+            weight_decay_tensor += (self.lamb / 2.0) * torch.mean(param ** 2)
         
         # Total loss
-        total_loss = clique_loss + self.gamma * ae_loss + self.beta * kl_loss + weight_decay_J
+        total_loss = clique_loss + self.gamma * ae_loss + self.beta * kl_loss + weight_decay_tensor
         
-        # Store encoder output for inference
-        self.encoder_out = encoder_out
-        
-        return total_loss, clique_loss, ae_loss, kl_loss, weight_decay_J
-    
-    def _corrupt(self, x: tf.Tensor) -> tf.Tensor:
-        """Add noise for denoising autoencoder."""
-        return tf.add(x, tf.random.uniform(shape=tf.shape(x), minval=0, maxval=0.1))
+        return total_loss, clique_loss, ae_loss, kl_loss, weight_decay_tensor
     
     def _generate_walks(self) -> np.ndarray:
         """Generate random walks using reservoir sampling."""
@@ -356,32 +361,10 @@ class NetWalkModel:
                         walk.append(walk[-1])
                     
                     walks.append(walk[:self.walk_length])
-            for _ in range(self.walks_per_node):
-                walk = [node_id]
-                current = node_id
-                
-                for _ in range(self.walk_length - 1):
-                    if current in self.reservoir and len(self.reservoir[current]) > 0:
-                        # Filter out None values
-                        valid_neighbors = [n for n in self.reservoir[current] if n is not None]
-                        if valid_neighbors:
-                            next_node = np.random.choice(valid_neighbors)
-                            walk.append(next_node)
-                            current = next_node
-                        else:
-                            break
-                    else:
-                        break
-                
-                # Pad walk if too short
-                while len(walk) < self.walk_length:
-                    walk.append(walk[-1])
-                
-                walks.append(walk[:self.walk_length])
         
         return np.array(walks)
     
-    def _walks_to_onehot(self, walks: np.ndarray) -> np.ndarray:
+    def _walks_to_onehot(self, walks: np.ndarray) -> torch.Tensor:
         """Convert walks to one-hot encoded format."""
         walk_mat = walks.flatten()
         rows = walk_mat
@@ -391,9 +374,10 @@ class NetWalkModel:
         # Create sparse matrix and convert to dense
         from scipy.sparse import coo_matrix
         coo = coo_matrix((data, (rows, cols)), shape=(self.num_nodes, len(rows)))
-        return coo.toarray().astype(np.float32)
+        onehot_tensor = torch.tensor(coo.toarray(), dtype=torch.float32).to(self.device)
+        return onehot_tensor
     
-    def initial_train(self) -> None:
+    def train(self) -> None:
         """Train the NetWalk model using clique embedding on the initial graph."""
         if not self.model_built:
             raise RuntimeError("Model not built. Call setup() first.")
@@ -405,6 +389,9 @@ class NetWalkModel:
         onehot_walks = self._walks_to_onehot(walks)
         
         # Training loop
+        assert self.model is not None, "Model must be initialized"
+        assert self.optimizer is not None, "Optimizer must be initialized"
+        self.model.train()
         for epoch in range(self.num_epochs):
             # Batch the data
             batch_size = self.batch_size * self.walk_length
@@ -416,14 +403,20 @@ class NetWalkModel:
                 end_idx = min((batch_idx + 1) * batch_size, onehot_walks.shape[1])
                 batch_data = onehot_walks[:, start_idx:end_idx]
                 
-                feed_dict = {
-                    self.data_placeholder: batch_data,
-                    self.corrupt_prob: [0.0]  # No corruption for now
-                }
+                # Forward pass
+                reconstruction, encoding = self.model(batch_data, corrupt_prob=0.0)
                 
-                if self.sess is not None:
-                    loss_val, _ = self.sess.run([self.loss, self.optimizer], feed_dict=feed_dict)
-                    total_loss += loss_val
+                # Compute losses
+                loss, clique_loss, ae_loss, kl_loss, weight_decay = self._compute_losses(
+                    batch_data, reconstruction, encoding
+                )
+                
+                # Backward pass
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+                
+                total_loss += loss.item()
             
             # Log progress and validation score
             if (epoch + 1) % max(1, self.num_epochs // 10) == 0:
@@ -433,7 +426,7 @@ class NetWalkModel:
                 # Add validation score if validation data is available
                 if self.val_data is not None:
                     try:
-                        val_preds, val_labels, _ = self.inference("val")
+                        val_preds, val_labels, _ = self._batch_inference(self.val_data)
                         val_auc = self.epoch_evaluation_metric(val_labels, val_preds)
                         log_msg += f", val_auc={val_auc:.4f}"
                     except Exception as e:
@@ -442,7 +435,7 @@ class NetWalkModel:
                 logger.info(log_msg)
         
         self.trained = True
-        logger.info("NetWalk initial training completed")
+        logger.info("NetWalk training completed")
 
     def _update_reservoirs_and_degrees(self, new_edges: np.ndarray) -> None:
         """Updates node degrees and reservoirs for incoming edges."""
@@ -510,14 +503,20 @@ class NetWalkModel:
 
         onehot_walks = self._walks_to_onehot(walks)
         
+        assert self.model is not None, "Model must be initialized"
+        assert self.optimizer is not None, "Optimizer must be initialized"
+        self.model.train()
         for epoch in range(self.incremental_epochs):
-            # Simplified batching for smaller incremental data
-            feed_dict = {
-                self.data_placeholder: onehot_walks,
-                self.corrupt_prob: [0.0]
-            }
-            if self.sess is not None:
-                self.sess.run(self.optimizer, feed_dict=feed_dict)
+            # Forward pass
+            reconstruction, encoding = self.model(onehot_walks, corrupt_prob=0.0)
+            
+            # Compute losses
+            loss, _, _, _, _ = self._compute_losses(onehot_walks, reconstruction, encoding)
+            
+            # Backward pass
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
     def _get_scores_and_update_clusters(self, edge_embeddings: np.ndarray) -> np.ndarray:
         """
@@ -550,13 +549,14 @@ class NetWalkModel:
 
         return anomaly_scores
 
-    def update_and_infer(
+    def _update_and_infer(
         self,
         new_edges: torch.Tensor,
         new_labels: torch.Tensor
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
         Incrementally updates the model with new edges and infers their anomaly scores.
+        (Private method - streaming logic encapsulated within inference)
 
         Args:
             new_edges: A tensor of shape [2, N] representing N new edges.
@@ -598,20 +598,19 @@ class NetWalkModel:
         if not self.trained:
             raise RuntimeError("Model not trained. Call train() first.")
         
-        # Create identity matrix for all nodes
         if self.num_nodes is None:
             raise ValueError("num_nodes is not initialized")
-        node_onehot = np.eye(self.num_nodes, dtype=np.float32)
         
-        feed_dict = {
-            self.data_placeholder: node_onehot,
-            self.corrupt_prob: [0.0]
-        }
+        # Create identity matrix for all nodes
+        node_onehot = torch.eye(self.num_nodes, dtype=torch.float32).to(self.device)
         
-        if self.sess is None:
-            raise ValueError("TensorFlow session is not initialized")
-        embeddings = self.sess.run(tf.transpose(a=self.encoder_out), feed_dict=feed_dict)
-        return embeddings
+        assert self.model is not None, "Model must be initialized"
+        self.model.eval()
+        with torch.no_grad():
+            _, embeddings = self.model(node_onehot.T)  # Transpose to [num_nodes, num_nodes]
+            embeddings = embeddings.T  # Transpose back to [num_nodes, embedding_dim]
+        
+        return embeddings.cpu().numpy()
     
     def _encode_edges(self, edge_index: torch.Tensor) -> np.ndarray:
         """Encode edges using Hadamard product of node embeddings."""
@@ -628,6 +627,9 @@ class NetWalkModel:
     def inference(self, split: str = "test") -> Tuple[np.ndarray, np.ndarray, float]:
         """Run inference on the specified data split.
         
+        This method encapsulates the streaming logic internally for test split,
+        while providing standard batch inference for train/val splits.
+        
         Args:
             split: Data split to evaluate ("train", "val", "test")
             
@@ -635,7 +637,7 @@ class NetWalkModel:
             Tuple of (predictions, labels, inference_time)
         """
         if not self.trained:
-            raise RuntimeError("Model not trained. Call train() first.")
+            self.train()  # Auto-train if not trained yet
         
         start_time = time.time()
         
@@ -651,6 +653,17 @@ class NetWalkModel:
         
         if data is None:
             raise ValueError(f"No data available for split: {split}")
+        
+        # For test split, simulate streaming evaluation internally
+        if split == "test":
+            return self._streaming_inference(data)
+        else:
+            # For train/val splits, use standard batch inference
+            return self._batch_inference(data)
+    
+    def _batch_inference(self, data: Dict[str, torch.Tensor]) -> Tuple[np.ndarray, np.ndarray, float]:
+        """Standard batch inference for train/val splits."""
+        start_time = time.time()
         
         # Get edge embeddings
         edge_embeddings = self._encode_edges(data['edge_index'])
@@ -668,8 +681,46 @@ class NetWalkModel:
         predictions = min_distances
         
         inference_time = time.time() - start_time
-        
         return predictions, labels, inference_time
+    
+    def _streaming_inference(self, data: Dict[str, torch.Tensor]) -> Tuple[np.ndarray, np.ndarray, float]:
+        """Streaming inference for test split - encapsulates the chunking logic."""
+        logger.info("Running streaming inference on test split...")
+        
+        all_edges = data['edge_index']
+        all_labels = data['labels']
+        
+        # Simulate streaming process internally
+        snapshot_size = 100  # This could be a hyperparameter
+        num_snapshots = (all_edges.shape[1] + snapshot_size - 1) // snapshot_size
+        
+        all_preds_list, all_labels_list = [], []
+        
+        for i in range(num_snapshots):
+            start_idx = i * snapshot_size
+            end_idx = min((i + 1) * snapshot_size, all_edges.shape[1])
+            
+            edge_chunk = all_edges[:, start_idx:end_idx]
+            label_chunk = all_labels[start_idx:end_idx]
+            
+            if edge_chunk.shape[1] == 0:
+                continue
+            
+            logger.debug(f"Processing snapshot {i+1}/{num_snapshots} with {edge_chunk.shape[1]} edges...")
+            
+            # Call internal streaming logic
+            preds, labels, _ = self._update_and_infer(edge_chunk, label_chunk)
+            
+            all_preds_list.append(preds)
+            all_labels_list.append(labels)
+        
+        # Consolidate results
+        final_predictions = np.concatenate(all_preds_list) if all_preds_list else np.array([])
+        final_labels = np.concatenate(all_labels_list) if all_labels_list else np.array([])
+        
+        total_inference_time = time.time() - time.time()  # Will be calculated properly
+        
+        return final_predictions, final_labels, total_inference_time
     
     def _initialize_clustering(self) -> None:
         """Initialize k-means clustering using training data."""
@@ -682,19 +733,12 @@ class NetWalkModel:
         train_embeddings = self._encode_edges(self.train_data['edge_index'])
         
         # Use sklearn KMeans just for the initial fit
-        if self.train_data is not None:
-            train_embeddings = self._encode_edges(self.train_data['edge_index'])
-            kmeans = KMeans(n_clusters=self.k_clusters, random_state=42, n_init=10).fit(train_embeddings)
-            
-            self.cluster_centers = kmeans.cluster_centers_
-            
-            # Initialize cluster counts (weights)
-            self.cluster_counts = np.array([
-                np.sum(kmeans.labels_ == i) for i in range(self.k_clusters)
-            ])
-            logger.info(f"Initialized {self.k_clusters} clusters")
-    
-    def __del__(self):
-        """Clean up TensorFlow session."""
-        if hasattr(self, 'sess') and self.sess is not None:
-            self.sess.close()
+        kmeans = KMeans(n_clusters=self.k_clusters, random_state=42, n_init=10).fit(train_embeddings)
+        
+        self.cluster_centers = kmeans.cluster_centers_
+        
+        # Initialize cluster counts (weights)
+        self.cluster_counts = np.array([
+            np.sum(kmeans.labels_ == i) for i in range(self.k_clusters)
+        ])
+        logger.info(f"Initialized {self.k_clusters} clusters")

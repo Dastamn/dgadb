@@ -14,11 +14,11 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Any, Callable, Optional, Tuple, Dict
 from torch_geometric.nn import GAT
+from torch_geometric.utils import negative_sampling
 from tqdm import tqdm
 
 from src.dgadb.storage.graph import Graph
 from src.dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
-from src.dgadb.preprocessing.structural import make_undirected_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,13 @@ class GATModel:
         self.num_epochs = hyperparams.get("num_epoch", 100)
         self.learning_rate = hyperparams.get("learning_rate", 0.01)
         
-        # Classifier parameters
+        # Classifier parameters (deprecated - kept for backward compatibility)
         self.classifier_solver = hyperparams.get("classifier_solver", "lbfgs")
         self.classifier_max_iter = hyperparams.get("classifier_max_iter", 1000)
+        
+        # Decoder parameters (new configurable parameters)
+        self.decoder_epochs = hyperparams.get("decoder_epochs", 100)
+        self.decoder_learning_rate = hyperparams.get("decoder_learning_rate", 0.01)
         
         # Initialize placeholders for setup
         self.gat: Optional[GAT] = None
@@ -101,9 +105,8 @@ class GATModel:
         # Create edge index for the entire graph (used for GAT training)
         self.edge_index = graph.e_pairs
         
-        # Apply structural preprocessing to make graph undirected and remove duplicates
-        self.edge_index = make_undirected_tensor(self.edge_index)
-        logger.info(f"Applied structural preprocessing: undirected graph with {self.edge_index.shape[1]} edges")
+        # Use edge index as-is from the graph (preprocessing handled by pipeline)
+        logger.info(f"Using edge index with {self.edge_index.shape[1]} edges")
         
         # Use node features from the graph object
         self.node_features = graph.n_feat.to(self.device)
@@ -228,34 +231,43 @@ class GATModel:
         return pos_loss + neg_loss
     
     def _sample_negative_edges(self, num_samples: int) -> torch.Tensor:
-        """Sample negative edges (non-existing edges) for training."""
+        """Sample negative edges (non-existing edges) for training using PyTorch Geometric."""
         num_nodes = self.node_features.shape[0]
         
-        # Create set of existing edges for fast lookup
-        existing_edges = set()
-        edge_list = self.edge_index.cpu().numpy()
-        for i in range(edge_list.shape[1]):
-            existing_edges.add((edge_list[0, i], edge_list[1, i]))
-        
-        # Sample negative edges
-        neg_edges = []
-        attempts = 0
-        max_attempts = num_samples * 10
-        
-        while len(neg_edges) < num_samples and attempts < max_attempts:
-            src = np.random.randint(0, num_nodes)
-            tgt = np.random.randint(0, num_nodes)
+        # Use PyTorch Geometric's optimized negative sampling
+        # This is much more efficient than the manual approach
+        try:
+            neg_edge_index = negative_sampling(
+                edge_index=self.edge_index,
+                num_nodes=num_nodes,
+                num_neg_samples=num_samples,
+                method='sparse'
+            )
+            return neg_edge_index
+        except Exception as e:
+            logger.warning(f"PyTorch Geometric negative sampling failed: {e}. Using fallback method.")
             
-            if src != tgt and (src, tgt) not in existing_edges:
-                neg_edges.append([src, tgt])
+            # Fallback to a simpler approach if PyG method fails
+            # Generate random pairs and filter out existing edges
+            max_attempts = num_samples * 5
+            neg_edges = []
+            existing_edges = set(zip(self.edge_index[0].cpu().numpy(), self.edge_index[1].cpu().numpy()))
             
-            attempts += 1
-        
-        if len(neg_edges) == 0:
-            # Fallback: create some random edges
-            neg_edges = [[0, 1], [1, 2]]
-        
-        return torch.tensor(neg_edges, dtype=torch.long).t().to(self.device)
+            attempts = 0
+            while len(neg_edges) < num_samples and attempts < max_attempts:
+                src = torch.randint(0, num_nodes, (1,)).item()
+                tgt = torch.randint(0, num_nodes, (1,)).item()
+                
+                if src != tgt and (src, tgt) not in existing_edges:
+                    neg_edges.append([src, tgt])
+                
+                attempts += 1
+            
+            if len(neg_edges) == 0:
+                # Final fallback: create some basic edges
+                neg_edges = [[0, 1], [1, 2]] if num_nodes > 2 else [[0, 1]]
+            
+            return torch.tensor(neg_edges, dtype=torch.long).t().to(self.device)
     
     def _compute_edge_scores(self, node_embeddings: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         """Compute edge scores using dot product of node embeddings."""
@@ -322,14 +334,14 @@ class GATModel:
         # Initialize decoder
         self.decoder = EdgeDecoder(embedding_dim=self.hidden_channels).to(self.device)
         
-        # Train decoder using the common training function
+        # Train decoder using the common training function with configurable parameters
         train_edge_decoder(
             decoder=self.decoder,
             node_embeddings=node_embeddings,
             train_edge_index=self.train_data['edge_index'],
             train_labels=self.train_data['labels'],
-            num_epochs=100,
-            learning_rate=0.01,
+            num_epochs=self.decoder_epochs,
+            learning_rate=self.decoder_learning_rate,
             device=self.device
         )
         

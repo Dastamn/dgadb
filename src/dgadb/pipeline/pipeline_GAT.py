@@ -16,8 +16,8 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from src.dgadb.models.GAT.GAT_main import GATModel
-from src.dgadb.pipeline.load_graph import load_graph
-from src.dgadb.utils.load_config import load_config
+from src.dgadb.preprocessing.pipeline.pipeline import Pipeline
+from src.dgadb.data.builder import build_graph_from_temporal
 
 # Configure logging
 logging.basicConfig(
@@ -37,7 +37,8 @@ def main():
     
     # Load configuration
     try:
-        config = load_config(dataset_name)
+        # No need for separate config loading - pipeline handles it
+        config = {}
         logger.info(f"Loaded config: {config}")
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
@@ -75,13 +76,22 @@ def main():
     logger.info(f"Model hyperparameters: {hyperparams}")
     
     try:
-        # Step 1: Load and preprocess graph data
+        # Step 1: Load and preprocess graph data using the pipeline system (black box)
         logger.info("Step 1: Loading and preprocessing graph data...")
         start_time = time.time()
         
-        graph = load_graph(dataset_name)
+        # Use the preprocessing pipeline - completely abstracted data processing
+        pipeline = Pipeline.from_config(f"{dataset_name}-example")
+        processed_data = pipeline.run()
         
-        logger.info(f"Data loading and preprocessing took {time.time() - start_time:.2f} seconds")
+        # Convert to TemporalGraphData then to Graph object using proper abstraction
+        temporal_graph = processed_data.to_temporal_graph()
+        
+        # Convert to final Graph object using the dedicated conversion function
+        # NO MORE MANUAL DATA ASSEMBLY - this is the proper "black box" approach
+        graph = build_graph_from_temporal(temporal_graph)
+        
+        logger.info(f"Data processing and conversion completed in {time.time() - start_time:.2f} seconds")
         
         # Step 2: Initialize GAT model
         logger.info("Step 2: Initializing GAT model...")

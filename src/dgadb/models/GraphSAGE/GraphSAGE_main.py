@@ -10,7 +10,6 @@ import time
 
 from src.dgadb.storage.graph import Graph
 from src.dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
-from src.dgadb.preprocessing.structural import make_undirected_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +35,13 @@ class GraphSAGEModel(nn.Module):
         self.num_epoch = hyperparams.get("num_epoch", 100)
         self.learning_rate = hyperparams.get("learning_rate", 0.01)
 
-        # Classifier hyperparameters
+        # Classifier hyperparameters (deprecated - kept for backward compatibility)
         self.classifier_solver = hyperparams.get("classifier_solver", "lbfgs")
         self.classifier_max_iter = hyperparams.get("classifier_max_iter", 1000)
+        
+        # Decoder parameters (new configurable parameters)
+        self.decoder_epochs = hyperparams.get("decoder_epochs", 100)
+        self.decoder_learning_rate = hyperparams.get("decoder_learning_rate", 0.01)
 
         # Initialize components
         self.graphsage: Optional[GraphSAGE] = None
@@ -74,9 +77,8 @@ class GraphSAGEModel(nn.Module):
             self.x = self.node_emb.weight
 
         self.edge_index = graph.e_pairs
-        # Apply structural preprocessing to make graph undirected and remove duplicates
-        self.edge_index = make_undirected_tensor(self.edge_index)
-        logger.info(f"Applied structural preprocessing: undirected graph with {self.edge_index.shape[1]} edges")
+        # Use edge index as-is from the graph (preprocessing handled by pipeline)
+        logger.info(f"Using edge index with {self.edge_index.shape[1]} edges")
 
         self._prepare_data_splits(graph)
 
@@ -149,10 +151,10 @@ class GraphSAGEModel(nn.Module):
         destination_node_embeddings = node_embeddings[edge_index[1]]
         return torch.cat([source_node_embeddings, destination_node_embeddings], dim=1)
 
-    def train_decoder(self) -> None:
-        """Trains the downstream decoder on the training data."""
+    def _train_decoder(self) -> None:
+        """Trains the downstream decoder on the training data (private method)."""
         self._ensure_setup()
-        logger.info("Training the downstream decoder...")
+        logger.info("Training downstream decoder...")
         
         # Get node embeddings
         node_embeddings = self._get_node_embeddings()
@@ -160,18 +162,18 @@ class GraphSAGEModel(nn.Module):
         # Initialize decoder
         self.decoder = EdgeDecoder(embedding_dim=self.out_channels).to(self.device)
         
-        # Train decoder using the common training function
+        # Train decoder using the common training function with configurable parameters
         train_edge_decoder(
             decoder=self.decoder,
             node_embeddings=node_embeddings,
             train_edge_index=self.train_data["edge_index"],
             train_labels=self.train_data["edge_label"],
-            num_epochs=100,
-            learning_rate=0.01,
+            num_epochs=self.decoder_epochs,
+            learning_rate=self.decoder_learning_rate,
             device=self.device
         )
         
-        logger.info("Downstream decoder training completed")
+        logger.info("Decoder training completed")
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
         """
@@ -186,9 +188,9 @@ class GraphSAGEModel(nn.Module):
         self._ensure_setup()
         start_time = time.time()
 
+        # Train decoder if not already trained (lazy initialization)
         if self.decoder is None:
-            # This check is now the pipeline's responsibility.
-            raise RuntimeError("Decoder has not been trained. Call train_decoder() first.")
+            self._train_decoder()
         
         # 1. Select the correct data split based on the 'split' argument
         if split == "train":

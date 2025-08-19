@@ -1,73 +1,83 @@
-/Projects/dgadb && BASE_PATH=/home/azzedine/Projects/dgadb PYTHONPATH=/home/azzedine/Projects/dg
-adb python3 src/dgadb/pipeline/pipeline_GraphSAGE.py
-2025-08-16 18:38:15,159 - __main__ - INFO - Starting GraphSAGE pipeline for dataset: bitcoin-alpha
-2025-08-16 18:38:15,159 - src.dgadb.utils.load_config - INFO - Loading config: /home/azzedine/Projects/dgadb/configs/bitcoin-alpha.yaml
-2025-08-16 18:38:15,159 - src.dgadb.utils.load_config - INFO - Successfully loaded config: bitcoin-alpha
-2025-08-16 18:38:15,160 - __main__ - INFO - Loaded config: {'snapshot_size': 1000, 'train_ratio': 0.7, 'anomaly_ratio': 0.01}
-2025-08-16 18:38:15,160 - __main__ - INFO - Using device: cuda
-2025-08-16 18:38:15,160 - __main__ - INFO - Model hyperparameters: {'hidden_channels': 128, 'out_channels': 128, 'num_layers': 2, 'dropout': 0.5, 'num_epoch': 50, 'learning_rate': 0.01, 'classifier_solver': 'lbfgs', 'classifier_max_iter': 1000}
-2025-08-16 18:38:15,160 - __main__ - INFO - Step 1: Loading and preprocessing graph data...
-2025-08-16 18:38:15,160 - src.dgadb.utils.load_config - INFO - Loading config: /home/azzedine/Projects/dgadb/configs/bitcoin-alpha.yaml
-2025-08-16 18:38:15,160 - src.dgadb.utils.load_config - INFO - Successfully loaded config: bitcoin-alpha
-2025-08-16 18:38:15,160 - src.dgadb.data.dataset - INFO - Loading dataset 'bitcoin-alpha' from /home/azzedine/Projects/dgadb/data/bitcoin-alpha
-2025-08-16 18:38:15,160 - src.dgadb.data.dataset - INFO - Loading required edges file: /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edges.parquet
-2025-08-16 18:38:15,165 - src.dgadb.data.dataset - INFO - Loading edge file: /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_labels.parquet
-2025-08-16 18:38:15,167 - src.dgadb.data.dataset - INFO - Optional edge file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_types.parquet
-2025-08-16 18:38:15,167 - src.dgadb.data.dataset - INFO - Optional edge file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_features_cat.parquet
-2025-08-16 18:38:15,167 - src.dgadb.data.dataset - INFO - Loading edge file: /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_features_num.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional edge file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/edge_features_str.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Edges loaded with columns: ['edge_id', 'src', 'tgt', 'timestamp', 'label', 'ff0_num']
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_labels.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_types.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_timestamps.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_features_cat.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_features_num.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Optional node file not found (skipped): /home/azzedine/Projects/dgadb/data/bitcoin-alpha/node_features_str.parquet
-2025-08-16 18:38:15,173 - src.dgadb.data.dataset - INFO - Finished loading all dataframes.
-2025-08-16 18:38:15,176 - src.dgadb.preprocessing.snapshotting - INFO - Assigned structural snapshot_ids to edges
-2025-08-16 18:38:15,176 - src.dgadb.data.builder - INFO - Building Graph object from dataframes.
-2025-08-16 18:38:15,179 - src.dgadb.data.builder - INFO - Edges, their timestamps, and their snapshot_ids are loaded.
-2025-08-16 18:38:15,179 - src.dgadb.data.builder - INFO - Edge label column found.
-2025-08-16 18:38:15,183 - __main__ - INFO - Data loading and preprocessing took 0.02 seconds
-2025-08-16 18:38:15,183 - __main__ - INFO - Step 2: Initializing GraphSAGE model...
-2025-08-16 18:38:15,183 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Setting up GraphSAGEModel...
-2025-08-16 18:38:15,249 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Using provided node features with dimension 3783
-2025-08-16 18:38:15,612 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - GraphSAGEModel setup completed
-2025-08-16 18:38:15,612 - __main__ - INFO - Model initialization took 0.43 seconds
-2025-08-16 18:38:15,612 - __main__ - INFO - Step 3: Training GraphSAGE model...
-2025-08-16 18:38:15,612 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Starting GraphSAGE training for 50 epochs...
-2025-08-16 18:38:16,020 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Epoch 10: loss=0.5856
-2025-08-16 18:38:16,256 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Epoch 20: loss=0.5160
-2025-08-16 18:38:16,516 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Epoch 30: loss=0.4957
-2025-08-16 18:38:16,753 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Epoch 40: loss=0.4827
-2025-08-16 18:38:16,992 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Epoch 50: loss=0.4803
-2025-08-16 18:38:16,992 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - GraphSAGE training completed
-2025-08-16 18:38:16,993 - __main__ - INFO - Training downstream anomaly detection classifier...
-2025-08-16 18:38:16,993 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Training the downstream classifier...
-2025-08-16 18:38:17,696 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Downstream classifier training completed
-2025-08-16 18:38:17,697 - __main__ - INFO - Total training completed in 2.08 seconds
-2025-08-16 18:38:17,697 - __main__ - INFO - Step 4: Evaluating model...
-2025-08-16 18:38:17,697 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Performing inference on 'test' split...
-2025-08-16 18:38:17,718 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Inference on 'test' split completed in 0.02s
-2025-08-16 18:38:17,722 - __main__ - INFO - Test Results:
-2025-08-16 18:38:17,722 - __main__ - INFO -   - ROC-AUC Score: 0.6617
-2025-08-16 18:38:17,727 - __main__ - INFO -   - Inference Time: 0.02 seconds
-2025-08-16 18:38:17,727 - __main__ - INFO -   - Test Edges: 7256
-2025-08-16 18:38:17,728 - __main__ - INFO -   - Test Anomalies: 89
-2025-08-16 18:38:17,728 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Performing inference on 'train' split...
-2025-08-16 18:38:17,760 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Inference on 'train' split completed in 0.03s
-2025-08-16 18:38:17,774 - __main__ - INFO - Train Results (for comparison):
-2025-08-16 18:38:17,776 - __main__ - INFO -   - ROC-AUC Score: 0.8493
-2025-08-16 18:38:17,776 - __main__ - INFO -   - Inference Time: 0.03 seconds
-2025-08-16 18:38:17,778 - __main__ - INFO - ============================================================
-2025-08-16 18:38:17,779 - __main__ - INFO - PIPELINE SUMMARY
-2025-08-16 18:38:17,780 - __main__ - INFO - ============================================================
-2025-08-16 18:38:17,780 - __main__ - INFO - Dataset: bitcoin-alpha
-2025-08-16 18:38:17,780 - __main__ - INFO - Model: GraphSAGE
-2025-08-16 18:38:17,781 - __main__ - INFO - Device: cuda
-2025-08-16 18:38:17,781 - __main__ - INFO - Total Edges: 24186
-2025-08-16 18:38:17,781 - __main__ - INFO - Training Time: 2.08 seconds
-2025-08-16 18:38:17,782 - __main__ - INFO - Test AUC: 0.6617
-2025-08-16 18:38:17,782 - __main__ - INFO - Train AUC: 0.8493
-2025-08-16 18:38:17,783 - __main__ - INFO - ============================================================
-2025-08-16 18:38:17,783 - __main__ - INFO - Pipeline completed successfully!
+(venv) azzedine@katana ➜  dgadb git:(adding-methods-Node2Vec-and-GAT-Azzedine) ✗ PYTHONPATH=. python src/dgadb/pipeline/pipeline_GraphSAGE.py 
+/home/azzedine/Projects/dgadb/venv/lib/python3.11/site-packages/torch/__config__.py:9: UserWarning: CUDA initialization: CUDA unknown error - this may be due to an incorrectly set up environment, e.g. changing env variable CUDA_VISIBLE_DEVICES after program start. Setting the available devices to be zero. (Triggered internally at ../c10/cuda/CUDAFunctions.cpp:108.)
+  return torch._C._show_config()
+2025-08-19 18:12:16,609 - __main__ - INFO - Starting GraphSAGE pipeline for dataset: bitcoin-alpha
+2025-08-19 18:12:16,609 - __main__ - INFO - Loaded config: {}
+2025-08-19 18:12:16,609 - __main__ - INFO - Using device: cpu
+2025-08-19 18:12:16,609 - __main__ - INFO - Model hyperparameters: {'hidden_channels': 128, 'out_channels': 128, 'num_layers': 2, 'dropout': 0.5, 'num_epoch': 5, 'learning_rate': 0.01, 'classifier_solver': 'lbfgs', 'classifier_max_iter': 1000, 'decoder_epochs': 100, 'decoder_learning_rate': 0.01}
+2025-08-19 18:12:16,609 - __main__ - INFO - Step 1: Loading and preprocessing graph data...
+2025-08-19 18:12:16,609 - Pipeline - INFO - Loading config: '/home/azzedine/Projects/dgadb/configs/bitcoin-alpha-example.yaml'
+2025-08-19 18:12:16,610 - Pipeline - INFO - Building preprocessing pipeline from config...
+2025-08-19 18:12:16,610 - Pipeline - INFO - > Instantiating missing 'DataLoader' step with default parameters.
+2025-08-19 18:12:16,610 - Pipeline - INFO - > Instantiating step 1: StructureNormalizer
+2025-08-19 18:12:16,610 - Pipeline - INFO - > Instantiating step 2: TimestampNormalizer
+2025-08-19 18:12:16,610 - Pipeline - INFO - > Instantiating step 3: TemporalSplitter
+2025-08-19 18:12:16,610 - Pipeline - INFO - Found cache directory: 'pipeline_cache/bitcoin-alpha'
+2025-08-19 18:12:16,610 - Cache - INFO - Using existing cache directory: 'pipeline_cache/bitcoin-alpha/aa874d41'
+2025-08-19 18:12:16,610 - Pipeline - INFO - Pipeline built successfully.
+2025-08-19 18:12:16,610 - Pipeline - INFO - >>> ---- Starting data pipeline ----
+2025-08-19 18:12:16,610 - Pipeline - INFO - >>> Running step (1/4): DataLoader
+2025-08-19 18:12:16,610 - Cache - INFO - Found cached result for 'DataLoader'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/00_DataLoader.pkl'
+2025-08-19 18:12:16,612 - Pipeline - INFO - >>> Step 'DataLoader' was skipped by loading a cached result.
+2025-08-19 18:12:16,612 - Pipeline - INFO - >>> Running step (2/4): StructureNormalizer
+2025-08-19 18:12:16,612 - Cache - INFO - Found cached result for 'StructureNormalizer'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/01_StructureNormalizer.pkl'
+2025-08-19 18:12:16,612 - Pipeline - INFO - >>> Step 'StructureNormalizer' was skipped by loading a cached result.
+2025-08-19 18:12:16,612 - Pipeline - INFO - >>> Running step (3/4): TimestampNormalizer
+2025-08-19 18:12:16,612 - Cache - INFO - Found cached result for 'TimestampNormalizer'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/02_TimestampNormalizer.pkl'
+2025-08-19 18:12:16,613 - Pipeline - INFO - >>> Step 'TimestampNormalizer' was skipped by loading a cached result.
+2025-08-19 18:12:16,613 - Pipeline - INFO - >>> Running step (4/4): TemporalSplitter
+2025-08-19 18:12:16,613 - Cache - INFO - Found cached result for 'TemporalSplitter'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/03_TemporalSplitter.pkl'
+2025-08-19 18:12:16,614 - Pipeline - INFO - >>> Step 'TemporalSplitter' was skipped by loading a cached result.
+2025-08-19 18:12:16,614 - Pipeline - INFO - >>> ---- Pipeline execution finished successfully in 0.00 sec. ----
+2025-08-19 18:12:16,614 - src.dgadb.preprocessing.pipeline.container - WARNING - Features have not been normalized. Proceeding with raw features.
+2025-08-19 18:12:16,618 - src.dgadb.preprocessing.pipeline.container - INFO - No node features selected. 'node_attr' will be None.
+2025-08-19 18:12:16,618 - src.dgadb.preprocessing.pipeline.container - INFO - Using original edge labels from dataframe. Found 247 positive labels out of 16863 total edges.
+2025-08-19 18:12:16,619 - src.dgadb.data.builder - INFO - Converting TemporalGraphData to Graph object...
+2025-08-19 18:12:16,619 - src.dgadb.data.builder - INFO - Added edge features with shape torch.Size([16863, 1])
+2025-08-19 18:12:16,622 - src.dgadb.data.builder - INFO - Created identity node features for 3783 nodes
+2025-08-19 18:12:16,623 - src.dgadb.data.builder - INFO - Successfully created Graph with 3783 nodes and 16863 edges
+2025-08-19 18:12:16,624 - src.dgadb.data.builder - INFO - Train edges: 11816, Val edges: 1677, Test edges: 3370
+2025-08-19 18:12:16,624 - __main__ - INFO - Data processing and conversion completed in 0.01 seconds
+2025-08-19 18:12:16,624 - __main__ - INFO - Step 2: Initializing GraphSAGE model...
+2025-08-19 18:12:16,624 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Setting up GraphSAGEModel...
+2025-08-19 18:12:16,624 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Using provided node features with dimension 3783
+2025-08-19 18:12:16,624 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Using edge index with 16863 edges
+2025-08-19 18:12:16,656 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - GraphSAGEModel setup completed
+2025-08-19 18:12:16,656 - __main__ - INFO - Model initialization took 0.03 seconds
+2025-08-19 18:12:16,656 - __main__ - INFO - Step 3: Training GraphSAGE model...
+2025-08-19 18:12:16,656 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Starting GraphSAGE training for 5 epochs...
+2025-08-19 18:12:17,162 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - GraphSAGE training completed
+2025-08-19 18:12:17,226 - __main__ - INFO - Training completed in 0.57 seconds
+2025-08-19 18:12:17,226 - __main__ - INFO - Step 4: Evaluating model...
+2025-08-19 18:12:17,226 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Training downstream decoder...
+2025-08-19 18:12:17,348 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Decoder training completed
+2025-08-19 18:12:17,348 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Performing inference on 'test' split...
+2025-08-19 18:12:17,348 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Inference on 'test' split completed in 0.00s
+2025-08-19 18:12:17,351 - __main__ - INFO - Test Results:
+2025-08-19 18:12:17,351 - __main__ - INFO -   - ROC-AUC Score: 0.8008
+2025-08-19 18:12:17,351 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-19 18:12:17,351 - __main__ - INFO -   - Test Edges: 3370
+2025-08-19 18:12:17,351 - __main__ - INFO -   - Test Anomalies: 37
+2025-08-19 18:12:17,351 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Performing inference on 'train' split...
+2025-08-19 18:12:17,352 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Inference on 'train' split completed in 0.00s
+2025-08-19 18:12:17,355 - __main__ - INFO - Train Results (for comparison):
+2025-08-19 18:12:17,355 - __main__ - INFO -   - ROC-AUC Score: 0.4749
+2025-08-19 18:12:17,355 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-19 18:12:17,355 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Performing inference on 'val' split...
+2025-08-19 18:12:17,355 - src.dgadb.models.GraphSAGE.GraphSAGE_main - INFO - Inference on 'val' split completed in 0.00s
+2025-08-19 18:12:17,357 - __main__ - INFO - Validation Results:
+2025-08-19 18:12:17,357 - __main__ - INFO -   - ROC-AUC Score: 0.1320
+2025-08-19 18:12:17,357 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-19 18:12:17,357 - __main__ - INFO - ============================================================
+2025-08-19 18:12:17,357 - __main__ - INFO - PIPELINE SUMMARY
+2025-08-19 18:12:17,357 - __main__ - INFO - ============================================================
+2025-08-19 18:12:17,357 - __main__ - INFO - Dataset: bitcoin-alpha
+2025-08-19 18:12:17,357 - __main__ - INFO - Model: GraphSAGE
+2025-08-19 18:12:17,357 - __main__ - INFO - Device: cpu
+2025-08-19 18:12:17,357 - __main__ - INFO - Total Edges: 16863
+2025-08-19 18:12:17,357 - __main__ - INFO - Training Time: 0.57 seconds
+2025-08-19 18:12:17,357 - __main__ - INFO - Test AUC: 0.8008
+2025-08-19 18:12:17,357 - __main__ - INFO - Train AUC: 0.4749
+2025-08-19 18:12:17,357 - __main__ - INFO - Val AUC: 0.1320
+2025-08-19 18:12:17,357 - __main__ - INFO - ============================================================
+2025-08-19 18:12:17,357 - __main__ - INFO - Pipeline completed successfully!
