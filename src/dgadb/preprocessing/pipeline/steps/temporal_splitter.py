@@ -1,0 +1,97 @@
+import numpy as np
+from typing import Optional
+import polars as pl
+from ..container import GraphDataContainer
+from .base import PipelineStep
+
+
+class TemporalSplitter(PipelineStep):
+    def __init__(self, train_ratio: float = 0.7, val_ratio: Optional[float] = None, split_col: str = "split") -> None:
+        super().__init__()
+        if val_ratio is None:
+            val_ratio = 0.0
+
+        if not (0 < train_ratio < 1 and 0 <= val_ratio < 1 and train_ratio + val_ratio < 1):
+            raise ValueError("Invalid ratios provided.")
+
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+        self.test_ratio = 1.0 - train_ratio - val_ratio
+        self.split_col = split_col
+
+        self.active_nodes: Optional[dict[str, set[int]]] = None
+
+    def validate(self, data: GraphDataContainer | None) -> None:
+        if data is None:
+            raise ValueError("Input data is None.")
+
+        edge_timestamps = data.edge_timestamps
+        if not (edge_timestamps.dtype.is_numeric() or edge_timestamps.dtype.is_temporal()):
+            raise ValueError(
+                f"'{data.e_time_col}' column in '{data.__class__.__name__}' is not numerical nor temporal."
+            )
+
+    def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
+        assert data is not None
+        self.logger.info(f"Total edges: {len(data.edges)}")
+        self.logger.info(
+            f"Performing chronological split: "
+            f"Train={self.train_ratio:.2f}, Val={self.val_ratio:.2f}, Test={self.test_ratio:.2f}"
+        )
+
+        # Determine timestamp cutoff times from edges
+        edge_timestamps_array = data.edge_timestamps.to_numpy()
+        train_cutoff_time, val_cutoff_time = np.quantile(
+            edge_timestamps_array,
+            [(1 - self.val_ratio - self.test_ratio), (1 - self.test_ratio)],
+        )
+        self.logger.info(
+            f"Train cutoff time: {train_cutoff_time}, Validation cutoff time: {val_cutoff_time}")
+
+        data.edges = data.edges.with_columns(
+            pl.when(pl.col(data.e_time_col) <= train_cutoff_time)
+            .then(pl.lit("train"))
+            .when(pl.col(data.e_time_col) <= val_cutoff_time)
+            .then(pl.lit("val"))
+            .otherwise(pl.lit("test"))
+            .alias(self.split_col)
+        )
+
+        vc = data.edges[self.split_col].value_counts()
+        split_counts = dict(
+            zip(vc[self.split_col].to_list(), vc["count"].to_list()))
+        self.logger.info(f"Edge split counts: {split_counts}")
+
+        # Create cumulative 'active_nodes' sets
+        self.logger.info("Identifying active nodes for each split...")
+
+        src_col, tgt_col = data.e_src_col, data.e_tgt_col
+        train_edges = data.edges.filter(pl.col(self.split_col) == 'train')
+        val_edges = data.edges.filter(pl.col(self.split_col) == 'val')
+        test_edges = data.edges.filter(pl.col(self.split_col) == 'test')
+
+        train_nodes = pl.concat(
+            [train_edges[src_col], train_edges[tgt_col]]).unique()
+        val_nodes = pl.concat(
+            [train_nodes, val_edges[src_col], val_edges[tgt_col]]).unique()
+        all_nodes = pl.concat(
+            [val_nodes, test_edges[src_col], test_edges[tgt_col]]).unique()
+
+        self.active_nodes = {
+            'train': set(train_nodes.to_list()),
+            'val': set(val_nodes.to_list()),
+            'test': set(all_nodes.to_list())
+        }
+
+        self.logger.info(
+            f"Active nodes: {len(self.active_nodes['train'])} (train), "
+            f"{len(self.active_nodes['val'])} (train+val), "
+            f"{len(self.active_nodes['test'])} (total)."
+        )
+
+        return data
+
+    def update_metadata(self, data: GraphDataContainer) -> None:
+        data.is_split = True
+        data.split_col = self.split_col
+        data.active_nodes = self.active_nodes

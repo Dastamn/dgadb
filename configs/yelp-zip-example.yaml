@@ -1,0 +1,30 @@
+dataset:
+  name: yelp-zip
+  paths:
+    raw: null
+    structured: data/yelp-zip
+    processed: null
+
+pipeline:
+  cache_dir: pipeline_cache/yelp-zip
+  steps:
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        
+    - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.7
+        val_ratio: 0.1
+
+    - name: FeatureNormalizer
+      params:
+        - name: TextNormalizer
+          target: edge
+          columns:
+            - feat_0_str
+          params:
+            type: bow
+            max_features: 32

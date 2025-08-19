@@ -1,0 +1,22 @@
+dataset:
+  name: bitcoin-alpha
+  paths:
+    raw: null
+    structured: data/bitcoin-alpha
+    processed: null
+
+pipeline:
+  cache_dir: pipeline_cache/bitcoin-alpha
+  steps:
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        reindex_nodes: True
+        
+    - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.7
+        val_ratio: 0.1
+
