@@ -492,7 +492,7 @@ class AnomalyInjector:
         gen_anom: dict[str, tuple[torch.Tensor, ...]] = {}
 
         for split, anom_ratio in anom_ratios.items():
-            if anom_ratios == 0.0:
+            if anom_ratio == 0.0:
                 continue
 
             if not 0.0 <= anom_ratio <= 1.0:
@@ -516,8 +516,6 @@ class AnomalyInjector:
             msg = self.temporal_graph.msg[mask]
 
             num_anom = int(src.shape[0] * anom_ratio)
-            if num_anom == 0:
-                continue
 
             self.logger.info(
                 f"Generating {num_anom} '{anom_type}' anomalous edges in '{split}' split...")
