@@ -165,12 +165,12 @@ class AnomalyInjector:
         end_base_point = last_t // self.granularity
 
         if start_base_point > end_base_point:
-            return torch.full((n,), first_t, dtype=torch.int64, device=first_t.device)
+            return torch.full((n,), first_t, dtype=torch.int64, device=self.device)
 
         random_base_points = torch.randint(
             start_base_point, end_base_point + 1,
             size=(n,),
-            device=first_t.device
+            device=self.device
         )
         start_ts = random_base_points * self.granularity
 
@@ -181,7 +181,7 @@ class AnomalyInjector:
         num_steps_per_walk = torch.randint(
             1, random_time_walk_max_steps,
             size=(n,),
-            device=first_t.device
+            device=self.device
         )
         total_steps = torch.sum(num_steps_per_walk)
 
@@ -190,14 +190,14 @@ class AnomalyInjector:
         t_signs = torch.randint(
             0, 2,
             size=(total_steps,),
-            device=first_t.device
+            device=self.device
         ) * 2 - 1  # {-1, 1}
 
         signed_deltas = t_deltas * t_signs
 
-        walk_ids = torch.arange(n).repeat_interleave(num_steps_per_walk)
+        walk_ids = torch.arange(n, device=self.device).repeat_interleave(num_steps_per_walk)
         total_displacements = torch.zeros(
-            n, dtype=torch.float32, device=first_t.device)
+            n, dtype=torch.float32, device=self.device)
         total_displacements.scatter_add_(0, walk_ids, signed_deltas.float())
 
         final_ts = start_ts.float() + total_displacements
