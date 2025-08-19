@@ -431,7 +431,7 @@ class AnomalyInjector:
         else:
             self.logger.warning(
                 f"Found {num_found_unique} unique temporal anomalies, but {size} were requested. "
-                "Using fallbacks. Consider increasing `edge_num_tries` or `timestamp_num_tries`."
+                "Using fallbacks. Consider increasing `e_num_candidates` or `t_num_candidates`."
             )
             num_missing = size - num_found_unique
             fallback_indices = torch.arange(num_missing, device=self.device)
