@@ -57,9 +57,10 @@ class GraphSAGEModel(nn.Module):
         self.val_data: Optional[dict[str, Any]] = None
         self.test_data: Optional[dict[str, Any]] = None
 
-    def _ensure_setup(self):
-        if self.graphsage is None or self.optimizer is None or self.x is None or self.edge_index is None:
-            raise RuntimeError("The model has not been set up. Please call setup() first.")
+    def _ensure_setup(self) -> None:
+        """Ensure that setup() has been called before training/inference."""
+        if any(attr is None for attr in [self.graphsage, self.optimizer, self.x, self.edge_index]):
+            raise RuntimeError("Model not properly initialized. Call setup() before train() or inference().")
 
     def setup(self, graph: Graph) -> None:
         logger.info("Setting up GraphSAGEModel...")
@@ -71,10 +72,9 @@ class GraphSAGEModel(nn.Module):
             self.in_channels = self.x.shape[1]
             logger.info(f"Using provided node features with dimension {self.in_channels}")
         else:
-            logger.warning("No node features found. Creating learnable embeddings as a fallback.")
-            self.in_channels = self.hidden_channels
-            self.node_emb = nn.Embedding(self.num_nodes, self.in_channels).to(self.device)
-            self.x = self.node_emb.weight
+            logger.warning("No node features found. Using identity matrix as fallback.")
+            self.in_channels = self.num_nodes
+            self.x = torch.eye(self.num_nodes).to(self.device)
 
         self.edge_index = graph.e_pairs
         # Use edge index as-is from the graph (preprocessing handled by pipeline)
@@ -90,10 +90,7 @@ class GraphSAGEModel(nn.Module):
             dropout=self.dropout,
         ).to(self.device)
 
-        params = list(self.graphsage.parameters())
-        if hasattr(self, 'node_emb'):
-            params += list(self.node_emb.parameters())
-        self.optimizer = torch.optim.Adam(params, lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(self.graphsage.parameters(), lr=self.learning_rate)
 
         logger.info("GraphSAGEModel setup completed")
 
