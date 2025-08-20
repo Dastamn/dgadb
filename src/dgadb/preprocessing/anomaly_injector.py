@@ -275,20 +275,25 @@ class AnomalyInjector:
 
         return src[idx], tgt[idx], t[idx], msg[idx]
 
-    def _sample_new_edge_indices(
+    def _select_new_edge_indices(
         self,
         size: int,
         src: torch.Tensor,
         tgt: torch.Tensor,
         t: Optional[torch.Tensor],
-        encoded_observed_edges_pool: torch.Tensor,
         find_unique: bool = False
     ):
+        if t is None:
+            anomaly_type = "structural"
+            encoded_observed_edges_pool = self.encoded_observed_edges
+        else:
+            anomaly_type = "temporal"
+            encoded_observed_edges_pool = self.encoded_observed_edges_t
+
         encoded_edges = self._encode_edges(
             src, tgt, t, find_unique=find_unique)
         is_new_edge_mask = ~torch.isin(
             encoded_edges, encoded_observed_edges_pool)
-
         valid_indices = torch.where(is_new_edge_mask)[0]
 
         if valid_indices.numel() > 1:
@@ -303,7 +308,7 @@ class AnomalyInjector:
 
         if num_found == 0:
             self.logger.warning(
-                "Found 0 unique anomalies. Using random fallbacks.")
+                f"Found 0 unique '{anomaly_type}' anomalies. Using random fallbacks.")
             # Might have duplicates, but are observed anyways
             final_indices = torch.randperm(
                 total_candidates, device=self.device)[:size]
@@ -313,7 +318,7 @@ class AnomalyInjector:
             final_indices = valid_indices[perm]
 
         else:  # num_found < size
-            self.logger.warning(f"Found only {num_found} unique anomalies, "
+            self.logger.warning(f"Found only {num_found} unique '{anomaly_type}' anomalies, "
                                 f"but {size} were requested. Using all found and adding fallbacks.")
 
             num_missing = size - num_found
@@ -368,12 +373,11 @@ class AnomalyInjector:
 
         cand_src, cand_tgt = cand_edges.unbind(dim=1)
 
-        new_edge_indices = self._sample_new_edge_indices(
+        new_edge_indices = self._select_new_edge_indices(
             size=size,
             src=cand_src,
             tgt=cand_tgt,
             t=None,
-            encoded_observed_edges_pool=self.encoded_observed_edges,
             find_unique=True
         )
 
@@ -433,12 +437,11 @@ class AnomalyInjector:
         expanded_msg = cand_msg.repeat_interleave(t_num_candidates, dim=0)
         expanded_t = cand_t.repeat(cand_num_edges)
 
-        new_edge_indices = self._sample_new_edge_indices(
+        new_edge_indices = self._select_new_edge_indices(
             size=size,
             src=expanded_src,
             tgt=expanded_tgt,
             t=expanded_t,
-            encoded_observed_edges_pool=self.encoded_observed_edges_t,
             find_unique=False  # to link back to 'expanded_msg'
         )
 
@@ -473,8 +476,8 @@ class AnomalyInjector:
 
         cand_indices = torch.multinomial(
             edge_p, num_samples=size, replacement=True)
-        cand_src, cand_tgt, cand_t, cand_msg = src[cand_indices], tgt[
-            cand_indices], t[cand_indices], msg[cand_indices]
+        cand_src, cand_tgt, cand_t, cand_msg = (
+            src[cand_indices], tgt[cand_indices], t[cand_indices], msg[cand_indices])
 
         anom_msg = self._sample_contextually_inconsistent_features(
             cand_msg, msg, distance_metric, ctx_sample_size)
@@ -514,6 +517,41 @@ class AnomalyInjector:
             msg_, msg, distance_metric, ctx_sample_size)
 
         return anom_src, anom_tgt, t_, anom_msg
+
+    def _generate_temporal_contextual_anomalies(
+        self,
+        size: int,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        t: torch.Tensor,
+        msg: torch.Tensor,
+        edge_p: torch.Tensor,
+        first_t: torch.Tensor,
+        last_t: torch.Tensor,
+        e_num_candidates: int = 100,
+        t_num_candidates: int = 100,
+        random_time_walk_max_steps: int = 5,
+        distance_metric: Literal["cosine", "l2"] = "cosine",
+        ctx_sample_size: int = 10
+    ):
+        if size == 0:
+            self.logger.warning(
+                "Input size 0 in '_generate_temporal_contextual_anomalies', returning empty tensors.")
+            return (
+                torch.empty(0, dtype=src.dtype, device=self.device),
+                torch.empty(0, dtype=tgt.dtype, device=self.device),
+                torch.empty(0, dtype=t.dtype, device=self.device),
+                torch.empty(0, msg.shape[1],
+                            dtype=msg.dtype, device=self.device)
+            )
+
+        src_, tgt_, anom_t, msg_ = self._generate_temporal_anomalies(
+            size, src, tgt, t, msg, edge_p, first_t, last_t, e_num_candidates, t_num_candidates, random_time_walk_max_steps)
+
+        anom_msg = self._sample_contextually_inconsistent_features(
+            msg_, msg, distance_metric, ctx_sample_size)
+
+        return src_, tgt_, anom_t, anom_msg
 
     def generate_anomalous_samples(
         self,
@@ -581,7 +619,8 @@ class AnomalyInjector:
                     num_anom, src, tgt, t, msg, edge_p, **kwargs)
 
             elif anom_type == "temporal-contextual":
-                pass
+                anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_contextual_anomalies(
+                    num_anom, src, tgt, t, msg, edge_p, first_t, last_t, **kwargs)
 
             elif anom_type == "temporal-structural-contextual":
                 pass
