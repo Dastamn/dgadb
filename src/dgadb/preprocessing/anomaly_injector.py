@@ -5,8 +5,8 @@ import torch.nn.functional as F
 from math import gcd
 from functools import reduce
 from typing import Literal, Optional
-from .utils import cartesian_sample, compute_unique_inverse_count_probabilities
 from src.dgadb.storage import TemporalGraphData
+from .utils import cartesian_sample, compute_unique_inverse_count_probabilities, unique_with_indices
 
 _ANOMALY_TYPE_MAP: dict[str, str] = {
     "s": "structural",
@@ -275,6 +275,56 @@ class AnomalyInjector:
 
         return src[idx], tgt[idx], t[idx], msg[idx]
 
+    def _sample_new_edge_indices(
+        self,
+        size: int,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        t: Optional[torch.Tensor],
+        encoded_observed_edges_pool: torch.Tensor,
+        find_unique: bool = False
+    ):
+        encoded_edges = self._encode_edges(
+            src, tgt, t, find_unique=find_unique)
+        is_new_edge_mask = ~torch.isin(
+            encoded_edges, encoded_observed_edges_pool)
+
+        valid_indices = torch.where(is_new_edge_mask)[0]
+
+        if valid_indices.numel() > 1:
+            # Keep only unique indices
+            valid_encoded_edges = encoded_edges[valid_indices]
+            _, first_occurrence_in_valid = unique_with_indices(
+                valid_encoded_edges)
+            valid_indices = valid_indices[first_occurrence_in_valid]
+
+        num_found = valid_indices.numel()
+        total_candidates = src.numel()
+
+        if num_found == 0:
+            self.logger.warning(
+                "Found 0 unique anomalies. Using random fallbacks.")
+            # Might have duplicates, but are observed anyways
+            final_indices = torch.randperm(
+                total_candidates, device=self.device)[:size]
+
+        elif num_found >= size:
+            perm = torch.randperm(num_found, device=self.device)[:size]
+            final_indices = valid_indices[perm]
+
+        else:  # num_found < size
+            self.logger.warning(f"Found only {num_found} unique anomalies, "
+                                f"but {size} were requested. Using all found and adding fallbacks.")
+
+            num_missing = size - num_found
+            non_unique_indices = torch.where(~is_new_edge_mask)[0]
+            num_fallbacks_to_take = min(num_missing, len(non_unique_indices))
+            fallback_indices = non_unique_indices[torch.randperm(
+                len(non_unique_indices), device=self.device)[:num_fallbacks_to_take]]
+            final_indices = torch.cat([valid_indices, fallback_indices])
+
+        return final_indices
+
     def _generate_structural_anomalies(
         self,
         size: int,
@@ -316,51 +366,28 @@ class AnomalyInjector:
         else:
             cand_edges = torch.cartesian_prod(src_pool, tgt_pool)
 
-        # TODO @Dastamn: This should be a function on its own
         cand_src, cand_tgt = cand_edges.unbind(dim=1)
-        total_candidates = len(cand_src)
 
-        encoded_cand = self._encode_edges(
-            src=cand_src, tgt=cand_tgt, find_unique=False)
-        is_unique_mask = ~torch.isin(encoded_cand, self.encoded_observed_edges)
+        new_edge_indices = self._sample_new_edge_indices(
+            size=size,
+            src=cand_src,
+            tgt=cand_tgt,
+            t=None,
+            encoded_observed_edges_pool=self.encoded_observed_edges,
+            find_unique=True
+        )
 
-        valid_indices = torch.where(is_unique_mask)[0]
-        num_found = len(valid_indices)
+        anom_src, anom_tgt = cand_src[new_edge_indices], cand_tgt[new_edge_indices]
 
-        self.logger.info(
-            f"Structural search found {num_found}/{total_candidates} unique edges.")
+        # Map 'anom_src' to original 't' and 'msg'
+        unique_window_src, first_occurrence_indices = \
+            unique_with_indices(window_src)
 
-        if num_found == 0:
-            self.logger.warning(
-                "Found 0 unique structural anomalies. Using random fallbacks.")
-            final_indices = torch.arange(
-                min(size, total_candidates), device=self.device)
-        elif num_found >= size:
-            perm = torch.randperm(num_found, device=self.device)[:size]
-            final_indices = valid_indices[perm]
-        else:  # num_found < size
-            self.logger.warning(f"Found only {num_found} unique structural anomalies, "
-                                f"but {size} were requested. Using all found and adding fallbacks.")
-            num_missing = size - num_found
-            non_unique_indices = torch.where(~is_unique_mask)[0]
-            num_fallbacks_to_take = min(num_missing, len(non_unique_indices))
-            fallback_indices = non_unique_indices[torch.randperm(
-                len(non_unique_indices), device=self.device)[:num_fallbacks_to_take]]
-            final_indices = torch.cat([valid_indices, fallback_indices])
+        # Shape: (anom_src, unique_window_src) <<< (anom_src, window_src)
+        matches = (anom_src.unsqueeze(1) == unique_window_src.unsqueeze(0))
 
-        anom_src = cand_src[final_indices]
-        anom_tgt = cand_tgt[final_indices]
-
-        self.logger.info(
-            "Mapping anomalous sources to their original timestamps and features...")
-
-        expanded_anom_src = anom_src.unsqueeze(1)  # Shape: (anom_src, 1)
-        expanded_window_src = window_src.unsqueeze(0)  # Shape: (1, window_src)
-
-        # Shape: (anom_src, window_src)
-        matches = (expanded_anom_src == expanded_window_src)
-
-        original_indices = torch.argmax(matches.byte(), dim=1)
+        indices_in_unique_lookup = torch.argmax(matches.byte(), dim=1)
+        original_indices = first_occurrence_indices[indices_in_unique_lookup]
 
         anom_t = window_t[original_indices]
         anom_msg = window_msg[original_indices]
@@ -398,62 +425,27 @@ class AnomalyInjector:
         cand_src, cand_tgt, cand_msg = src[cand_indices], tgt[cand_indices], msg[cand_indices]
 
         cand_t = self._generate_plausible_timestamps(
-            t_num_candidates,
-            first_t,
-            last_t,
-            random_time_walk_max_steps,
-        )
+            t_num_candidates, first_t, last_t, random_time_walk_max_steps)
 
         # Shape: (num_base_edges * timestamp_num_tries)
         expanded_src = cand_src.repeat_interleave(t_num_candidates, dim=0)
         expanded_tgt = cand_tgt.repeat_interleave(t_num_candidates, dim=0)
         expanded_msg = cand_msg.repeat_interleave(t_num_candidates, dim=0)
-
         expanded_t = cand_t.repeat(cand_num_edges)
 
-        encoded_cand = self._encode_edges(
-            expanded_src,
-            expanded_tgt,
+        new_edge_indices = self._sample_new_edge_indices(
+            size=size,
+            src=expanded_src,
+            tgt=expanded_tgt,
             t=expanded_t,
-            find_unique=False
+            encoded_observed_edges_pool=self.encoded_observed_edges_t,
+            find_unique=False  # to link back to 'expanded_msg'
         )
 
-        is_unique_mask = ~torch.isin(
-            encoded_cand, self.encoded_observed_edges_t)
-        valid_indices = torch.where(is_unique_mask)[0]
-        num_found = len(valid_indices)
-
-        if num_found == 0:
-            self.logger.warning(
-                f"Found 0 unique temporal anomalies. Using fallbacks for all {size} requested anomalies."
-            )
-            fallback_indices = torch.arange(size, device=self.device)
-            return (expanded_src[fallback_indices], expanded_tgt[fallback_indices],
-                    expanded_t[fallback_indices], expanded_msg[fallback_indices])
-
-        valid_encoded = encoded_cand[valid_indices]
-        _, unique_indices = torch.unique(valid_encoded, return_inverse=True)
-        final_unique_indices = valid_indices[unique_indices]
-        num_found_unique = len(final_unique_indices)
-
-        self.logger.info(
-            f"Combinatorial search found {num_found_unique}/{len(cand_indices)} unique temporal anomalies.")
-
-        if num_found_unique >= size:
-            final_indices = final_unique_indices[:size]
-        else:
-            self.logger.warning(
-                f"Found {num_found_unique} unique temporal anomalies, but {size} were requested. "
-                "Using fallbacks. Consider increasing `e_num_candidates` or `t_num_candidates`."
-            )
-            num_missing = size - num_found_unique
-            fallback_indices = torch.arange(num_missing, device=self.device)
-            final_indices = torch.cat([final_unique_indices, fallback_indices])
-
-        anom_src = expanded_src[final_indices]
-        anom_tgt = expanded_tgt[final_indices]
-        anom_t = expanded_t[final_indices]
-        anom_msg = expanded_msg[final_indices]
+        anom_src = expanded_src[new_edge_indices]
+        anom_tgt = expanded_tgt[new_edge_indices]
+        anom_t = expanded_t[new_edge_indices]
+        anom_msg = expanded_msg[new_edge_indices]
 
         return anom_src, anom_tgt, anom_t, anom_msg
 
