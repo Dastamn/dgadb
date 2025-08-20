@@ -31,3 +31,16 @@ def compute_unique_inverse_count_probabilities(items: torch.Tensor, power: float
         mapped_probs = mapped_probs.to(device)
 
     return mapped_probs
+
+
+def unique_with_indices(t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    device = t.device
+    unique_t, inverse_indices = torch.unique(t, return_inverse=True)
+    inverse_indices_sorted, perm_sorted = torch.sort(inverse_indices)
+    unique_mask = torch.cat([
+        torch.ones(1, dtype=torch.bool, device=device),
+        inverse_indices_sorted[1:] != inverse_indices_sorted[:-1]
+    ])
+    first_occurrence_indices = perm_sorted[unique_mask]
+
+    return unique_t, first_occurrence_indices
