@@ -318,14 +318,32 @@ class AnomalyInjector:
             final_indices = valid_indices[perm]
 
         else:  # num_found < size
-            self.logger.warning(f"Found only {num_found} unique '{anomaly_type}' anomalies, "
-                                f"but {size} were requested. Using all found and adding fallbacks.")
+            self.logger.warning(
+                f"Found only {num_found}/{size} unique '{anomaly_type}' anomalies, using all found and adding fallbacks.")
 
             num_missing = size - num_found
             non_unique_indices = torch.where(~is_new_edge_mask)[0]
-            num_fallbacks_to_take = min(num_missing, len(non_unique_indices))
-            fallback_indices = non_unique_indices[torch.randperm(
-                len(non_unique_indices), device=self.device)[:num_fallbacks_to_take]]
+            num_available_fallbacks = len(non_unique_indices)
+
+            if num_available_fallbacks == 0:
+                self.logger.warning(
+                    "No observed edges available for fallback. Reusing unique anomalies.")
+                random_indices = torch.randint(
+                    0, num_found, size=(num_missing,), device=self.device)
+                fallback_indices = valid_indices[random_indices]
+
+            else:
+                # Sample with replacement from the available fallback pool
+                # This guarantees we can get 'num_missing' indices
+                self.logger.warning(
+                    f"Adding {num_available_fallbacks}/{num_missing} fallbacks with replacement.")
+                random_indices = torch.randint(
+                    0, num_available_fallbacks,
+                    size=(num_missing,),
+                    device=self.device
+                )
+                fallback_indices = non_unique_indices[random_indices]
+
             final_indices = torch.cat([valid_indices, fallback_indices])
 
         return final_indices
@@ -337,7 +355,7 @@ class AnomalyInjector:
         tgt: torch.Tensor,
         t: torch.Tensor,
         msg: torch.Tensor,
-        edge_p: torch.Tensor,
+        edge_p: Optional[torch.Tensor] = None,
         temporal_window_size: Optional[int | float] = 100,
         struct_max_num_candidate: int = 500_000,
         struct_oversampling_ratio: float = 1.2
@@ -350,6 +368,9 @@ class AnomalyInjector:
                                 dtype=msg.dtype, device=self.device))
 
         if temporal_window_size is not None:
+            if edge_p is None:
+                raise ValueError("'edge_p' is None.")
+
             window_src, window_tgt, window_t, window_msg = self._sample_from_temporal_window(
                 src, tgt, t, msg, edge_p, temporal_window_size)
         else:
@@ -553,6 +574,27 @@ class AnomalyInjector:
 
         return src_, tgt_, anom_t, anom_msg
 
+    def _generate_temporal_structural_contextual_anomalies(
+        self,
+        size: int,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        t: torch.Tensor,
+        msg: torch.Tensor,
+        first_t: torch.Tensor,
+        last_t: torch.Tensor,
+    ):
+        anom_src, anom_tgt, _, _ = self._generate_structural_anomalies(
+            size, src, tgt, t, msg, temporal_window_size=None)
+
+        anom_t = self._generate_plausible_timestamps(size, first_t, last_t)
+
+        random_msg_indices = torch.randperm(
+            msg.size(0), device=self.device)[:size]
+        anom_msg = msg[random_msg_indices]
+
+        return anom_src, anom_tgt, anom_t, anom_msg
+
     def generate_anomalous_samples(
         self,
         anom_type: str,
@@ -623,7 +665,8 @@ class AnomalyInjector:
                     num_anom, src, tgt, t, msg, edge_p, first_t, last_t, **kwargs)
 
             elif anom_type == "temporal-structural-contextual":
-                pass
+                anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_structural_contextual_anomalies(
+                    num_anom, self.temporal_graph.src, self.temporal_graph.tgt, self.temporal_graph.t, self.temporal_graph.msg, self.first_t, self.last_t)
 
             else:
                 raise NotImplementedError(
@@ -670,6 +713,7 @@ class AnomalyInjector:
         anom_labels = torch.ones(
             all_anom_src.numel(), dtype=torch.long, device=self.device)
         # TODO @Dastamn: Add node labels
+        # TODO @Dastamn: Filter duplicate labeled edges
 
         final_src = torch.cat([self.temporal_graph.src, all_anom_src])
         final_tgt = torch.cat([self.temporal_graph.tgt, all_anom_tgt])
