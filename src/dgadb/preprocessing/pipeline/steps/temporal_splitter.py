@@ -19,8 +19,6 @@ class TemporalSplitter(PipelineStep):
         self.test_ratio = 1.0 - train_ratio - val_ratio
         self.split_col = split_col
 
-        self.active_nodes: Optional[dict[str, set[int]]] = None
-
     def validate(self, data: GraphDataContainer | None) -> None:
         if data is None:
             raise ValueError("Input data is None.")
@@ -62,36 +60,8 @@ class TemporalSplitter(PipelineStep):
             zip(vc[self.split_col].to_list(), vc["count"].to_list()))
         self.logger.info(f"Edge split counts: {split_counts}")
 
-        # Create cumulative 'active_nodes' sets
-        self.logger.info("Identifying active nodes for each split...")
-
-        src_col, tgt_col = data.e_src_col, data.e_tgt_col
-        train_edges = data.edges.filter(pl.col(self.split_col) == 'train')
-        val_edges = data.edges.filter(pl.col(self.split_col) == 'val')
-        test_edges = data.edges.filter(pl.col(self.split_col) == 'test')
-
-        train_nodes = pl.concat(
-            [train_edges[src_col], train_edges[tgt_col]]).unique()
-        val_nodes = pl.concat(
-            [train_nodes, val_edges[src_col], val_edges[tgt_col]]).unique()
-        all_nodes = pl.concat(
-            [val_nodes, test_edges[src_col], test_edges[tgt_col]]).unique()
-
-        self.active_nodes = {
-            'train': set(train_nodes.to_list()),
-            'val': set(val_nodes.to_list()),
-            'test': set(all_nodes.to_list())
-        }
-
-        self.logger.info(
-            f"Active nodes: {len(self.active_nodes['train'])} (train), "
-            f"{len(self.active_nodes['val'])} (train+val), "
-            f"{len(self.active_nodes['test'])} (total)."
-        )
-
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
         data.is_split = True
         data.split_col = self.split_col
-        data.active_nodes = self.active_nodes
