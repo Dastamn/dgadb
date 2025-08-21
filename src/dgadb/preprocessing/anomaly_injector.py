@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from math import gcd
 from functools import reduce
+from datetime import datetime, timezone
 from typing import Literal, Optional
 from src.dgadb.storage import TemporalGraphData
 from .utils import (
@@ -606,6 +607,19 @@ class AnomalyInjector:
         anom_ratios = {"train": anom_train_ratio,
                        "test": anom_test_ratio, "val": anom_val_ratio}
 
+        injection_metadata = {
+            "is_injected": True,
+            "last_injection_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "type": anom_type,
+            "generation_parameters": copy.deepcopy(kwargs),
+            "splits": {
+                "train": {"ratio": anom_train_ratio, "requested": 0, "generated": 0},
+                "val": {"ratio": anom_val_ratio, "requested": 0, "generated": 0},
+                "test": {"ratio": anom_test_ratio, "requested": 0,  "generated": 0}
+            },
+            "total": 0
+        }
+
         src, tgt, t, msg, edge_labels, train_mask, val_mask, test_mask = (
             self.temporal_graph.src,
             self.temporal_graph.tgt,
@@ -658,6 +672,8 @@ class AnomalyInjector:
             eval_msg = msg[mask]
 
             num_anom = int(eval_src.shape[0] * anom_ratio)
+
+            injection_metadata["splits"][split]["requested"] = num_anom
 
             eval_first_t, eval_last_t = eval_t.min(), eval_t.max()
             eval_edges = torch.stack([eval_src, eval_tgt], dim=1)
@@ -778,7 +794,7 @@ class AnomalyInjector:
         train_mask_list, val_mask_list, test_mask_list = [], [], []
 
         for split, (anom_src, anom_tgt, anom_t, anom_msg) in gen_anom.items():
-            num_anom_in_split = anom_msg.numel()
+            num_anom_in_split = anom_src.numel()
 
             src_list.append(anom_src)
             tgt_list.append(anom_tgt)
@@ -826,6 +842,17 @@ class AnomalyInjector:
         final_sort_indices = src_sort_indices[torch.argsort(
             src_sorted_t, stable=True)]
 
+        # Update metadata
+        injection_metadata["splits"]["train"]["generated"] = \
+            anom_train_mask.sum().item()
+        injection_metadata["splits"]["val"]["generated"] = \
+            anom_val_mask.sum().item()
+        injection_metadata["splits"]["test"]["generated"] = \
+            anom_test_mask.sum().item()
+        injection_metadata["total"] = final_label.sum().item()
+        metadata = copy.deepcopy(self.temporal_graph.metadata)
+        metadata["anomaly_injection"] = injection_metadata
+
         anomalous_temporal_graph = TemporalGraphData(
             src=final_src[final_sort_indices],
             tgt=final_tgt[final_sort_indices],
@@ -841,7 +868,7 @@ class AnomalyInjector:
                        if self.temporal_graph.node_attr is not None else None),
             node_labels=(self.temporal_graph.node_labels.clone()
                          if self.temporal_graph.node_labels is not None else None),
-            metadata=copy.deepcopy(self.temporal_graph.metadata),
+            metadata=metadata,
         )
 
         self.logger.info(
