@@ -3,7 +3,7 @@ import torch
 import polars as pl
 from typing import Optional, Literal, Any
 from dataclasses import dataclass, field
-from src.dgadb.storage import TemporalGraphData
+from src.dgadb.storage import TemporalGraph
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class GraphDataContainer:
 
         print("---------------------------------")
 
-    def to_temporal_graph(self):
+    def to_temporal_graph(self) -> TemporalGraph:
         if not self.is_split or not self.split_col:
             raise RuntimeError(
                 "Data has not been split. Cannot create train/val/test masks.")
@@ -180,7 +180,7 @@ class GraphDataContainer:
         metadata = {k: v for k, v in self.metadata.items()
                     if k not in excluded_metadata and v is not None}
 
-        return TemporalGraphData(
+        return TemporalGraph(
             src=src,
             tgt=tgt,
             t=t,

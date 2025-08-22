@@ -6,7 +6,7 @@ from math import gcd
 from functools import reduce
 from datetime import datetime, timezone
 from typing import Literal, Optional
-from src.dgadb.storage import TemporalGraphData
+from src.dgadb.storage import TemporalGraph
 from .utils import (
     cartesian_sample,
     compute_unique_inverse_count_probabilities,
@@ -30,8 +30,21 @@ VALID_ANOMALY_TYPES: list[str] = list(
     _ANOMALY_TYPE_MAP) + list(_ANOMALY_TYPE_MAP.values())
 
 
+def get_canonical_anomaly_type(anom_type: str) -> str:
+    anom_type = anom_type.lower()
+
+    if anom_type in _ANOMALY_TYPE_MAP:
+        return _ANOMALY_TYPE_MAP[anom_type]
+
+    if anom_type in _CANONICAL_ANOMALY_TYPES:
+        return anom_type
+
+    raise ValueError(
+        f"Unknown anomaly type '{anom_type}', expected: {list(VALID_ANOMALY_TYPES)}")
+
+
 class AnomalyInjector:
-    def __init__(self, temporal_graph: TemporalGraphData, rnd_seed: int = 123) -> None:
+    def __init__(self, temporal_graph: TemporalGraph, rnd_seed: int = 123) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.temporal_graph = temporal_graph
         self.device = temporal_graph.src.device
@@ -64,18 +77,6 @@ class AnomalyInjector:
         self.last_t = temporal_graph.t.max()
 
         self.logger.info("AnomalyInjector initialized successfully.")
-
-    def _validate_and_get_anomaly_type(self, anom_type: str) -> str:
-        anom_type = anom_type.lower()
-
-        if anom_type in _ANOMALY_TYPE_MAP:
-            return _ANOMALY_TYPE_MAP[anom_type]
-
-        if anom_type in _CANONICAL_ANOMALY_TYPES:
-            return anom_type
-
-        raise ValueError(
-            f"Unknown anomaly type '{anom_type}', expected: {list(VALID_ANOMALY_TYPES)}")
 
     def _encode_edges(
         self, src: torch.Tensor, tgt: torch.Tensor, t: Optional[torch.Tensor] = None, keep_unique: bool = False
@@ -599,13 +600,14 @@ class AnomalyInjector:
         anom_train_ratio: float = 0.0,
         anom_val_ratio: float = 0.0,
         anom_test_ratio: float = 0.05,
-        reset_labels: bool = True,
+        reset_labels: bool = False,
         max_attempts: int = 10,
         **kwargs,
-    ) -> TemporalGraphData:
-        anom_type = self._validate_and_get_anomaly_type(anom_type)
+    ) -> TemporalGraph:
+        anom_type = get_canonical_anomaly_type(anom_type)
         anom_ratios = {"train": anom_train_ratio,
                        "test": anom_test_ratio, "val": anom_val_ratio}
+        dataset_name = self.temporal_graph.dataset_name
 
         injection_metadata = {
             "is_injected": True,
@@ -631,20 +633,24 @@ class AnomalyInjector:
             self.temporal_graph.test_mask,
         )
 
-        if reset_labels and (self.temporal_graph.edge_labels == 1).any():
-            self.logger.info(
-                "'reset_labels' set to 'True', removing anomalies present in dataset...")
-            is_normal_mask = edge_labels == 0
-            src, tgt, t, msg, edge_labels, train_mask, val_mask, test_mask = (
-                src[is_normal_mask],
-                tgt[is_normal_mask],
-                t[is_normal_mask],
-                msg[is_normal_mask],
-                edge_labels[is_normal_mask],
-                train_mask[is_normal_mask],
-                val_mask[is_normal_mask],
-                test_mask[is_normal_mask],
-            )
+        if (self.temporal_graph.edge_labels == 1).any():
+            if reset_labels:
+                self.logger.info(
+                    "reset_labels=True, reseting anomalies...")
+                is_normal_mask = edge_labels == 0
+                src, tgt, t, msg, edge_labels, train_mask, val_mask, test_mask = (
+                    src[is_normal_mask],
+                    tgt[is_normal_mask],
+                    t[is_normal_mask],
+                    msg[is_normal_mask],
+                    edge_labels[is_normal_mask],
+                    train_mask[is_normal_mask],
+                    val_mask[is_normal_mask],
+                    test_mask[is_normal_mask],
+                )
+            else:
+                raise RuntimeError(
+                    f"'{dataset_name}' already contains labels, set reset_labels=True to overwrite.")
 
         gen_anom: dict[str, tuple[torch.Tensor, ...]] = {}
 
@@ -790,6 +796,11 @@ class AnomalyInjector:
             gen_anom[split] = (split_anom_src, split_anom_tgt,
                                split_anom_t, split_anom_msg)
 
+        if not gen_anom:
+            self.logger.warning(
+                "No anomalies were generated, returning input temporal graph.")
+            return self.temporal_graph
+
         src_list, tgt_list, t_list, msg_list = [], [], [], []
         train_mask_list, val_mask_list, test_mask_list = [], [], []
 
@@ -853,7 +864,7 @@ class AnomalyInjector:
         metadata = copy.deepcopy(self.temporal_graph.metadata)
         metadata["anomaly_injection"] = injection_metadata
 
-        anomalous_temporal_graph = TemporalGraphData(
+        anomalous_temporal_graph = TemporalGraph(
             src=final_src[final_sort_indices],
             tgt=final_tgt[final_sort_indices],
             t=final_t[final_sort_indices],
