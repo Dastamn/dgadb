@@ -1,4 +1,5 @@
 import polars as pl
+import torch
 
 def make_undirected_train(dfs: dict[str, pl.DataFrame]):
     edges = dfs["edges"]
