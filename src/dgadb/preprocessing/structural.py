@@ -115,23 +115,3 @@ def reindex_nodes(dfs: dict[str, pl.DataFrame]):
 
 
 
-
-
-def make_undirected_tensor(edge_index: torch.Tensor) -> torch.Tensor:
-    """
-    Make a graph undirected by adding reverse edges and removing duplicates.
-    
-    Args:
-        edge_index (torch.Tensor): Edge index tensor of shape [2, num_edges]
-        
-    Returns:
-        torch.Tensor: Undirected edge index tensor with duplicates removed
-    """
-    # Make graph undirected by adding reverse edges
-    reverse_edge_index = torch.stack([edge_index[1], edge_index[0]])
-    undirected_edge_index = torch.cat([edge_index, reverse_edge_index], dim=1)
-    
-    # Remove duplicate edges
-    undirected_edge_index = torch.unique(undirected_edge_index, dim=1)
-    
-    return undirected_edge_index
