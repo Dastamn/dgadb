@@ -1,0 +1,84 @@
+(venv) azzedine@katana ➜  dgadb git:(adding-methods-Node2Vec-and-GAT-Azzedine) ✗ cd /home/azzedine/Projects/dgadb && BASE_PATH=/home/azzedine/Projects/dgadb PYTHONPATH=/home/azzedine/Projects/dgadb python3 src/dgadb/pipeline/pipeline_GTN.py
+2025-08-23 13:47:29,404 - __main__ - INFO - Starting GTN pipeline for dataset: bitcoin-alpha
+2025-08-23 13:47:29,404 - __main__ - INFO - Loaded config: {}
+2025-08-23 13:47:29,404 - __main__ - INFO - Using device: cuda
+2025-08-23 13:47:29,404 - __main__ - INFO - Model hyperparameters: {'embedding_dim': 128, 'num_epoch': 50, 'learning_rate': 0.005, 'num_channels': 2, 'num_layers': 1, 'decoder_epochs': 100, 'decoder_learning_rate': 0.01}
+2025-08-23 13:47:29,404 - __main__ - INFO - Step 1: Loading and preprocessing graph data...
+2025-08-23 13:47:29,404 - Pipeline - INFO - Loading config: '/home/azzedine/Projects/dgadb/configs/bitcoin-alpha-example.yaml'
+2025-08-23 13:47:29,405 - Pipeline - INFO - Building preprocessing pipeline from config...
+2025-08-23 13:47:29,405 - Pipeline - INFO - > Instantiating missing 'DataLoader' step with default parameters.
+2025-08-23 13:47:29,405 - Pipeline - INFO - > Instantiating step 1: StructureNormalizer
+2025-08-23 13:47:29,405 - Pipeline - INFO - > Instantiating step 2: TimestampNormalizer
+2025-08-23 13:47:29,405 - Pipeline - INFO - > Instantiating step 3: TemporalSplitter
+2025-08-23 13:47:29,405 - Pipeline - INFO - Found cache directory: 'pipeline_cache/bitcoin-alpha'
+2025-08-23 13:47:29,405 - Cache - INFO - Using existing cache directory: 'pipeline_cache/bitcoin-alpha/aa874d41'
+2025-08-23 13:47:29,405 - Pipeline - INFO - Pipeline built successfully.
+2025-08-23 13:47:29,405 - Pipeline - INFO - >>> ---- Starting data pipeline ----
+2025-08-23 13:47:29,405 - Pipeline - INFO - >>> Running step (1/4): DataLoader
+2025-08-23 13:47:29,405 - Cache - INFO - Found cached result for 'DataLoader'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/00_DataLoader.pkl'
+2025-08-23 13:47:29,412 - Pipeline - INFO - >>> Step 'DataLoader' was skipped by loading a cached result.
+2025-08-23 13:47:29,412 - Pipeline - INFO - >>> Running step (2/4): StructureNormalizer
+2025-08-23 13:47:29,412 - Cache - INFO - Found cached result for 'StructureNormalizer'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/01_StructureNormalizer.pkl'
+2025-08-23 13:47:29,412 - Pipeline - INFO - >>> Step 'StructureNormalizer' was skipped by loading a cached result.
+2025-08-23 13:47:29,413 - Pipeline - INFO - >>> Running step (3/4): TimestampNormalizer
+2025-08-23 13:47:29,413 - Cache - INFO - Found cached result for 'TimestampNormalizer'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/02_TimestampNormalizer.pkl'
+2025-08-23 13:47:29,413 - Pipeline - INFO - >>> Step 'TimestampNormalizer' was skipped by loading a cached result.
+2025-08-23 13:47:29,413 - Pipeline - INFO - >>> Running step (4/4): TemporalSplitter
+2025-08-23 13:47:29,414 - Cache - INFO - Found cached result for 'TemporalSplitter'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/03_TemporalSplitter.pkl'
+2025-08-23 13:47:29,415 - Pipeline - INFO - >>> Step 'TemporalSplitter' was skipped by loading a cached result.
+2025-08-23 13:47:29,415 - Pipeline - INFO - >>> ---- Pipeline execution finished successfully in 0.01 sec. ----
+2025-08-23 13:47:29,415 - src.dgadb.preprocessing.pipeline.container - WARNING - Features have not been normalized. Proceeding with raw features.
+2025-08-23 13:47:29,433 - src.dgadb.preprocessing.pipeline.container - INFO - No node features selected. 'node_attr' will be None.
+2025-08-23 13:47:29,436 - src.dgadb.preprocessing.pipeline.container - INFO - Using original edge labels from dataframe. Found 247 positive labels out of 16863 total edges.
+2025-08-23 13:47:29,437 - src.dgadb.data.builder - INFO - Converting TemporalGraphData to Graph object...
+2025-08-23 13:47:29,438 - src.dgadb.data.builder - INFO - Added edge features with shape torch.Size([16863, 1])
+2025-08-23 13:47:29,442 - src.dgadb.data.builder - INFO - Created identity node features for 3783 nodes
+2025-08-23 13:47:29,444 - src.dgadb.data.builder - INFO - Successfully created Graph with 3783 nodes and 16863 edges
+2025-08-23 13:47:29,444 - src.dgadb.data.builder - INFO - Train edges: 11816, Val edges: 1677, Test edges: 3370
+2025-08-23 13:47:29,444 - __main__ - INFO - Data processing and conversion completed in 0.04 seconds
+2025-08-23 13:47:29,444 - __main__ - INFO - Step 2: Initializing GTN model...
+2025-08-23 13:47:29,444 - src.dgadb.models.GTN.GTN_main - INFO - Initializing GTNModel with device=cuda and hyperparams={'embedding_dim': 128, 'num_epoch': 50, 'learning_rate': 0.005, 'num_channels': 2, 'num_layers': 1, 'decoder_epochs': 100, 'decoder_learning_rate': 0.01}
+2025-08-23 13:47:29,444 - src.dgadb.models.GTN.GTN_main - INFO - Setting up GTNModel...
+2025-08-23 13:47:29,519 - src.dgadb.models.GTN.GTN_main - INFO - Prepared GTN input with 2 edge types.
+2025-08-23 13:47:29,546 - src.dgadb.models.GTN.GTN_main - INFO - Prepared data splits - Train: 11816, Test: 3370, Val: 1677
+2025-08-23 13:47:29,550 - src.dgadb.models.GTN.GTN_main - INFO - GTNModel setup completed.
+2025-08-23 13:47:29,550 - __main__ - INFO - Model initialization took 0.11 seconds
+2025-08-23 13:47:29,550 - __main__ - INFO - Step 3: Training GTN model...
+2025-08-23 13:47:29,550 - src.dgadb.models.GTN.GTN_main - INFO - Starting GTN training for 50 epochs...
+2025-08-23 13:47:30,444 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 5: pretext_loss=0.6906
+2025-08-23 13:47:30,905 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 10: pretext_loss=0.6820
+2025-08-23 13:47:31,298 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 15: pretext_loss=0.6655
+2025-08-23 13:47:31,700 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 20: pretext_loss=0.6398
+2025-08-23 13:47:32,171 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 25: pretext_loss=0.6034
+2025-08-23 13:47:32,565 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 30: pretext_loss=0.5597
+2025-08-23 13:47:33,048 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 35: pretext_loss=0.5165
+2025-08-23 13:47:33,448 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 40: pretext_loss=0.4750
+2025-08-23 13:47:33,901 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 45: pretext_loss=0.4378
+2025-08-23 13:47:34,303 - src.dgadb.models.GTN.GTN_main - INFO - Epoch 50: pretext_loss=0.4091
+2025-08-23 13:47:34,303 - src.dgadb.models.GTN.GTN_main - INFO - GTN encoder training completed
+2025-08-23 13:47:34,304 - __main__ - INFO - Training completed in 4.75 seconds
+2025-08-23 13:47:34,304 - __main__ - INFO - Step 4: Evaluating model...
+2025-08-23 13:47:34,304 - src.dgadb.models.GTN.GTN_main - INFO - Training downstream decoder...
+2025-08-23 13:47:34,354 - src.dgadb.models.GTN.GTN_main - INFO - Decoder training completed
+2025-08-23 13:47:34,366 - __main__ - INFO - Test Results:
+2025-08-23 13:47:34,366 - __main__ - INFO -   - ROC-AUC Score: 0.3081
+2025-08-23 13:47:34,366 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-23 13:47:34,366 - __main__ - INFO -   - Test Edges: 3370
+2025-08-23 13:47:34,366 - __main__ - INFO -   - Test Anomalies: 37
+2025-08-23 13:47:34,376 - __main__ - INFO - Train Results (for comparison):
+2025-08-23 13:47:34,376 - __main__ - INFO -   - ROC-AUC Score: 0.8516
+2025-08-23 13:47:34,376 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-23 13:47:34,376 - __main__ - INFO - ============================================================
+2025-08-23 13:47:34,376 - __main__ - INFO - PIPELINE SUMMARY
+2025-08-23 13:47:34,376 - __main__ - INFO - ============================================================
+2025-08-23 13:47:34,376 - __main__ - INFO - Dataset: bitcoin-alpha
+2025-08-23 13:47:34,376 - __main__ - INFO - Model: GTN
+2025-08-23 13:47:34,376 - __main__ - INFO - Device: cuda
+2025-08-23 13:47:34,376 - __main__ - INFO - Total Edges: 16863
+2025-08-23 13:47:34,376 - __main__ - INFO - GTN Channels: 2
+2025-08-23 13:47:34,376 - __main__ - INFO - GTN Layers: 1
+2025-08-23 13:47:34,376 - __main__ - INFO - Training Time: 4.75 seconds
+2025-08-23 13:47:34,376 - __main__ - INFO - Test AUC: 0.3081
+2025-08-23 13:47:34,376 - __main__ - INFO - Train AUC: 0.8516
+2025-08-23 13:47:34,376 - __main__ - INFO - ============================================================
+2025-08-23 13:47:34,376 - __main__ - INFO - GTN Pipeline completed successfully!
