@@ -1,15 +1,15 @@
-from ..data.dataset import load_df
-from ..storage import Graph
-from ..preprocessing.snapshotting import assign_snapshots
-from ..preprocessing.temporal import normalize_timestamps, generate_data_splits
-from ..preprocessing.normalization import get_normalized_feature_matrices
-from ..data.builder import build_graph
-from ..utils import load_config
+from src.dgadb.data.dataset import load_df
+from src.dgadb.storage import Graph
+from src.dgadb.preprocessing.snapshotting import assign_snapshots
+from src.dgadb.preprocessing.temporal import normalize_timestamps, generate_data_splits
+from src.dgadb.preprocessing.normalization import get_normalized_feature_matrices
+from src.dgadb.data.builder import build_graph
+from src.dgadb.utils import load_config
 
 
 def load_graph(name: str) -> Graph:
     config = load_config(name)
-    window_size = config["window_size"]
+    snapshot_size = config.get("snapshot_size", config.get("window_size", 1000))
     train_ratio = config["train_ratio"]
     val_ratio = config.get("val_ratio", None)
 
@@ -23,9 +23,9 @@ def load_graph(name: str) -> Graph:
     data["edges"] = edges
 
     node_features, edge_features = get_normalized_feature_matrices(
-        data["nodes"], data["edges"], config)
+        data.get("nodes"), data["edges"], config)
 
-    data = assign_snapshots(data, window_size=window_size)
+    data = assign_snapshots(data, snapshot_size=snapshot_size)
 
     # snapshot_split_map = generate_data_splits(
     #     data, train_ratio=train_ratio, val_ratio=val_ratio)
@@ -37,4 +37,4 @@ def load_graph(name: str) -> Graph:
 
     # data = normalize_dataframes(data, config)
 
-    return build_graph(data, node_features, edge_features, window_size)
+    return build_graph(data, node_features, edge_features, snapshot_size)

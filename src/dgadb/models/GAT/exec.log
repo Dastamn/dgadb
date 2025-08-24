@@ -1,0 +1,80 @@
+(venv) azzedine@katana ➜  dgadb git:(adding-methods-Node2Vec-and-GAT-Azzedine) ✗ PYTHONPATH=. python src/dgadb/pipeline/pipeline_GAT.py
+/home/azzedine/Projects/dgadb/venv/lib/python3.11/site-packages/torch/__config__.py:9: UserWarning: CUDA initialization: CUDA unknown error - this may be due to an incorrectly set up environment, e.g. changing env variable CUDA_VISIBLE_DEVICES after program start. Setting the available devices to be zero. (Triggered internally at ../c10/cuda/CUDAFunctions.cpp:108.)
+  return torch._C._show_config()
+2025-08-19 18:11:10,284 - __main__ - INFO - Starting GAT pipeline for dataset: bitcoin-alpha
+2025-08-19 18:11:10,284 - __main__ - INFO - Loaded config: {}
+2025-08-19 18:11:10,284 - __main__ - INFO - Using device: cpu
+2025-08-19 18:11:10,284 - __main__ - INFO - Model hyperparameters: {'hidden_channels': 64, 'num_layers': 2, 'num_heads': 8, 'dropout': 0.1, 'v2': True, 'num_epoch': 5, 'learning_rate': 0.01, 'classifier_solver': 'lbfgs', 'classifier_max_iter': 1000}
+2025-08-19 18:11:10,284 - __main__ - INFO - Step 1: Loading and preprocessing graph data...
+2025-08-19 18:11:10,284 - Pipeline - INFO - Loading config: '/home/azzedine/Projects/dgadb/configs/bitcoin-alpha-example.yaml'
+2025-08-19 18:11:10,285 - Pipeline - INFO - Building preprocessing pipeline from config...
+2025-08-19 18:11:10,285 - Pipeline - INFO - > Instantiating missing 'DataLoader' step with default parameters.
+2025-08-19 18:11:10,285 - Pipeline - INFO - > Instantiating step 1: StructureNormalizer
+2025-08-19 18:11:10,285 - Pipeline - INFO - > Instantiating step 2: TimestampNormalizer
+2025-08-19 18:11:10,285 - Pipeline - INFO - > Instantiating step 3: TemporalSplitter
+2025-08-19 18:11:10,285 - Pipeline - INFO - Found cache directory: 'pipeline_cache/bitcoin-alpha'
+2025-08-19 18:11:10,285 - Cache - INFO - Using existing cache directory: 'pipeline_cache/bitcoin-alpha/aa874d41'
+2025-08-19 18:11:10,285 - Pipeline - INFO - Pipeline built successfully.
+2025-08-19 18:11:10,285 - Pipeline - INFO - >>> ---- Starting data pipeline ----
+2025-08-19 18:11:10,285 - Pipeline - INFO - >>> Running step (1/4): DataLoader
+2025-08-19 18:11:10,285 - Cache - INFO - Found cached result for 'DataLoader'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/00_DataLoader.pkl'
+2025-08-19 18:11:10,287 - Pipeline - INFO - >>> Step 'DataLoader' was skipped by loading a cached result.
+2025-08-19 18:11:10,287 - Pipeline - INFO - >>> Running step (2/4): StructureNormalizer
+2025-08-19 18:11:10,287 - Cache - INFO - Found cached result for 'StructureNormalizer'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/01_StructureNormalizer.pkl'
+2025-08-19 18:11:10,287 - Pipeline - INFO - >>> Step 'StructureNormalizer' was skipped by loading a cached result.
+2025-08-19 18:11:10,287 - Pipeline - INFO - >>> Running step (3/4): TimestampNormalizer
+2025-08-19 18:11:10,287 - Cache - INFO - Found cached result for 'TimestampNormalizer'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/02_TimestampNormalizer.pkl'
+2025-08-19 18:11:10,288 - Pipeline - INFO - >>> Step 'TimestampNormalizer' was skipped by loading a cached result.
+2025-08-19 18:11:10,288 - Pipeline - INFO - >>> Running step (4/4): TemporalSplitter
+2025-08-19 18:11:10,288 - Cache - INFO - Found cached result for 'TemporalSplitter'. Loading from 'pipeline_cache/bitcoin-alpha/aa874d41/03_TemporalSplitter.pkl'
+2025-08-19 18:11:10,289 - Pipeline - INFO - >>> Step 'TemporalSplitter' was skipped by loading a cached result.
+2025-08-19 18:11:10,289 - Pipeline - INFO - >>> ---- Pipeline execution finished successfully in 0.00 sec. ----
+2025-08-19 18:11:10,289 - src.dgadb.preprocessing.pipeline.container - WARNING - Features have not been normalized. Proceeding with raw features.
+2025-08-19 18:11:10,292 - src.dgadb.preprocessing.pipeline.container - INFO - No node features selected. 'node_attr' will be None.
+2025-08-19 18:11:10,293 - src.dgadb.preprocessing.pipeline.container - INFO - Using original edge labels from dataframe. Found 247 positive labels out of 16863 total edges.
+2025-08-19 18:11:10,293 - src.dgadb.data.builder - INFO - Converting TemporalGraphData to Graph object...
+2025-08-19 18:11:10,293 - src.dgadb.data.builder - INFO - Added edge features with shape torch.Size([16863, 1])
+2025-08-19 18:11:10,296 - src.dgadb.data.builder - INFO - Created identity node features for 3783 nodes
+2025-08-19 18:11:10,297 - src.dgadb.data.builder - INFO - Successfully created Graph with 3783 nodes and 16863 edges
+2025-08-19 18:11:10,297 - src.dgadb.data.builder - INFO - Train edges: 11816, Val edges: 1677, Test edges: 3370
+2025-08-19 18:11:10,297 - __main__ - INFO - Data processing and conversion completed in 0.01 seconds
+2025-08-19 18:11:10,297 - __main__ - INFO - Step 2: Initializing GAT model...
+2025-08-19 18:11:10,297 - src.dgadb.models.GAT.GAT_main - INFO - Initializing GATModel with device=cpu and hyperparams={'hidden_channels': 64, 'num_layers': 2, 'num_heads': 8, 'dropout': 0.1, 'v2': True, 'num_epoch': 5, 'learning_rate': 0.01, 'classifier_solver': 'lbfgs', 'classifier_max_iter': 1000}
+2025-08-19 18:11:10,297 - src.dgadb.models.GAT.GAT_main - INFO - Setting up GATModel...
+2025-08-19 18:11:10,297 - src.dgadb.models.GAT.GAT_main - INFO - Graph has 3783 nodes and 16863 edges
+2025-08-19 18:11:10,297 - src.dgadb.models.GAT.GAT_main - INFO - Using edge index with 16863 edges
+2025-08-19 18:11:10,338 - src.dgadb.models.GAT.GAT_main - INFO - Prepared data splits - Train: 11816, Test: 3370, Val: 1677
+2025-08-19 18:11:10,338 - src.dgadb.models.GAT.GAT_main - INFO - GATModel setup completed
+2025-08-19 18:11:10,338 - __main__ - INFO - Model initialization took 0.04 seconds
+2025-08-19 18:11:10,338 - __main__ - INFO - Step 6: Training GAT model...
+2025-08-19 18:11:10,338 - src.dgadb.models.GAT.GAT_main - INFO - Starting GAT training for 5 epochs...
+2025-08-19 18:11:10,465 - src.dgadb.models.GAT.GAT_main - INFO - Training downstream decoder...
+2025-08-19 18:11:10,564 - src.dgadb.models.GAT.GAT_main - INFO - Decoder training completed
+2025-08-19 18:11:10,618 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 1: loss=1.3866, val_auc=0.7606
+2025-08-19 18:11:10,785 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 2: loss=1.3861, val_auc=0.7526
+2025-08-19 18:11:10,951 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 3: loss=1.3842, val_auc=0.7400
+2025-08-19 18:11:11,112 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 4: loss=1.3785, val_auc=0.7313
+2025-08-19 18:11:11,271 - src.dgadb.models.GAT.GAT_main - INFO - Epoch 5: loss=1.3665, val_auc=0.7251
+2025-08-19 18:11:11,271 - src.dgadb.models.GAT.GAT_main - INFO - GAT training completed
+2025-08-19 18:11:11,271 - __main__ - INFO - Training completed in 0.93 seconds
+2025-08-19 18:11:11,271 - __main__ - INFO - Step 7: Evaluating model...
+2025-08-19 18:11:11,323 - __main__ - INFO - Test Results:
+2025-08-19 18:11:11,323 - __main__ - INFO -   - ROC-AUC Score: 0.7819
+2025-08-19 18:11:11,323 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-19 18:11:11,323 - __main__ - INFO -   - Test Edges: 3370
+2025-08-19 18:11:11,323 - __main__ - INFO -   - Test Anomalies: 37
+2025-08-19 18:11:11,376 - __main__ - INFO - Train Results (for comparison):
+2025-08-19 18:11:11,376 - __main__ - INFO -   - ROC-AUC Score: 0.6500
+2025-08-19 18:11:11,376 - __main__ - INFO -   - Inference Time: 0.00 seconds
+2025-08-19 18:11:11,376 - __main__ - INFO - ============================================================
+2025-08-19 18:11:11,376 - __main__ - INFO - PIPELINE SUMMARY
+2025-08-19 18:11:11,376 - __main__ - INFO - ============================================================
+2025-08-19 18:11:11,376 - __main__ - INFO - Dataset: bitcoin-alpha
+2025-08-19 18:11:11,376 - __main__ - INFO - Model: GAT
+2025-08-19 18:11:11,376 - __main__ - INFO - Device: cpu
+2025-08-19 18:11:11,376 - __main__ - INFO - Total Edges: 16863
+2025-08-19 18:11:11,376 - __main__ - INFO - Training Time: 0.93 seconds
+2025-08-19 18:11:11,376 - __main__ - INFO - Test AUC: 0.7819
+2025-08-19 18:11:11,376 - __main__ - INFO - Train AUC: 0.6500
+2025-08-19 18:11:11,376 - __main__ - INFO - ============================================================
+2025-08-19 18:11:11,376 - __main__ - INFO - Pipeline completed successfully!

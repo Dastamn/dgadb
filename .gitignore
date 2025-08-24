@@ -1,6 +1,6 @@
 .vscode/
 __pycache__/
-
+pipeline_cache/
 venv/
 
 /data/
@@ -9,3 +9,4 @@ venv/
 .DS_store
 
 src/dgadb/models/TADDY/data
+src/dgadb/models/GeneralDYG/data

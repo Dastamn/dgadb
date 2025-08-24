@@ -169,12 +169,20 @@ class GraphDataContainer:
         test_mask = torch.from_numpy(
             (edges_df[self.split_col] == 'test').to_numpy())
 
-        # Labels default to all-zeros
-        # TODO @Dastamn: Handle original labels
-        edge_labels = torch.zeros(src.numel(), dtype=torch.long)
-        node_labels = torch.zeros(num_nodes, dtype=torch.long)
+        # Handle original labels from the dataframe
+        if "label" in edges_df.columns:
+            edge_labels = torch.tensor(
+                edges_df["label"].to_numpy().astype('int64'), dtype=torch.long)
+            logger.info(
+                f"Using original edge labels from dataframe. Found {edge_labels.sum().item()} positive labels out of {len(edge_labels)} total edges.")
+        else:
+            # Fallback to all-zeros if no label column exists
+            edge_labels = torch.zeros(len(edges_df), dtype=torch.long)
+            logger.warning(
+                "No 'label' column found in edges. Defaulting to all-zero labels.")
 
-        # TODO @Dastamn: Handle weights
+        node_labels = torch.zeros(
+            self.num_nodes, dtype=torch.long) if self.num_nodes else None
 
         excluded_metadata = {"is_split", "split_col", "node_mapping"}
         metadata = {k: v for k, v in self.metadata.items()
