@@ -2,6 +2,7 @@ import polars as pl
 from typing import Dict
 import os
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,14 +11,7 @@ def load_df(name: str) -> Dict[str, pl.DataFrame]:
     ds_dir_path = os.path.join(base_path, "data", name)
     logger.info(f"Loading dataset '{name}' from {ds_dir_path}")
 
-    edge_files = [
-        "edges",
-        "edge_labels",
-        "edge_types",
-        "edge_features_cat",
-        "edge_features_num",
-        "edge_features_str"
-    ]
+    edge_files = ["edges", "edge_labels", "edge_types", "edge_features_cat", "edge_features_num", "edge_features_str"]
 
     node_files = [
         "node_labels",
@@ -25,7 +19,7 @@ def load_df(name: str) -> Dict[str, pl.DataFrame]:
         "node_timestamps",
         "node_features_cat",
         "node_features_num",
-        "node_features_str"
+        "node_features_str",
     ]
 
     req_file = os.path.join(ds_dir_path, "edges.parquet")
@@ -43,17 +37,13 @@ def load_df(name: str) -> Dict[str, pl.DataFrame]:
             df_extra = pl.read_parquet(f_path)
             if {"edge_id", "feature_id", "value"}.issubset(df_extra.columns):
                 suffix = f_name.split("_")[-1]  # cat/num/str
-                df_extra = df_extra.pivot(
-                    index="edge_id", on="feature_id", values="value")
-                feature_cols = [
-                    col for col in df_extra.columns if col != "edge_id"]
-                df_extra = df_extra.rename({
-                    col: f"f{col}_{suffix}" for col in feature_cols
-                })
+                df_extra = df_extra.pivot(index="edge_id", on="feature_id", values="value")
+                feature_cols = [col for col in df_extra.columns if col != "edge_id"]
+                df_extra = df_extra.rename({col: f"f{col}_{suffix}" for col in feature_cols})
                 logger.debug(f"Edge features ({suffix}): {feature_cols}")
             df_edges = df_edges.join(df_extra, on="edge_id", how="left")
         else:
-            logger.info(f"Optional edge file not found (skipped): {f_path}")
+            logger.debug(f"Optional edge file not found (skipped): {f_path}")
 
     result = {"edges": df_edges}
     logger.info(f"Edges loaded with columns: {df_edges.columns}")
@@ -68,13 +58,11 @@ def load_df(name: str) -> Dict[str, pl.DataFrame]:
                 suffix = f_name.split("_")[-1]
                 df = df.pivot(index="node_id", on="feature_id", values="value")
                 feature_cols = [col for col in df.columns if col != "node_id"]
-                df = df.rename({
-                    col: f"f{col}_{suffix}" for col in feature_cols
-                })
+                df = df.rename({col: f"f{col}_{suffix}" for col in feature_cols})
                 logger.debug(f"Node features ({suffix}): {feature_cols}")
             node_dfs.append(df)
         else:
-            logger.info(f"Optional node file not found (skipped): {f_path}")
+            logger.debug(f"Optional node file not found (skipped): {f_path}")
 
     if node_dfs:
         logger.info(f"Joining {len(node_dfs)} node DataFrames on node_id")
