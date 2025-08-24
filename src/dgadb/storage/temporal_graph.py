@@ -2,41 +2,12 @@ import os
 import glob
 import json
 import copy
-import hashlib
 import torch
 import logging
 from typing import Any, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 from torch.types import Device
-
-
-def generate_temporal_graph_filename(temporal_graph: 'TemporalGraph'):
-    meta = temporal_graph.metadata
-    dataset_name = meta.get("dataset_name", "unknown-dataset")
-
-    if meta.get("anomaly_injection", {}).get("is_injected", False):
-        status = "anom"
-        anom_meta = meta["anomaly_injection"]
-        type_info = anom_meta.get("type", "anom-type")
-
-        splits_meta = anom_meta.get("splits", {})
-        train_ratio = splits_meta.get("train", {}).get("ratio", 0.0)
-        val_ratio = splits_meta.get("val", {}).get("ratio", 0.0)
-        test_ratio = splits_meta.get("test", {}).get("ratio", 0.0)
-        ratio_str = f"ratios-{train_ratio}-{val_ratio}-{test_ratio}"
-
-        gen_params = anom_meta.get("generation_parameters", {})
-        if not gen_params:
-            params_hash = ""
-        else:
-            params_str = json.dumps(gen_params, sort_keys=True)
-            hasher = hashlib.md5(params_str.encode())
-            params_hash = f"_h-{hasher.hexdigest()[:8]}"
-
-        return f"{dataset_name}_{status}_{type_info}_{ratio_str}{params_hash}"
-
-    return dataset_name
 
 
 @dataclass
@@ -183,6 +154,8 @@ class TemporalGraphLoader:
         dataset_dir = os.path.join(self.base_directory, dataset_name)
 
         os.makedirs(dataset_dir, exist_ok=True)
+
+        from .utils import generate_temporal_graph_filename
 
         prefix = generate_temporal_graph_filename(temporal_graph)
         full_path_prefix = os.path.join(dataset_dir, prefix)

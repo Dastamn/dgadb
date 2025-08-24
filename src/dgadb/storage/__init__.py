@@ -1,3 +1,4 @@
 from .graph import Graph
 from .temporal_graph import TemporalGraph, TemporalGraphLoader
 from .temporal_snapshot import TemporalGraphSnapshotLoader
+from .utils import generate_temporal_graph_filename, convert_temporal_graph_to_legacy_graph
