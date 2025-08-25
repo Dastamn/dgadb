@@ -148,6 +148,5 @@ class StructureNormalizer(PipelineStep):
             "reindex_nodes": self.reindex_nodes,
             "remove_self_loops": self.remove_self_loops,
             "remove_duplicates": self.remove_duplicates,
-            "node_mapping": self.node_mapping,
-            "num_nodes": len(self.node_mapping) if self.node_mapping is not None else None
+            "node_mapping": self.node_mapping
         })

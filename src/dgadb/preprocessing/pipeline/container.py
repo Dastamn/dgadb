@@ -3,8 +3,7 @@ import torch
 import polars as pl
 from typing import Optional, Literal, Any
 from dataclasses import dataclass, field
-
-from src.dgadb.storage import TemporalGraphData
+from src.dgadb.storage import TemporalGraph
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ class GraphDataContainer:
 
         print("---------------------------------")
 
-    def to_temporal_graph(self):
+    def to_temporal_graph(self) -> TemporalGraph:
         if not self.is_split or not self.split_col:
             raise RuntimeError(
                 "Data has not been split. Cannot create train/val/test masks.")
@@ -120,8 +119,8 @@ class GraphDataContainer:
             logger.warning(
                 "Timestamps have not been normalized. Proceeding with raw timestamps.")
 
-        # Sort by time
-        edges_df = self.edges.sort(self.e_time_col)
+        # Sort by time and src node (for event snapshotting)
+        edges_df = self.edges.sort([self.e_time_col, self.e_src_col])
 
         src = torch.tensor(
             edges_df[self.e_src_col].to_numpy(), dtype=torch.long)
@@ -129,6 +128,8 @@ class GraphDataContainer:
             edges_df[self.e_tgt_col].to_numpy(), dtype=torch.long)
         t = torch.tensor(
             edges_df[self.e_time_col].to_numpy(), dtype=torch.long)
+
+        num_nodes = max(int(src.max()), int(tgt.max())) + 1
 
         # Handle edge features
         edge_feat_cols = [
@@ -158,34 +159,34 @@ class GraphDataContainer:
                     sorted_nodes[node_feat_cols].to_numpy(), dtype=torch.float32)
 
         if node_attr is None:
-            logger.info("No node features selected. 'node_attr' will be None.")
+            logger.info("No node features found, 'node_attr' is None.")
 
         # Create masks
         train_mask = torch.from_numpy(
-            (edges_df[self.split_col] == 'train').to_numpy())
+            (edges_df[self.split_col] == "train").to_numpy())
         val_mask = torch.from_numpy(
-            (edges_df[self.split_col] == 'val').to_numpy())
+            (edges_df[self.split_col] == "val").to_numpy())
         test_mask = torch.from_numpy(
-            (edges_df[self.split_col] == 'test').to_numpy())
+            (edges_df[self.split_col] == "test").to_numpy())
 
         # Handle original labels from the dataframe
         if "label" in edges_df.columns:
             edge_labels = torch.tensor(
-                edges_df["label"].to_numpy().astype('int64'), dtype=torch.long)
-            logger.info(f"Using original edge labels from dataframe. Found {edge_labels.sum().item()} positive labels out of {len(edge_labels)} total edges.")
+                edges_df["label"].to_numpy(), dtype=torch.long)
+            logger.info(f"Using original edge labels from dataframe.")
         else:
             # Fallback to all-zeros if no label column exists
             edge_labels = torch.zeros(len(edges_df), dtype=torch.long)
-            logger.warning("No 'label' column found in edges. Defaulting to all-zero labels.")
-        
-        node_labels = torch.zeros(
-            self.num_nodes, dtype=torch.long) if self.num_nodes else None
+            logger.warning(
+                "No 'label' column found in edges. Defaulting to all-zero labels.")
+
+        node_labels = torch.zeros(num_nodes, dtype=torch.long)
 
         excluded_metadata = {"is_split", "split_col", "node_mapping"}
         metadata = {k: v for k, v in self.metadata.items()
                     if k not in excluded_metadata and v is not None}
 
-        return TemporalGraphData(
+        return TemporalGraph(
             src=src,
             tgt=tgt,
             t=t,

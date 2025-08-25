@@ -3,7 +3,6 @@ import yaml
 import logging
 import os
 import time
-from .container import GraphDataContainer
 from .callbacks.base import Callback
 from .callbacks import Cache
 from .container import GraphDataContainer
