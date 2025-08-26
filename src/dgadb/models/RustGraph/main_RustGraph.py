@@ -16,6 +16,9 @@ import os
 from tqdm import tqdm
 import numpy as np
 import time
+from src.dgadb.models.RustGraph.data import n2v_train
+from src.dgadb.models.utils import time_func
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +39,7 @@ class RustGraphModel:
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
         self.base_path = os.environ["BASE_PATH"]
+
         # meta
         self.dataset_name: str = meta_dict["dataset_name"]
         self.train_ratio: float = float(meta_dict["train_ratio"])
@@ -73,8 +77,33 @@ class RustGraphModel:
 
         self.h_t = None
 
+    @time_func
     def setup(self, graph: Graph) -> None:
-        self.x_dim = graph.node_feature_dim
+
+        # node2vec embeddings (should only contain train edges)
+        edge_index_train = graph._edges["e_pairs"][:, graph._edges["e_train_mask"]]
+
+        n = graph.num_nodes
+
+        edges_np = edge_index_train.t().cpu().numpy()
+        epoch_num = 75
+
+        base_path = os.environ["BASE_PATH"]
+        dataset_dir = os.path.dirname(f"{base_path}/src/dgadb/models/RustGraph/n2v_data/")
+        if not os.path.exists(dataset_dir):
+            os.makedirs(dataset_dir)
+
+        n2v_filename = os.path.join(dataset_dir, f"n2v_{self.dataset_name}_{self.x_dim}_{epoch_num}_{self.train_ratio}_{self.val_ratio}")
+        if os.path.exists(n2v_filename):
+            logger.info(f"Loading n2v features from: {n2v_filename}")
+            graph._nodes["n_feat"] = torch.load(n2v_filename, weights_only=True)
+        else:
+            x = n2v_train(edges_np, self.x_dim, self.device, n, epoch_num)
+            graph._nodes["n_feat"] = x
+            logger.info(f"Saving n2v features at: {n2v_filename}")
+            torch.save(x, n2v_filename)
+        
+
         self.model = Model(
             x_dim=self.x_dim,
             h_dim=self.h_dim,
@@ -87,8 +116,8 @@ class RustGraphModel:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.graph = graph
 
+    @time_func
     def train(self) -> None:
-        start_time = time.time()
         y_new = None
         max_auc, max_epoch = -float("inf"), -1
         self.model.train()
@@ -114,7 +143,9 @@ class RustGraphModel:
 
             if (epoch + 1) % self.print_freq == 0 or epoch == self.epochs - 1:
                 split = "val" if self.has_val else "train"
-                preds, labels, _ = self.inference(split=split)
+                preds_per_snap, labels_per_snap = self.inference(split=split)
+                preds = np.hstack(preds_per_snap)
+                labels = np.hstack(labels_per_snap)
                 auc_all = self.epoch_evaluation_metric(labels, preds)
                 if auc_all >= max_auc:
                     max_auc, max_epoch = auc_all, epoch
@@ -122,21 +153,21 @@ class RustGraphModel:
                 logger.info(f"AUC on {split} set: {auc_all:.4f} in epoch: {epoch},\t")
 
         logger.info(f"MAX AUC: {max_auc:.4f} in epoch: {max_epoch},\t")
-        logger.info(f"\n Total Training Time:{(time.time() - start_time):.4f}")
 
+    @time_func
     def inference(self, split="test"):
-        start_time = time.time()
         self.model.eval()
         with torch.no_grad():
             _, _, _, _, _, _, pred_list, y_list = self.model(self.graph, split=split, accumulate=True, h_t=self.h_t)
 
-        preds_per_snap = [s.detach().cpu().numpy().squeeze() for s in pred_list]
-        labels_per_snap = [y.detach().cpu().numpy().squeeze() for y in y_list]
+        preds_per_snap = [s.detach().cpu().squeeze() for s in pred_list]
+        labels_per_snap = [y.detach().cpu().squeeze() for y in y_list]
         # per snap scores
         # per_snapshot_score = [
         #    self.epoch_evaluation_metric(y_true, s) for y_true, s in zip(labels_per_snap, preds_per_snap)
         # ]
-        preds = np.hstack(preds_per_snap)
-        labels = np.hstack(labels_per_snap)
+        #preds = np.hstack(preds_per_snap)
+        #labels = np.hstack(labels_per_snap)
 
-        return preds, labels, (time.time() - start_time)
+        #return preds, labels
+        return preds_per_snap, labels_per_snap
