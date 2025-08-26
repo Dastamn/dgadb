@@ -54,7 +54,7 @@ class Graph:
             self._edges["e_id"] = torch.arange(num_edges, dtype=torch.long)
 
         if "n_id" not in self._nodes and len(self._nodes) > 0:
-            self._nodes["n_id"] = torch.arange(node_ids.size(0), dtype=torch.long)
+            self._nodes["n_id"] = node_ids.sort().values
 
         if "n_feat" not in self._nodes:
             self._nodes["n_feat"] = torch.eye(node_ids.size(0))
@@ -211,7 +211,7 @@ class Graph:
     def snapshots(self, split="all", accumulate=True, all_nodes: bool = True):
         """
         Generates subgraphs corresponding to individual snapshots based on snapshot IDs.
-        
+
         Parameters:
         split : str, optional (default="all")
             The data split to use for generating snapshots. Options are:
