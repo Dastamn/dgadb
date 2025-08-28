@@ -47,6 +47,10 @@ class TemporalGraph:
         return self.src.size(0)
 
     @property
+    def edge_index(self) -> torch.Tensor:
+        return torch.stack([self.src, self.tgt], dim=1).T
+
+    @property
     def adj_matrix_coo(self) -> torch.Tensor:
         device = self.device
         size = self.num_nodes
@@ -67,6 +71,11 @@ class TemporalGraph:
     @property
     def adj_matrix_dense(self) -> torch.Tensor:
         return self.adj_matrix_coo.to_dense()
+
+    def flip_edge_labels(self):
+        device = self.edge_labels.device
+        self.edge_labels = ((self.edge_labels - torch.tensor(1, device=device))
+                            * torch.tensor(-1, device=device))
 
     def to(self, device: Any, **kwargs):
         new_attrs = {}

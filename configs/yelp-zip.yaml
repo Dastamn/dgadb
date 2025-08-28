@@ -1,30 +1,35 @@
-snapshot_size: 100
-train_ratio: 0.7
-anomaly_ratio: 0.05
+# snapshot_size: 100
+# train_ratio: 0.7
+# anomaly_ratio: 0.05
 
 
-# Old format
-# edges:
-#   normalizers:
-#     standard:
-#      - f0_num
-#     bow:
-#     - name: f0_str
-#       max_dim: 32
+dataset:
+  name: yelp-zip
+  paths:
+    raw: null
+    structured: data/yelp-zip
+    processed: null
 
-# New format
-# edges:
-#   normalizers:
-#     std:
-#       - columns:
-#           - f0_num
-#     minmax:
-#       - columns:
-#           - f1_num
-#         params:
-#           feature_range: [0, 1]
-#     bow:
-#       - columns:
-#           - f0_str
-#         params:
-#           max_features: 32
+pipeline:
+  cache_dir: pipeline_cache/yelp-zip
+  steps:
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        
+    - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.7
+        val_ratio: 0.1
+
+    - name: FeatureNormalizer
+      params:
+        - name: TextNormalizer
+          target: edge
+          columns:
+            - feat_0_str
+          params:
+            type: bow
+            max_features: 32
