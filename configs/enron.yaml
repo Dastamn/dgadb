@@ -1,3 +1,29 @@
-snapshot_size: 1000
-train_ratio: 0.70
-anomaly_ratio: 0.05
+# snapshot_size: 1000
+# train_ratio: 0.70
+# anomaly_ratio: 0.05
+
+dataset:
+  name: enron
+  paths:
+    raw: null
+    structured: data/enron
+    processed: null
+
+pipeline:
+  cache_dir: pipeline_cache/enron
+  steps:
+    - name: DataLoader
+      params:
+        dataset_dir: /mnt/disk2/nazim/dgadb/data/enron
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        reindex_nodes: True
+        
+    - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.7
+        val_ratio: 0.1
+

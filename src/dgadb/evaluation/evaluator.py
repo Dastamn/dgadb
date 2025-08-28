@@ -93,7 +93,7 @@ class Evaluator:
 
         return summary
 
-    def save_results(self):
+    def save_results(self, **kwargs):
         if not self.results_per_snapshot:
             self.logger.warning("No results to save!")
             return
@@ -102,7 +102,7 @@ class Evaluator:
         csv_path, json_path = self._get_output_paths()
 
         with open(json_path, 'w') as f:
-            json.dump(summary, f, indent=4)
+            json.dump({**summary, **kwargs}, f, indent=4)
         self.logger.info(f"Saved summary results to: {json_path}")
 
         df = pl.DataFrame(self.results_per_snapshot)
