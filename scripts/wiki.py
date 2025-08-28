@@ -7,10 +7,10 @@ import os
 
 print("Wiki")
 
-base_path = os.environ["BASE_PATH"]
+data_path = os.environ["DATA_PATH"]
 # overlapping ids for src and target, need to fix!
 
-dataset_dir = os.path.dirname(f"{base_path}/data/wiki/")
+dataset_dir = os.path.dirname(f"{data_path}/data/wiki/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 

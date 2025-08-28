@@ -3,8 +3,8 @@ import os
 
 print("Yelp Zip")
 
-base_path = os.environ["BASE_PATH"]
-req_path = os.path.join(base_path, "raw/yelp-zip/yelpzip.csv")
+data_path = os.environ["DATA_PATH"]
+req_path = os.path.join(data_path, "raw/yelp-zip/yelpzip.csv")
 
 if not os.path.exists(req_path):
     raise FileNotFoundError(
@@ -16,7 +16,7 @@ else:
 print("Processing...")
 
 dataset_name = "yelp-zip"
-dataset_dir = os.path.dirname(f"{base_path}/data/{dataset_name}/")
+dataset_dir = os.path.dirname(f"{data_path}/data/{dataset_name}/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 

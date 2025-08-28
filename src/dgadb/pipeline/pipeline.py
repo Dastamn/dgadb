@@ -25,10 +25,10 @@ if __name__ == "__main__":
     anom_injector = AnomalyInjector(temporal_graph)
 
     anomalous_temporal_graph = anom_injector.generate_anomalous_samples(
-        "c", anom_test_ratio=0.05, anom_val_ratio=0.05)
+        "c", anom_train_ratio=0.05, anom_test_ratio=0.05, anom_val_ratio=0.05
+    )
 
-    snapshot_loader = TemporalGraphSnapshotLoader(
-        anomalous_temporal_graph, strategy="window", window_size=1000)
+    snapshot_loader = TemporalGraphSnapshotLoader(anomalous_temporal_graph, strategy="window", window_size=1000)
 
     print("Number of snapshots: ", len(snapshot_loader))
 

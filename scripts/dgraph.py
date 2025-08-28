@@ -5,9 +5,9 @@ import os
 print("DGraph")
 dataset_name = "dgraph"
 
-base_path = os.environ["BASE_PATH"]
-req_dir = os.path.dirname(f"{base_path}/raw/dgraph/")
-dataset_dir = os.path.dirname(f"{base_path}/data/dgraph/")
+data_path = os.environ["DATA_PATH"]
+req_dir = os.path.dirname(f"{data_path}/raw/dgraph/")
+dataset_dir = os.path.dirname(f"{data_path}/data/dgraph/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 

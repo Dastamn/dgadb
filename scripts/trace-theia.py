@@ -7,7 +7,7 @@ import requests
 print("Trace & Theia")
 dataset_name = "dgraph"
 
-base_path = os.environ["BASE_PATH"]
+data_path = os.environ["DATA_PATH"]
 
 
 print("Downloading...")
@@ -22,7 +22,7 @@ datasets = {"theia": "darpa_theia_0to24", "trace": "darpa_trace_0to210"}
 
 for ds in datasets.keys():
     print(f"  -{ds}")
-    dataset_dir = os.path.dirname(f"{base_path}/data/{ds}/")
+    dataset_dir = os.path.dirname(f"{data_path}/data/{ds}/")
     if not os.path.exists(dataset_dir):
         os.makedirs(dataset_dir)
 
