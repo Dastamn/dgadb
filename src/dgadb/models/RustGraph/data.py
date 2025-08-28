@@ -1,5 +1,5 @@
 import os
-from sqlite3 import NotSupportedError
+# from sqlite3 import NotSupportedError
 import time
 from datetime import datetime as dt
 import datetime
@@ -55,10 +55,13 @@ def generateDataset(dataset, raw_file, device, snap_size, train_per, anomaly_per
     anomaly_dir = f"ano_generation/{dataset}"
     if not os.path.exists(anomaly_dir):
         os.makedirs(anomaly_dir)
-    file_name_test = os.path.join(anomaly_dir, f"test_{anomaly_per}_{train_per}_{noise_ratio}.npy")
-    file_name_train = os.path.join(anomaly_dir, f"train_{anomaly_per}_{train_per}_{noise_ratio}.npy")
+    file_name_test = os.path.join(
+        anomaly_dir, f"test_{anomaly_per}_{train_per}_{noise_ratio}.npy")
+    file_name_train = os.path.join(
+        anomaly_dir, f"train_{anomaly_per}_{train_per}_{noise_ratio}.npy")
     if os.path.exists(file_name_test) == False or os.path.exists(file_name_train) == False:
-        synthetic_test, train = anomaly_generation2(train_per, anomaly_per, noise_ratio, edges, n, m, seed=1)
+        synthetic_test, train = anomaly_generation2(
+            train_per, anomaly_per, noise_ratio, edges, n, m, seed=1)
         np.save(file_name_test, synthetic_test)
         np.save(file_name_train, train)
     else:
@@ -79,7 +82,8 @@ def generateDataset(dataset, raw_file, device, snap_size, train_per, anomaly_per
         edge_index = torch.LongTensor(edge_index).t().contiguous()
         node_index = torch.LongTensor(node_index)
         y = torch.LongTensor(y)
-        data = Data(x=x, edge_index=edge_index, node_index=node_index, y=y, edge_attr=edge_attr)
+        data = Data(x=x, edge_index=edge_index,
+                    node_index=node_index, y=y, edge_attr=edge_attr)
         data_list.append(data)
     for ii in range(test_size):
         start_loc = ii * snap_size
@@ -91,7 +95,8 @@ def generateDataset(dataset, raw_file, device, snap_size, train_per, anomaly_per
         edge_index = torch.LongTensor(edge_index).t().contiguous()
         node_index = torch.LongTensor(node_index)
         y = torch.LongTensor(y)
-        data = Data(x=x, edge_index=edge_index, node_index=node_index, y=y, edge_attr=edge_attr)
+        data = Data(x=x, edge_index=edge_index,
+                    node_index=node_index, y=y, edge_attr=edge_attr)
         data_list.append(data)
 
     return data_list, train_size
@@ -149,8 +154,10 @@ def preprocessDataset(dataset, raw_file):
 
 def n2v_train(edges, x_dim, device, n, epoch_num):
     edge_index = torch.LongTensor(edges).t().contiguous()
-    n2v = Node2Vec(edge_index=edge_index, embedding_dim=x_dim, walk_length=25, context_size=25, num_nodes=n).to(device)
-    loader = n2v.loader(batch_size=128, shuffle=True, num_workers=0, persistent_workers=False)
+    n2v = Node2Vec(edge_index=edge_index, embedding_dim=x_dim,
+                   walk_length=25, context_size=25, num_nodes=n).to(device)
+    loader = n2v.loader(batch_size=128, shuffle=True,
+                        num_workers=0, persistent_workers=False)
     optimizer = torch.optim.Adam(list(n2v.parameters()), lr=0.01)
 
     def train():
@@ -240,16 +247,19 @@ def generate_anomaly(raw_data, inject_data, n, m, anomaly_ratio):
     anomaly_num = int(np.floor(anomaly_ratio * np.size(inject_data, 0)))
     anomalies = fake_edges[0:anomaly_num, :]
 
-    labels = np.ones([np.size(inject_data, 0) + anomaly_num, 1], dtype=np.float32)
+    labels = np.ones([np.size(inject_data, 0) +
+                     anomaly_num, 1], dtype=np.float32)
     # randsample: sample without replacement
     # it's different from datasample!
 
-    anomaly_pos = np.random.choice(np.size(labels, 0), anomaly_num, replace=False)
+    anomaly_pos = np.random.choice(
+        np.size(labels, 0), anomaly_num, replace=False)
 
     # anomaly_pos = np.random.choice(100, anomaly_num, replace=False)+200
     labels[anomaly_pos] = 0
 
-    synthetic_data = np.concatenate((np.zeros([np.size(labels, 0), 2], dtype=np.float32), labels), axis=1)
+    synthetic_data = np.concatenate(
+        (np.zeros([np.size(labels, 0), 2], dtype=np.float32), labels), axis=1)
     idx_anomalies = np.nonzero(labels.squeeze() == 0)
     idx_normal = np.nonzero(labels.squeeze() == 1)
     synthetic_data[idx_anomalies, 0:2] = anomalies
@@ -292,9 +302,11 @@ def add_noise(data, noise_ratio):
     if noise_ratio == 0:
         return data
     if noise_ratio < 0 or noise_ratio > 1:
-        raise NotSupportedError
+        raise Exception("NotSupportedError")
+        # raise NotSupportedError
     print(f"Adding {noise_ratio} noise into training dataset.")
     noise_num = int(np.floor(noise_ratio * np.size(data, 0)))
     noise_idx = np.random.choice(np.size(data, 0), noise_num, replace=False)
-    data[noise_idx, 2] = np.ones(noise_num, dtype=np.float32) - data[noise_idx, 2]
+    data[noise_idx, 2] = np.ones(
+        noise_num, dtype=np.float32) - data[noise_idx, 2]
     return data
