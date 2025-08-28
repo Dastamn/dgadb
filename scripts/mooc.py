@@ -8,8 +8,8 @@ import os
 print("MOOC")
 dataset_name = "mooc"
 
-base_path = os.environ["BASE_PATH"]
-dataset_dir = os.path.dirname(f"{base_path}/data/{dataset_name}/")
+data_path = os.environ["DATA_PATH"]
+dataset_dir = os.path.dirname(f"{data_path}/data/{dataset_name}/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 
@@ -74,7 +74,7 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 df_edges.write_parquet(file_path_edges)
 
-file_path_edge_features = os.path.join(dataset_dir, "edge_features.parquet")
+file_path_edge_features = os.path.join(dataset_dir, "edge_features_num.parquet")
 df_edge_features.write_parquet(file_path_edge_features)
 
 file_path_edge_labels = os.path.join(dataset_dir, "edge_labels.parquet")

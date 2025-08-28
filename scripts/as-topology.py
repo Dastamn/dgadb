@@ -7,8 +7,8 @@ import os
 
 dataset_name = "as-topology"
 
-base_path = os.environ["BASE_PATH"]
-dataset_dir = os.path.dirname(f"{base_path}/data/{dataset_name}/")
+data_path = os.environ["DATA_PATH"]
+dataset_dir = os.path.dirname(f"{data_path}/data/{dataset_name}/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)
 

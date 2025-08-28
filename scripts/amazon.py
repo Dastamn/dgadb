@@ -6,7 +6,7 @@ import gzip
 
 print("Amazon")
 
-base_path = os.environ["BASE_PATH"]
+data_path = os.environ["DATA_PATH"]
 
 # TODO create labels from fraction of helpful-to-total votes anomaly if <0.25, paper filters out >0.75 as well
 
@@ -19,7 +19,7 @@ ds = {
 for product in ds.keys():
     print(f"Amazon: {ds[product]}")
 
-    dataset_dir = os.path.dirname(f"{base_path}/data/amazon_{product}/")
+    dataset_dir = os.path.dirname(f"{data_path}/data/amazon_{product}/")
     if not os.path.exists(dataset_dir):
         os.makedirs(dataset_dir)
 
@@ -63,12 +63,12 @@ for product in ds.keys():
     del df_src_nodes, df_tgt_nodes
 
     file_path_edges = os.path.join(
-        f"{base_path}/data/amazon_{product}/", "edges.parquet")
+        f"{data_path}/data/amazon_{product}/", "edges.parquet")
     df_edges.write_parquet(file_path_edges)
     del df_edges
 
     file_path_node_types = os.path.join(
-        f"{base_path}/data/amazon_{product}/", "node_types.parquet")
+        f"{data_path}/data/amazon_{product}/", "node_types.parquet")
     df_node_types.write_parquet(file_path_node_types)
     del df_node_types
 
@@ -85,7 +85,7 @@ for product in ds.keys():
 
     for t in ("cat", "num", "str"):
         file_path = os.path.join(
-            f"{base_path}/data/amazon_{product}/", f"edge_features_{t}.parquet")
+            f"{data_path}/data/amazon_{product}/", f"edge_features_{t}.parquet")
         edge_features[t].write_parquet(file_path)
         del edge_features[t]
 
@@ -141,7 +141,7 @@ for product in ds.keys():
     }
     for t in ("num", "str"):
         file_path = os.path.join(
-            f"{base_path}/data/amazon_{product}/", f"node_features_{t}.parquet")
+            f"{data_path}/data/amazon_{product}/", f"node_features_{t}.parquet")
         node_features[t].write_parquet(file_path)
         del node_features[t]
 
