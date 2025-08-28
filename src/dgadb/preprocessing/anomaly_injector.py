@@ -1,11 +1,14 @@
 import copy
 import logging
-import torch
-import torch.nn.functional as F
 from math import gcd
 from functools import reduce
 from datetime import datetime, timezone
 from typing import Literal, Optional
+
+import torch
+import torch.nn.functional as F
+from tqdm import tqdm
+
 from src.dgadb.storage import TemporalGraph
 from .utils import (
     cartesian_sample,
@@ -13,7 +16,9 @@ from .utils import (
     unique_with_indices,
     to_undirected,
     to_canonical,
+    reindex_nodes
 )
+
 
 _ANOMALY_TYPE_MAP: dict[str, str] = {
     "s": "structural",
@@ -52,8 +57,8 @@ class AnomalyInjector:
         self.logger.info(
             f"Initializing AnomalyInjector for dataset '{temporal_graph.dataset_name}'...")
 
-        self.max_node_id = (
-            torch.max(temporal_graph.src.max(), temporal_graph.tgt.max()) + 1).float()
+        # Node IDs are contiguous
+        self.max_node_id = temporal_graph.src.numel() - 1
 
         self.encoded_observed_edges = self._encode_edges(
             temporal_graph.src, temporal_graph.tgt, keep_unique=True)
@@ -94,7 +99,7 @@ class AnomalyInjector:
 
         src_unpacked, tgt_unpacked, * \
             t_unpacked_list = rows_to_encode.unbind(dim=1)
-        base = float(self.max_node_id)
+        base = self.max_node_id.float() + 1
 
         src_ = src_unpacked.long()
         tgt_ = tgt_unpacked.long()
@@ -107,16 +112,19 @@ class AnomalyInjector:
 
         return encoded_values.long()
 
-    def _add_to_encoded_observed_edges(self, src: torch.Tensor, tgt: torch.Tensor, t: Optional[torch.Tensor]) -> None:
-        encoded_edges = self._encode_edges(src, tgt, t)
+    def _add_to_encoded_observed_edges(self, src: torch.Tensor, tgt: torch.Tensor, t: Optional[torch.Tensor]) -> int:
+        encoded_edges = self._encode_edges(src, tgt, t, keep_unique=True)
         encoded_base_name = "encoded_observed_edges_t" if t is not None else "encoded_observed_edges"
         encoded_base = getattr(self, encoded_base_name)
         is_new_mask = ~torch.isin(encoded_edges, encoded_base)
         valid_indices = torch.where(is_new_mask)[0]
         new_edges = encoded_edges[valid_indices]
-        if new_edges.shape[0] > 0:
+        new_edges_size = len(new_edges)
+        if new_edges_size > 0:
             encoded_base = torch.cat([encoded_base, new_edges], dim=0)
             setattr(self, encoded_base_name, encoded_base)
+
+        return new_edges_size
 
     def _compute_time_properties(self, t_train: torch.Tensor) -> tuple[int, torch.Tensor, int, Optional[torch.Tensor]]:
         unique_t = torch.unique(t_train)
@@ -267,8 +275,14 @@ class AnomalyInjector:
 
         return src[idx], tgt[idx], t[idx], msg[idx]
 
-    def _select_new_edge_indices(
-        self, size: int, src: torch.Tensor, tgt: torch.Tensor, t: Optional[torch.Tensor], encode_unique: bool = False
+    def _select_new_unseen_edge_indices(
+        self,
+        size: int,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        t: Optional[torch.Tensor],
+        # filter_unique: bool = False,
+        use_fallbacks: bool = False
     ):
         if t is None:
             anomaly_type = "structural"
@@ -277,57 +291,57 @@ class AnomalyInjector:
             anomaly_type = "temporal"
             encoded_observed_edges_pool = self.encoded_observed_edges_t
 
-        encoded_edges = self._encode_edges(
-            src, tgt, t, keep_unique=encode_unique)
+        encoded_edges = self._encode_edges(src, tgt, t, keep_unique=False)
         is_new_edge_mask = ~torch.isin(
             encoded_edges, encoded_observed_edges_pool)
         valid_indices = torch.where(is_new_edge_mask)[0]
 
-        if valid_indices.numel() > 1:
-            # Keep only unique indices
-            valid_encoded_edges = encoded_edges[valid_indices]
-            _, first_occurrence_in_valid = unique_with_indices(
-                valid_encoded_edges)
-            valid_indices = valid_indices[first_occurrence_in_valid]
-
         num_found = valid_indices.numel()
         total_candidates = src.numel()
 
-        if num_found == 0:
-            self.logger.warning(
-                f"Found 0 unique '{anomaly_type}' anomalies. Using random fallbacks.")
-            # Might have duplicates, but are observed anyways
-            final_indices = torch.randperm(
-                total_candidates, device=self.device)[:size]
-
-        elif num_found >= size:
+        if num_found >= size:
             perm = torch.randperm(num_found, device=self.device)[:size]
             final_indices = valid_indices[perm]
 
-        else:  # num_found < size
-            self.logger.warning(
-                f"Found only {num_found}/{size} unique '{anomaly_type}' anomalies, using all found and adding fallbacks."
-            )
-
-            num_missing = size - num_found
-            non_unique_indices = torch.where(~is_new_edge_mask)[0]
-            num_available_fallbacks = len(non_unique_indices)
-
-            if num_available_fallbacks == 0:
-                self.logger.warning(
-                    "No observed edges available for fallback. Reusing unique anomalies.")
-                random_indices = torch.randint(
-                    0, num_found, size=(num_missing,), device=self.device)
-                fallback_indices = valid_indices[random_indices]
-
+        else:
+            if not use_fallbacks:
+                final_indices = (valid_indices
+                                 if num_found > 0
+                                 else torch.empty(0, device=self.device))
             else:
-                # Sample with replacement from the available fallback pool
-                # This guarantees to get 'num_missing' indices
-                random_indices = torch.randint(
-                    0, num_available_fallbacks, size=(num_missing,), device=self.device)
-                fallback_indices = non_unique_indices[random_indices]
+                if num_found == 0:
+                    self.logger.warning(
+                        f"Found 0 unique '{anomaly_type}' anomalies. Using random fallbacks.")
 
-            final_indices = torch.cat([valid_indices, fallback_indices])
+                    # Randomly sample from all candidates
+                    final_indices = torch.randperm(
+                        total_candidates, device=self.device)[:size]
+
+                else:  # num_found < size
+                    self.logger.warning(
+                        f"Found only {num_found}/{size} unique '{anomaly_type}' anomalies, "
+                        f"using all found and adding fallbacks."
+                    )
+
+                    num_missing = size - num_found
+                    non_unique_indices = torch.where(~is_new_edge_mask)[0]
+                    num_available_fallbacks = len(non_unique_indices)
+
+                    if num_available_fallbacks == 0:
+                        self.logger.warning(
+                            "No observed edges available for fallback. Reusing unique anomalies.")
+                        random_indices = torch.randint(
+                            0, num_found, size=(num_missing,), device=self.device)
+                        fallback_indices = valid_indices[random_indices]
+
+                    else:
+                        # Sample with replacement from the available fallback pool
+                        random_indices = torch.randint(
+                            0, num_available_fallbacks, size=(num_missing,), device=self.device)
+                        fallback_indices = non_unique_indices[random_indices]
+
+                    final_indices = torch.cat(
+                        [valid_indices, fallback_indices])
 
         return final_indices
 
@@ -342,8 +356,11 @@ class AnomalyInjector:
         temporal_window_size: Optional[int | float] = 1500,
         struct_max_num_candidate: int = 1_000_000,
         struct_oversampling_ratio: float = 1.2,
+        use_fallbacks: bool = False
     ):
         if size == 0:
+            self.logger.warning(
+                "Input size 0 in '_generate_temporal_anomalies', returning empty tensors.")
             return (
                 torch.empty(0, dtype=src.dtype, device=self.device),
                 torch.empty(0, dtype=tgt.dtype, device=self.device),
@@ -360,7 +377,7 @@ class AnomalyInjector:
                 src, tgt, t, msg, edge_p, temporal_window_size
             )
         else:
-            self.logger.warning(
+            self.logger.debug(
                 "'temporal_window_size' is None. Sampling nodes from the entire split.")
             window_src, window_tgt, window_t, window_msg = src, tgt, t, msg
 
@@ -371,7 +388,7 @@ class AnomalyInjector:
         if num_candidates > struct_max_num_candidate:
             sample_size = int(struct_max_num_candidate *
                               max(1.0, min(struct_oversampling_ratio, 2.0)))
-            self.logger.info(
+            self.logger.debug(
                 f"'num_candidates' is too large ({num_candidates}), sampling {sample_size} instead.")
             cand_edges = cartesian_sample(
                 [src_pool, tgt_pool], sample_size, self.device)
@@ -380,11 +397,24 @@ class AnomalyInjector:
 
         cand_src, cand_tgt = cand_edges.unbind(dim=1)
 
-        new_edge_indices = self._select_new_edge_indices(
-            size=size, src=cand_src, tgt=cand_tgt, t=None, encode_unique=True
+        new_unseen_edge_indices = self._select_new_unseen_edge_indices(
+            size=size,
+            src=cand_src,
+            tgt=cand_tgt,
+            t=None,
+            use_fallbacks=use_fallbacks
         )
 
-        anom_src, anom_tgt = cand_src[new_edge_indices], cand_tgt[new_edge_indices]
+        if new_unseen_edge_indices.numel() == 0:
+            return (
+                torch.empty(0, dtype=src.dtype, device=self.device),
+                torch.empty(0, dtype=tgt.dtype, device=self.device),
+                torch.empty(0, dtype=t.dtype, device=self.device),
+                torch.empty(0, msg.shape[1],
+                            dtype=msg.dtype, device=self.device),
+            )
+
+        anom_src, anom_tgt = cand_src[new_unseen_edge_indices], cand_tgt[new_unseen_edge_indices]
 
         # Map 'anom_src' to original 't' and 'msg'
         unique_window_src, first_occurrence_indices = unique_with_indices(
@@ -414,6 +444,7 @@ class AnomalyInjector:
         e_num_candidates: int = 1000,
         t_num_candidates: int = 1000,
         random_time_walk_max_steps: int = 15,
+        use_fallbacks: bool = False
     ):
         if size == 0:
             self.logger.warning(
@@ -440,13 +471,22 @@ class AnomalyInjector:
         expanded_msg = cand_msg.repeat_interleave(t_num_candidates, dim=0)
         expanded_t = cand_t.repeat(cand_num_edges)
 
-        new_edge_indices = self._select_new_edge_indices(
+        new_edge_indices = self._select_new_unseen_edge_indices(
             size=size,
             src=expanded_src,
             tgt=expanded_tgt,
             t=expanded_t,
-            encode_unique=False,  # to link back to 'expanded_msg'
+            use_fallbacks=use_fallbacks
         )
+
+        if new_edge_indices.numel() == 0:
+            return (
+                torch.empty(0, dtype=src.dtype, device=self.device),
+                torch.empty(0, dtype=tgt.dtype, device=self.device),
+                torch.empty(0, dtype=t.dtype, device=self.device),
+                torch.empty(0, msg.shape[1],
+                            dtype=msg.dtype, device=self.device),
+            )
 
         anom_src = expanded_src[new_edge_indices]
         anom_tgt = expanded_tgt[new_edge_indices]
@@ -505,6 +545,7 @@ class AnomalyInjector:
         temporal_window_size: Optional[int | float] = 1500,
         distance_metric: Literal["cosine", "l2"] = "cosine",
         ctx_sample_size: int = 100,
+        use_fallbacks: bool = False
     ):
         if size == 0:
             self.logger.warning(
@@ -518,7 +559,7 @@ class AnomalyInjector:
             )
 
         anom_src, anom_tgt, t_, msg_ = self._generate_structural_anomalies(
-            size, src, tgt, t, msg, edge_p, temporal_window_size
+            size, src, tgt, t, msg, edge_p, temporal_window_size, use_fallbacks=use_fallbacks
         )
 
         anom_msg = self._sample_contextually_inconsistent_features(
@@ -541,6 +582,7 @@ class AnomalyInjector:
         random_time_walk_max_steps: int = 15,
         distance_metric: Literal["cosine", "l2"] = "cosine",
         ctx_sample_size: int = 100,
+        use_fallbacks: bool = False
     ):
         if size == 0:
             self.logger.warning(
@@ -565,6 +607,7 @@ class AnomalyInjector:
             e_num_candidates,
             t_num_candidates,
             random_time_walk_max_steps,
+            use_fallbacks=use_fallbacks
         )
 
         anom_msg = self._sample_contextually_inconsistent_features(
@@ -581,9 +624,10 @@ class AnomalyInjector:
         msg: torch.Tensor,
         first_t: torch.Tensor,
         last_t: torch.Tensor,
+        use_fallbacks: bool = False
     ):
         anom_src, anom_tgt, _, _ = self._generate_structural_anomalies(
-            size, src, tgt, t, msg, temporal_window_size=None
+            size, src, tgt, t, msg, temporal_window_size=None, use_fallbacks=use_fallbacks
         )
 
         anom_t = self._generate_plausible_timestamps(size, first_t, last_t)
@@ -601,7 +645,8 @@ class AnomalyInjector:
         anom_val_ratio: float = 0.0,
         anom_test_ratio: float = 0.05,
         reset_labels: bool = False,
-        max_attempts: int = 10,
+        max_stagnation_attempts: int = 10,
+        use_fallbacks: bool = False,
         **kwargs,
     ) -> TemporalGraph:
         anom_type = get_canonical_anomaly_type(anom_type)
@@ -636,7 +681,7 @@ class AnomalyInjector:
         if (self.temporal_graph.edge_labels == 1).any():
             if reset_labels:
                 self.logger.info(
-                    "reset_labels=True, reseting anomalies...")
+                    "reset_labels=True, resetting anomaly labels.")
                 is_normal_mask = edge_labels == 0
                 src, tgt, t, msg, edge_labels, train_mask, val_mask, test_mask = (
                     src[is_normal_mask],
@@ -648,9 +693,13 @@ class AnomalyInjector:
                     val_mask[is_normal_mask],
                     test_mask[is_normal_mask],
                 )
+                # Removing edges might make node IDs non-contiguos
+                src, tgt, _ = reindex_nodes(src, tgt)
+                self.max_node_id = src.numel() - 1
+
             else:
                 raise RuntimeError(
-                    f"'{dataset_name}' already contains labels, set reset_labels=True to overwrite.")
+                    f"'{dataset_name}' already contains labels, set 'reset_labels=True' to overwrite.")
 
         gen_anom: dict[str, tuple[torch.Tensor, ...]] = {}
 
@@ -672,13 +721,8 @@ class AnomalyInjector:
                 self.logger.info(f"Split '{split}' is empty, skipping.")
                 continue
 
-            eval_src = src[mask]
-            eval_tgt = tgt[mask]
-            eval_t = t[mask]
-            eval_msg = msg[mask]
-
+            eval_src, eval_tgt, eval_t, eval_msg = src[mask], tgt[mask], t[mask], msg[mask]
             num_anom = int(eval_src.shape[0] * anom_ratio)
-
             injection_metadata["splits"][split]["requested"] = num_anom
 
             eval_first_t, eval_last_t = eval_t.min(), eval_t.max()
@@ -686,97 +730,160 @@ class AnomalyInjector:
             eval_edge_p = compute_unique_inverse_count_probabilities(
                 eval_edges, device=self.device)
 
-            self.logger.info(
-                f"Attempting to generate {num_anom} '{anom_type}' anomalous edges in '{split}' split...")
-
             split_gen_anom_list = []
             num_generated = 0
-            attempts = 0
+            stagnation_attempts = 0
 
-            while num_generated < num_anom and attempts < max_attempts:
-                attempts += 1
-                still_needed = num_anom - num_generated
-                request_size = max(still_needed, num_anom)
+            with tqdm(total=num_anom, desc=f"[Anomaly Injection - dataset: '{dataset_name}', split: '{split}']") as pbar:
+                while (
+                    num_generated < num_anom and
+                    (use_fallbacks and (stagnation_attempts <= max_stagnation_attempts)
+                     or stagnation_attempts < max_stagnation_attempts)
+                ):
+                    still_needed = num_anom - num_generated
+                    use_fallbacks_attempt = stagnation_attempts == max_stagnation_attempts
+                    if anom_type == "structural":
+                        anom_src, anom_tgt, anom_t, anom_msg = self._generate_structural_anomalies(
+                            still_needed,
+                            eval_src,
+                            eval_tgt,
+                            eval_t,
+                            eval_msg,
+                            eval_edge_p,
+                            use_fallbacks=use_fallbacks_attempt,
+                            **kwargs
+                        )
 
-                self.logger.info(
-                    f"[Attempt {attempts}/{max_attempts}] Generating a batch of {request_size}. Need {still_needed} more...")
+                    elif anom_type == "temporal":
+                        anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_anomalies(
+                            still_needed,
+                            eval_src,
+                            eval_tgt,
+                            eval_t,
+                            eval_msg,
+                            eval_edge_p,
+                            eval_first_t,
+                            eval_last_t,
+                            use_fallbacks=use_fallbacks_attempt,
+                            **kwargs
+                        )
 
-                if anom_type == "structural":
-                    anom_src, anom_tgt, anom_t, anom_msg = self._generate_structural_anomalies(
-                        num_anom, eval_src, eval_tgt, eval_t, eval_msg, eval_edge_p, **kwargs
-                    )
+                    elif anom_type == "contextual":
+                        anom_src, anom_tgt, anom_t, anom_msg = self._generate_contextual_anomalies(
+                            still_needed, eval_src, eval_tgt, eval_t, eval_msg, eval_edge_p, **kwargs
+                        )
 
-                elif anom_type == "temporal":
-                    anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_anomalies(
-                        num_anom, eval_src, eval_tgt, eval_t, eval_msg, eval_edge_p, eval_first_t, eval_last_t, **kwargs
-                    )
+                    elif anom_type == "structural-contextual":
+                        anom_src, anom_tgt, anom_t, anom_msg = self._generate_structural_contextual_anomalies(
+                            still_needed,
+                            eval_src,
+                            eval_tgt,
+                            eval_t,
+                            eval_msg,
+                            eval_edge_p,
+                            use_fallbacks=use_fallbacks_attempt,
+                            **kwargs
+                        )
 
-                elif anom_type == "contextual":
-                    anom_src, anom_tgt, anom_t, anom_msg = self._generate_contextual_anomalies(
-                        num_anom, eval_src, eval_tgt, eval_t, eval_msg, eval_edge_p, **kwargs
-                    )
+                    elif anom_type == "temporal-contextual":
+                        anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_contextual_anomalies(
+                            still_needed,
+                            eval_src,
+                            eval_tgt,
+                            eval_t,
+                            eval_msg,
+                            eval_edge_p,
+                            eval_first_t,
+                            eval_last_t,
+                            use_fallbacks=use_fallbacks_attempt,
+                            **kwargs
+                        )
 
-                elif anom_type == "structural-contextual":
-                    anom_src, anom_tgt, anom_t, anom_msg = self._generate_structural_contextual_anomalies(
-                        num_anom, eval_src, eval_tgt, eval_t, eval_msg, eval_edge_p, **kwargs
-                    )
+                    elif anom_type == "temporal-structural-contextual":
+                        # Here use all data
+                        anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_structural_contextual_anomalies(
+                            num_anom,
+                            src,
+                            tgt,
+                            t,
+                            msg,
+                            self.first_t,
+                            self.last_t,
+                            use_fallbacks=use_fallbacks_attempt
+                        )
 
-                elif anom_type == "temporal-contextual":
-                    anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_contextual_anomalies(
-                        num_anom, eval_src, eval_tgt, eval_t, eval_msg, eval_edge_p, eval_first_t, eval_last_t, **kwargs
-                    )
+                    else:
+                        raise NotImplementedError(
+                            f"Generation for anomaly type '{anom_type}' is not implemented.")
 
-                elif anom_type == "temporal-structural-contextual":
-                    # Here use all data
-                    anom_src, anom_tgt, anom_t, anom_msg = self._generate_temporal_structural_contextual_anomalies(
-                        num_anom, src, tgt, t, msg, self.first_t, self.last_t
-                    )
+                    if anom_src.numel() == 0:
+                        stagnation_attempts += 1
+                        self.logger.warning(
+                            f"Generation attempt for '{split}' yielded 0 anomalies. "
+                            f"Stagnation count: {stagnation_attempts}/{max_stagnation_attempts}")
+                        continue
 
-                else:
-                    raise NotImplementedError(
-                        f"Generation for anomaly type '{anom_type}' is not implemented.")
+                    # # Keep originally intended structure
+                    # if self.temporal_graph.directionality == "undirected":
+                    #     # Already handles de-duplication
+                    #     anom_src, anom_tgt, undirected_indices = to_undirected(
+                    #         anom_src, anom_tgt)
+                    #     anom_t, anom_msg = anom_t[undirected_indices], anom_msg[undirected_indices]
+                    # else:
+                    #     if self.temporal_graph.directionality == "canonical":
+                    #         anom_src, anom_tgt = to_canonical(
+                    #             anom_src, anom_tgt)
 
-                if anom_src.numel() == 0:
-                    self.logger.warning(
-                        f"[Attempt {attempts}] Generation returned no anomalies.")
-                    continue
+                    #     # De-dup
+                    #     encoded_edges = self._encode_edges(
+                    #         anom_src, anom_tgt, anom_t, keep_unique=False)
+                    #     _, first_occurence_indices = unique_with_indices(
+                    #         encoded_edges)
+                    #     anom_src, anom_tgt, anom_t, anom_msg = (
+                    #         anom_src[first_occurence_indices],
+                    #         anom_tgt[first_occurence_indices],
+                    #         anom_t[first_occurence_indices],
+                    #         anom_msg[first_occurence_indices],
+                    #     )
 
-                # Keep originally intended structure
-                if self.temporal_graph.directionality == "undirected":
-                    # Already handles de-duplication
-                    anom_src, anom_tgt, undirected_indices = to_undirected(
-                        anom_src, anom_tgt)
-                    anom_t, anom_msg = anom_t[undirected_indices], anom_msg[undirected_indices]
-                else:
-                    if self.temporal_graph.directionality == "canonical":
-                        anom_src, anom_tgt = to_canonical(anom_src, anom_tgt)
+                    num_gen_anom = anom_src.numel()
 
-                    # De-dup
-                    encoded_edges = self._encode_edges(
-                        anom_src, anom_tgt, anom_t, keep_unique=False)
-                    _, first_occurence_indices = unique_with_indices(
-                        encoded_edges)
-                    anom_src, anom_tgt, anom_t, anom_msg = (
-                        anom_src[first_occurence_indices],
-                        anom_tgt[first_occurence_indices],
-                        anom_t[first_occurence_indices],
-                        anom_msg[first_occurence_indices],
-                    )
+                    if num_gen_anom > 0:
+                        # Progress was made
+                        stagnation_attempts = 0
 
-                num_unique_anom = anom_src.numel()
-                num_generated += num_unique_anom
-                self.logger.info(
-                    f"[Attempt {attempts}/{max_attempts}] Found {num_unique_anom} new unique anomalies. Total found: {num_generated}/{num_anom}.")
+                        split_gen_anom_list.append(
+                            (anom_src, anom_tgt, anom_t, anom_msg))
 
-                gen_anom[split] = (anom_src, anom_tgt, anom_t, anom_msg)
-                split_gen_anom_list.append(
-                    (anom_src, anom_tgt, anom_t, anom_msg))
-                # Add to observed edges so that next split anomalies avoid collisions
-                self._add_to_encoded_observed_edges(anom_src, anom_tgt, anom_t)
+                        # Just to make sure the bar fills-up nicely
+                        pbar.update(num_gen_anom
+                                    if num_gen_anom < still_needed
+                                    else still_needed)
+                        num_generated += num_gen_anom
 
+                        self._add_to_encoded_observed_edges(
+                            src=anom_src,
+                            tgt=anom_tgt,
+                            t=None
+                        )
+                        self._add_to_encoded_observed_edges(
+                            src=anom_src,
+                            tgt=anom_tgt,
+                            t=anom_t
+                        )
+                    else:
+                        stagnation_attempts += 1
+                        self.logger.warning(
+                            f"Batch for '{split}' contained 0 new anomalies. "
+                            f"Stagnation count: {stagnation_attempts}/{max_stagnation_attempts}")
+
+                # End of split iteration
+                # Add generated edges to observed set before injecting in the next split (if present)
+
+            # End of split iteration
             if num_generated < num_anom:
                 self.logger.warning(
-                    f"Failed to generate the requested number of anomalies for '{split}' split after {max_attempts} attempts. "
+                    f"Failed to generate all requested anomalies for '{split}' split after {max_stagnation_attempts} stagnant attempts. "
                     f"Proceeding with {num_generated}/{num_anom} anomalies."
                 )
 
@@ -791,10 +898,20 @@ class AnomalyInjector:
             split_anom_t = torch.cat(split_anom_t)[:num_anom]
             split_anom_msg = torch.cat(split_anom_msg)[:num_anom]
 
-            self.logger.info(
-                f"Generated a total of {split_anom_src.numel()} anomalies for '{split}' split.")
             gen_anom[split] = (split_anom_src, split_anom_tgt,
                                split_anom_t, split_anom_msg)
+
+            # Add generated edges to observed set before processing the next split (if present)
+            self._add_to_encoded_observed_edges(
+                src=split_anom_src,
+                tgt=split_anom_tgt,
+                t=None
+            )
+            self._add_to_encoded_observed_edges(
+                src=split_anom_src,
+                tgt=split_anom_tgt,
+                t=split_anom_t
+            )
 
         if not gen_anom:
             self.logger.warning(
@@ -847,7 +964,6 @@ class AnomalyInjector:
         final_test_mask = torch.cat([test_mask, anom_test_mask])
 
         # Sort by 'src' then 't'
-        self.logger.info("Sorting final graph by timestamp and source node...")
         src_sort_indices = torch.argsort(final_src, stable=True)
         src_sorted_t = final_t[src_sort_indices]
         final_sort_indices = src_sort_indices[torch.argsort(
