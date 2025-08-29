@@ -49,32 +49,50 @@ class Graph_GRU(nn.Module):
 
         for i in range(layer_num):
             if i == 0:
-                self.weight_xz.append(GConv(input_size, hidden_size, device=device, bias=bias))
-                self.weight_hz.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_xr.append(GConv(input_size, hidden_size, device=device, bias=bias))
-                self.weight_hr.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_xh.append(GConv(input_size, hidden_size, device=device, bias=bias))
-                self.weight_hh.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_xz.append(
+                    GConv(input_size, hidden_size, device=device, bias=bias))
+                self.weight_hz.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_xr.append(
+                    GConv(input_size, hidden_size, device=device, bias=bias))
+                self.weight_hr.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_xh.append(
+                    GConv(input_size, hidden_size, device=device, bias=bias))
+                self.weight_hh.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
             else:
-                self.weight_xz.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_hz.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_xr.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_hr.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_xh.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
-                self.weight_hh.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_xz.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_hz.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_xr.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_hr.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_xh.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
+                self.weight_hh.append(
+                    GConv(hidden_size, hidden_size, device=device, bias=bias))
 
     def forward(self, x, edge_index, h):
         h_out = torch.zeros(h.size()).to(self.device)
         for i in range(self.layer_num):
             if i == 0:
-                z_g = torch.sigmoid(self.weight_xz[i](x, edge_index) + self.weight_hz[i](h[i], edge_index))
-                r_g = torch.sigmoid(self.weight_xr[i](x, edge_index) + self.weight_hr[i](h[i], edge_index))
-                h_tilde_g = torch.tanh(self.weight_xh[i](x, edge_index) + self.weight_hh[i](r_g * h[i], edge_index))
+                z_g = torch.sigmoid(self.weight_xz[i](
+                    x, edge_index) + self.weight_hz[i](h[i], edge_index))
+                r_g = torch.sigmoid(self.weight_xr[i](
+                    x, edge_index) + self.weight_hr[i](h[i], edge_index))
+                h_tilde_g = torch.tanh(self.weight_xh[i](
+                    x, edge_index) + self.weight_hh[i](r_g * h[i], edge_index))
                 out = z_g * h[i] + (1 - z_g) * h_tilde_g
             else:
-                z_g = torch.sigmoid(self.weight_xz[i](out, edge_index) + self.weight_hz[i](h[i], edge_index))
-                r_g = torch.sigmoid(self.weight_xr[i](out, edge_index) + self.weight_hr[i](h[i], edge_index))
-                h_tilde_g = torch.tanh(self.weight_xh[i](out, edge_index) + self.weight_hh[i](r_g * h[i], edge_index))
+                z_g = torch.sigmoid(self.weight_xz[i](
+                    out, edge_index) + self.weight_hz[i](h[i], edge_index))
+                r_g = torch.sigmoid(self.weight_xr[i](
+                    out, edge_index) + self.weight_hr[i](h[i], edge_index))
+                h_tilde_g = torch.tanh(self.weight_xh[i](
+                    out, edge_index) + self.weight_hh[i](r_g * h[i], edge_index))
                 out = z_g * h[i] + (1 - z_g) * h_tilde_g
             h_out[i] = out
         return h_out
@@ -127,11 +145,12 @@ class Contrastive(nn.Module):
     def forward(self, all_z, all_node_idx):
         t_len = len(all_node_idx)
         nce_loss = 0
-        f = lambda x: torch.exp(x)
+        def f(x): return torch.exp(x)
         # self.neg_sample = last_h
         for i in range(t_len - self.max_dis):
             for j in range(i + 1, i + self.max_dis + 1):
-                nodes_1, nodes_2 = all_node_idx[i].tolist(), all_node_idx[j].tolist()
+                nodes_1, nodes_2 = all_node_idx[i].tolist(
+                ), all_node_idx[j].tolist()
                 common_nodes = list(set(nodes_1) & set(nodes_2))
                 z_anchor = all_z[i][common_nodes]
                 z_anchor = self.linear(z_anchor)
@@ -139,7 +158,8 @@ class Contrastive(nn.Module):
                 pos_sim = f(self.sim(z_anchor, positive_samples, True))
                 neg_sim = f(self.sim(z_anchor, all_z[j], False))
                 # index = torch.LongTensor(common_nodes).unsqueeze(1).to(self.device)
-                neg_sim = neg_sim.sum(dim=-1).unsqueeze(1)  # - torch.gather(neg_sim, 1, index)
+                # - torch.gather(neg_sim, 1, index)
+                neg_sim = neg_sim.sum(dim=-1).unsqueeze(1)
                 nce_loss += -torch.log(pos_sim / (neg_sim)).mean()
                 # nce_loss += -(torch.log(pos_sim / (pos_sim + neg_sim.sum(dim=-1) - torch.gather(neg_sim, 1, index)))).mean()
         return nce_loss / (self.max_dis * (t_len - self.max_dis))
@@ -197,7 +217,8 @@ class Model(nn.Module):
             x = snap.n_feat
             edge_index = snap.e_pairs
             y = snap.e_label.float().unsqueeze(1)
-            node_index = torch.arange(x.size(0), device=self.device)
+            # node_index = torch.arange(x.size(0), device=self.device)
+            node_index = torch.unique(edge_index)
 
             if y_rect is not None:
                 y = y_rect[t]
@@ -207,16 +228,20 @@ class Model(nn.Module):
 
             # hidden state init
             if h_t is None:
-                h_t = torch.zeros(self.layer_num, x.size(0), self.h_dim, device=self.device)
+                h_t = torch.zeros(self.layer_num, x.size(
+                    0), self.h_dim, device=self.device)
 
             ev = self._compute_ev_from_graph(snap, is_undirected=True)
             if t == 0:
-                diff = torch.zeros(x.size(0), 1, device=self.device, dtype=x.dtype)
+                diff = torch.zeros(
+                    x.size(0), 1, device=self.device, dtype=x.dtype)
             else:
-                diff = torch.abs(ev - pre_ev).to(self.device).to(x.dtype).unsqueeze(1)
+                diff = torch.abs(
+                    ev - pre_ev).to(self.device).to(x.dtype).unsqueeze(1)
             pre_ev = ev
 
-            (prior_mean_t, prior_std_t), (enc_mean_t, enc_std_t), z_t, h_t = self.encoder(x, h_t, diff, edge_index)
+            (prior_mean_t, prior_std_t), (enc_mean_t,
+                                          enc_std_t), z_t, h_t = self.encoder(x, h_t, diff, edge_index)
 
             enc_mean_t_sl = enc_mean_t[node_index, :]
             enc_std_t_sl = enc_std_t[node_index, :]
@@ -228,15 +253,19 @@ class Model(nn.Module):
             edge_score = self.fcc(edge_emb)
 
             if t == 0:
-                bce_loss = F.binary_cross_entropy(edge_score, y, reduction="none")
+                bce_loss = F.binary_cross_entropy(
+                    edge_score, y, reduction="none")
             else:
-                bce_loss = torch.vstack([bce_loss, F.binary_cross_entropy(edge_score, y, reduction="none")])
+                bce_loss = torch.vstack(
+                    [bce_loss, F.binary_cross_entropy(edge_score, y, reduction="none")])
             # bce_loss += self._cal_at_loss(pos_edge, y_pos)
             label_rectifier = self.dec(z_t, edge_index, sigmoid=True)
             label_rectifier = label_rectifier.unsqueeze(1)
             next_y_list.append((0.9 * y + 0.1 * label_rectifier).detach())
-            reg_loss += torch.norm(label_rectifier - edge_score, dim=1, p=2).mean()  # 0异常 1正常
-            kld_loss += self._kld_gauss(enc_mean_t_sl, enc_std_t_sl, prior_mean_t_sl, prior_std_t_sl)
+            reg_loss += torch.norm(label_rectifier -
+                                   edge_score, dim=1, p=2).mean()  # 0异常 1正常
+            kld_loss += self._kld_gauss(enc_mean_t_sl,
+                                        enc_std_t_sl, prior_mean_t_sl, prior_std_t_sl)
             recon_loss += self._recon_loss(z_t, x, edge_index)
 
             all_z.append(z_t)
@@ -257,7 +286,8 @@ class Model(nn.Module):
         num_nodes = graph.num_nodes
         edge_weight = graph.e_weight if "e_weight" in graph.edge_dict() else None
 
-        edge_index, edge_weight = get_laplacian(edge_index, edge_weight, normalization=None, num_nodes=num_nodes)
+        edge_index, edge_weight = get_laplacian(
+            edge_index, edge_weight, normalization=None, num_nodes=num_nodes)
         L = to_scipy_sparse_matrix(edge_index, edge_weight, num_nodes)
         eig_fn = eigs if not is_undirected else eigsh
         _, ev = eig_fn(L, k=1, which="LM", return_eigenvectors=True)
@@ -275,7 +305,8 @@ class Model(nn.Module):
         kld_element = (
             2 * torch.log(std_2 + self.eps)
             - 2 * torch.log(std_1 + self.eps)
-            + (torch.pow(std_1 + self.eps, 2) + torch.pow(mean_1 - mean_2, 2)) / torch.pow(std_2 + self.eps, 2)
+            + (torch.pow(std_1 + self.eps, 2) +
+               torch.pow(mean_1 - mean_2, 2)) / torch.pow(std_2 + self.eps, 2)
             - 1
         )
         return (0.5 / num_nodes) * torch.mean(torch.sum(kld_element, dim=1), dim=0)
@@ -283,14 +314,16 @@ class Model(nn.Module):
     def _kld_gauss_zu(self, mean_in, std_in):
         num_nodes = mean_in.size()[0]
         std_log = torch.log(std_in + self.eps)
-        kld_element = torch.mean(torch.sum(1 + 2 * std_log - mean_in.pow(2) - torch.pow(torch.exp(std_log), 2), 1))
+        kld_element = torch.mean(torch.sum(
+            1 + 2 * std_log - mean_in.pow(2) - torch.pow(torch.exp(std_log), 2), 1))
         return (-0.5 / num_nodes) * kld_element
 
     def _nll_bernoulli(self, logits, target_adj_dense):
         temp_size = target_adj_dense.size()[0]
         temp_sum = target_adj_dense.sum()
         posw = float(temp_size * temp_size - temp_sum) / temp_sum
-        norm = temp_size * temp_size / float((temp_size * temp_size - temp_sum) * 2)
+        norm = temp_size * temp_size / \
+            float((temp_size * temp_size - temp_sum) * 2)
         nll_loss_mat = F.binary_cross_entropy_with_logits(
             input=logits, target=target_adj_dense, pos_weight=posw, reduction="none"
         )
@@ -300,16 +333,20 @@ class Model(nn.Module):
     def _recon_loss(self, z, x, pos_edge_index, neg_edge_index=None):
         x_hat = self.linear(z)
         feature_loss = self.mse(x, x_hat)
-        weight = torch.sigmoid(torch.exp(-torch.norm(z[pos_edge_index[0]] - z[pos_edge_index[1]], dim=1, p=2)))
-        pos_loss = (-torch.log(self.dec(z, pos_edge_index) + self.EPS) * weight).mean()
+        weight = torch.sigmoid(
+            torch.exp(-torch.norm(z[pos_edge_index[0]] - z[pos_edge_index[1]], dim=1, p=2)))
+        pos_loss = (-torch.log(self.dec(z, pos_edge_index) +
+                    self.EPS) * weight).mean()
 
         # Do not include self-loops in negative samples
         pos_edge_index, _ = remove_self_loops(pos_edge_index)
         pos_edge_index, _ = add_self_loops(pos_edge_index)
         if neg_edge_index is None:
             neg_edge_index = negative_sampling(pos_edge_index, z.size(0))
-        weight = torch.sigmoid(torch.exp(torch.norm(z[neg_edge_index[0]] - z[neg_edge_index[1]], dim=1, p=2)))
-        neg_loss = (-torch.log(1 - self.dec(z, neg_edge_index) + self.EPS) * weight).mean()
+        weight = torch.sigmoid(torch.exp(torch.norm(
+            z[neg_edge_index[0]] - z[neg_edge_index[1]], dim=1, p=2)))
+        neg_loss = (-torch.log(1 - self.dec(z, neg_edge_index) +
+                    self.EPS) * weight).mean()
         return pos_loss + neg_loss + feature_loss
 
     def _compute_ev(self, data, normalization=None, is_undirected=False):
@@ -318,7 +355,8 @@ class Model(nn.Module):
         if edge_weight is not None and edge_weight.numel() != data.num_edges:
             edge_weight = None
 
-        edge_index, edge_weight = get_laplacian(data.edge_index, edge_weight, normalization, num_nodes=data.num_nodes)
+        edge_index, edge_weight = get_laplacian(
+            data.edge_index, edge_weight, normalization, num_nodes=data.num_nodes)
         L = to_scipy_sparse_matrix(edge_index, edge_weight, data.num_nodes)
         eig_fn = eigs
         if is_undirected and normalization != "rw":
@@ -414,7 +452,8 @@ class FCC(nn.Module):
     def __init__(self, in_channels, out_channels, device):
         super(FCC, self).__init__()
         self.device = device
-        self.linear = nn.Sequential(nn.Linear(in_channels, out_channels, bias=True, device=self.device), nn.Sigmoid())
+        self.linear = nn.Sequential(nn.Linear(
+            in_channels, out_channels, bias=True, device=self.device), nn.Sigmoid())
 
     def forward(self, x):
         return self.linear(x)
