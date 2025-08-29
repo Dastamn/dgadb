@@ -1,0 +1,17 @@
+datasets:
+  - yelp-zip
+  - bitcoin-alpha
+
+methods:
+  - TADDY
+  - StrGNN
+
+experiment:
+  anomaly_injection:
+    test_ratio: 0.15
+    anom_type: temporal
+
+  epochs: 10
+  optimizer: ""
+  lr: 1e-4
+  

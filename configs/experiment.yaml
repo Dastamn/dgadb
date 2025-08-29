@@ -1,0 +1,15 @@
+datasets:
+  - as-topology
+  - bitcoin-alpha
+  - bitcoin-otc
+  - dgraph
+  - digg-homo
+  - email-dnc
+  - enron
+  - epinions
+  - mooc
+  - reddit
+  - uc-social
+  - wiki
+
+  as-topology  bitcoin-alpha  bitcoin-otc  dgraph  digg-homo  email-dnc  enron  epinions  mooc  reddit  uc-social  wiki

@@ -19,6 +19,8 @@ pipeline:
       params:
         directionality: canonical
         reindex_nodes: True
+        remove_self_loops: False
+        remove_duplicates: False
         
     - name: TimestampNormalizer
 
