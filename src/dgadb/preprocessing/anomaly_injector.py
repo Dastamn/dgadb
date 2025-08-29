@@ -99,7 +99,7 @@ class AnomalyInjector:
 
         src_unpacked, tgt_unpacked, * \
             t_unpacked_list = rows_to_encode.unbind(dim=1)
-        base = self.max_node_id.float() + 1
+        base = float(self.max_node_id + 1)
 
         src_ = src_unpacked.long()
         tgt_ = tgt_unpacked.long()
