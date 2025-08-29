@@ -8,6 +8,7 @@ from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.preprocessing.snapshotting import assign_snapshots
 from src.dgadb.utils import load_config
 from src.dgadb.preprocessing.temporal import generate_data_splits
+import numpy as np
 from src.dgadb.preprocessing.structural import (
     make_undirected,
     remove_self_loops,
@@ -43,10 +44,11 @@ meta_dict = {
 
 data = load_df(dataset)
 data["edges"] = generate_data_splits(data["edges"], train_ratio, val_ratio)
-edge_features=None
-if dataset=="bitcoin-alpha" or dataset=="bitcoin-otc":
-    edge_features = data["edges"].select(["ff0_num"]).to_numpy()
-    data["edges"] = data["edges"].drop("label")
+edge_features=np.ones((len(data["edges"]), 1))
+print(data["edges"])
+#if dataset=="bitcoin-alpha" or dataset=="bitcoin-otc":
+    #edge_features = data["edges"].select(["ff0_num"]).to_numpy()
+    #data["edges"] = data["edges"].drop("label")
 
 data["edges"] = normalize_timestamps(data["edges"])
 

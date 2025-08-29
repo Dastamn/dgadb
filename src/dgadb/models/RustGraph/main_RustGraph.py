@@ -86,7 +86,7 @@ class RustGraphModel:
         n = graph.num_nodes
 
         edges_np = edge_index_train.t().cpu().numpy()
-        epoch_num = 75
+        epoch_num = 50
 
         base_path = os.environ["BASE_PATH"]
         dataset_dir = os.path.dirname(f"{base_path}/src/dgadb/models/RustGraph/n2v_data/")
@@ -126,7 +126,7 @@ class RustGraphModel:
             self.model.train()
             with torch.autograd.set_detect_anomaly(True):
                 bce_loss, reg_loss, gen_loss, con_loss, y_new, h_t, _, _ = self.model(
-                    self.graph, split="train", accumulate=True, y_rect=y_new
+                    self.graph, split="train", accumulate=False, y_rect=y_new
                 )
                 self.h_t = h_t
                 loss = bce_loss.mean()
@@ -142,7 +142,8 @@ class RustGraphModel:
                 self.optimizer.step()
 
             if (epoch + 1) % self.print_freq == 0 or epoch == self.epochs - 1:
-                split = "val" if self.has_val else "train"
+                #split = "val" if self.has_val else "train"
+                split = "test"
                 preds_per_snap, labels_per_snap = self.inference(split=split)
                 preds = np.hstack(preds_per_snap)
                 labels = np.hstack(labels_per_snap)
@@ -158,7 +159,7 @@ class RustGraphModel:
     def inference(self, split="test"):
         self.model.eval()
         with torch.no_grad():
-            _, _, _, _, _, _, pred_list, y_list = self.model(self.graph, split=split, accumulate=True, h_t=self.h_t)
+            _, _, _, _, _, _, pred_list, y_list = self.model(self.graph, split=split, accumulate=False, h_t=self.h_t)
 
         preds_per_snap = [s.detach().cpu().squeeze() for s in pred_list]
         labels_per_snap = [y.detach().cpu().squeeze() for y in y_list]

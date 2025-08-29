@@ -197,7 +197,8 @@ class Model(nn.Module):
             x = snap.n_feat
             edge_index = snap.e_pairs
             y = snap.e_label.float().unsqueeze(1)
-            node_index = torch.arange(x.size(0), device=self.device)
+            #node_index = torch.arange(x.size(0), device=self.device)
+            node_index = torch.unique(edge_index)
 
             if y_rect is not None:
                 y = y_rect[t]

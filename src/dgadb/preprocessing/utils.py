@@ -10,7 +10,10 @@ def cartesian_sample(tensors: list[torch.Tensor], num_samples: int, device: Devi
     idx = torch.randint(0, product_size, (num_samples,), device=device)
 
     # strides[i] = product(sizes[i+1:])
-    strides = torch.cumprod(torch.cat((sizes[1:], torch.tensor([1], device=device))), dim=0)
+    strides = torch.empty_like(sizes)
+    strides[-1] = 1
+    for i in range(len(sizes) - 2, -1, -1):
+        strides[i] = strides[i + 1] * sizes[i + 1]
 
     # coords[:, i] = (idx // strides[i]) % sizes[i]
     coords = (idx.unsqueeze(1) // strides) % sizes
@@ -56,8 +59,14 @@ def to_undirected(src: torch.Tensor, tgt: torch.Tensor) -> tuple[torch.Tensor, t
     combined_indices = torch.cat([original_indices, original_indices])
 
     canonical_src, canonical_tgt = to_canonical(combined_src, combined_tgt)
-    max_node_id = canonical_tgt.max()
-    canonical_edge_ids = canonical_src * max_node_id + canonical_tgt
+    canonical_src, canonical_tgt = to_canonical(combined_src, combined_tgt)
+    # old:
+    # max_node_id = canonical_tgt.max()
+    # canonical_edge_ids = canonical_src * max_node_id + canonical_tgt
+
+    # new: base must be >= max node id + 1 to avoid collisions
+    base = torch.max(canonical_src.max(), canonical_tgt.max()).item() + 1
+    canonical_edge_ids = canonical_src * base + canonical_tgt
 
     _, first_occurrence_indices = unique_with_indices(canonical_edge_ids)
     unique_u = canonical_src[first_occurrence_indices]

@@ -29,7 +29,7 @@ df = df.with_row_index(name="edge_id")
 
 # ids starting at 0
 df = df.with_columns([(pl.col("src") - 1).alias("src"), (pl.col("tgt") - 1).alias("tgt")])
-
+print(df)
 file_path = os.path.join(dataset_dir, "edges.parquet")
 df.write_parquet(file_path)
 

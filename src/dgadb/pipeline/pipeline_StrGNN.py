@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-dataset = "bitcoin-otc"
+dataset = "bitcoin-alpha"
 
 config = load_config(dataset)
 snapshot_size = config["snapshot_size"]

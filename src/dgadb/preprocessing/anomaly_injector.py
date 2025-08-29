@@ -634,7 +634,7 @@ class AnomalyInjector:
         )
 
         if (self.temporal_graph.edge_labels == 1).any():
-            if reset_labels:
+            """ if reset_labels:
                 self.logger.info(
                     "reset_labels=True, reseting anomalies...")
                 is_normal_mask = edge_labels == 0
@@ -650,7 +650,7 @@ class AnomalyInjector:
                 )
             else:
                 raise RuntimeError(
-                    f"'{dataset_name}' already contains labels, set reset_labels=True to overwrite.")
+                    f"'{dataset_name}' already contains labels, set reset_labels=True to overwrite.") """
 
         gen_anom: dict[str, tuple[torch.Tensor, ...]] = {}
 
@@ -848,10 +848,11 @@ class AnomalyInjector:
 
         # Sort by 'src' then 't'
         self.logger.info("Sorting final graph by timestamp and source node...")
-        src_sort_indices = torch.argsort(final_src, stable=True)
-        src_sorted_t = final_t[src_sort_indices]
-        final_sort_indices = src_sort_indices[torch.argsort(
-            src_sorted_t, stable=True)]
+        #src_sort_indices = torch.argsort(final_src, stable=True)
+        #src_sorted_t = final_t[src_sort_indices]
+        #final_sort_indices = src_sort_indices[torch.argsort(
+        #    src_sorted_t, stable=True)]
+        final_sort_indices = torch.argsort(final_t, stable=True)
 
         # Update metadata
         injection_metadata["splits"]["train"]["generated"] = \
