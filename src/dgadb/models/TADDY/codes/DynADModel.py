@@ -46,16 +46,18 @@ class DynADModel(BertPreTrainedModel):
     def batch_cut(self, idx_list):
         batch_list = []
         for i in range(0, len(idx_list), self.config.batch_size):
-            batch_list.append(idx_list[i : i + self.config.batch_size])
+            batch_list.append(idx_list[i: i + self.config.batch_size])
         return batch_list
 
     def generate_embedding(self, edges):
         num_snap = len(edges)
         # WL_dict = compute_WL(self.data['idx'], np.vstack(edges[:7]))
-        WL_dict = compute_zero_WL(self.data["idx"], np.vstack(edges[:7]))
+        WL_dict = compute_zero_WL(self.data["idx"], None)
         batch_hop_dicts = compute_batch_hop(
             self.data["idx"], edges, num_snap, self.data["S"], self.config.k, self.config.window_size
         )
+        # print("batch hop dicts", len(batch_hop_dicts))
+
         raw_embeddings, wl_embeddings, hop_embeddings, int_embeddings, time_embeddings = dicts_to_embeddings(
             self.data["X"], batch_hop_dicts, WL_dict, num_snap
         )

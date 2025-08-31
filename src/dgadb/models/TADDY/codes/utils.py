@@ -52,8 +52,10 @@ def compute_batch_hop(node_list, edges_all, num_snap, Ss, k=5, window_size=1):
         # G.add_nodes_from(node_list)
         # G.add_edges_from(edges)
 
-        for edge in edges:
-            edge_idx = str(snap) + "_" + str(edge[0]) + "_" + str(edge[1])
+        for i, edge in enumerate(edges):
+            # edge_idx = str(snap) + "_" + str(edge[0]) + "_" + str(edge[1])
+            edge_idx = str(snap) + "_" + \
+                str(edge[0]) + "_" + str(edge[1]) + "_" + str(i)
             batch_hop_dict[edge_idx] = []
             for lookback in range(window_size):
                 # s = np.array(Ss[snap-lookback][edge[0]] + Ss[snap-lookback][edge[1]].todense()).squeeze()
@@ -62,21 +64,38 @@ def compute_batch_hop(node_list, edges_all, num_snap, Ss, k=5, window_size=1):
                 s[edge[1]] = -1000  # don't pick myself
                 top_k_neighbor_index = s.argsort()[-k:][::-1]
 
-                indexs = np.hstack((np.array([edge[0], edge[1]]), top_k_neighbor_index))
+                indexs = np.hstack(
+                    (np.array([edge[0], edge[1]]), top_k_neighbor_index))
 
                 for i, neighbor_index in enumerate(indexs):
                     try:
-                        hop1 = nx.shortest_path_length(Gs[snap - lookback], source=edge[0], target=neighbor_index)
+                        hop1 = nx.shortest_path_length(
+                            Gs[snap - lookback], source=edge[0], target=neighbor_index)
                     except:
                         hop1 = 99
                     try:
-                        hop2 = nx.shortest_path_length(Gs[snap - lookback], source=edge[1], target=neighbor_index)
+                        hop2 = nx.shortest_path_length(
+                            Gs[snap - lookback], source=edge[1], target=neighbor_index)
                     except:
                         hop2 = 99
                     hop = min(hop1, hop2)
-                    batch_hop_dict[edge_idx].append((neighbor_index, s_ranking[i], hop, lookback))
+                    # if batch_hop_dict[edge_idx]:
+                    #     print(edge_idx)
+                    #     print(batch_hop_dict[edge_idx])
+                    #     print("HERE ---")
+                    batch_hop_dict[edge_idx].append(
+                        (neighbor_index, s_ranking[i], hop, lookback))
+
         batch_hop_dicts.append(batch_hop_dict)
 
+    # for snap in range(num_snap):
+    #     if batch_hop_dicts[snap] is not None:
+    #         # print(edges_all[snap].shape)
+    #         print(edges_all[snap])
+    #         unique_edges, *_ = np.unique(edges_all[snap], axis=0)
+    #         print(unique_edges)
+    #         print(snap, len(edges_all[snap]), len(
+    #             edges_all[snap]), len(batch_hop_dicts[snap]))
     return batch_hop_dicts
 
 
