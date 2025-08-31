@@ -197,6 +197,7 @@ class GraphDataContainer:
             train_mask=train_mask,
             val_mask=val_mask,
             test_mask=test_mask,
+            w=torch.ones(size=(src.size(0),)),
             metadata=metadata
         )
 
