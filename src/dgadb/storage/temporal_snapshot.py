@@ -55,8 +55,8 @@ class TemporalGraphSnapshotLoader:
                     f"Split mask '{split_mask_name}' not found in graph object.")
 
             if not split_mask.any():
-                self.logger.warning("'{self.split}' split is empty.")
-                self._split_indices = torch.tensor([], dtype=torch.long)
+                self.logger.warning(f"'{self.split}' split is empty.")
+                self._num_split_edges = 0
             else:
                 split_indices = torch.where(split_mask)[0]
                 self._split_start_i = int(split_indices[0].item())
