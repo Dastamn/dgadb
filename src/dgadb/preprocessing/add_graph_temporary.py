@@ -189,7 +189,8 @@ def inject_anomalies_addgraph_style(
         train_mask=train_mask,
         val_mask=val_mask,
         test_mask=test_mask,
-        w=(tg.w.clone() if tg.w is not None else None),
+        # w=(tg.w.clone() if tg.w is not None else None),
+        w=torch.ones(size=(new_src.size(0),)),
         node_attr=(tg.node_attr.clone() if tg.node_attr is not None else None),
         node_labels=(tg.node_labels.clone()
                      if tg.node_labels is not None else None),
