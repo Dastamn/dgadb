@@ -1,0 +1,116 @@
+(venv) azzedine@katana ➜  dgadb git:(feature/hyperparameter-tuning) ✗ 
+cd /home/azzedine/Projects/dgadb && python test_tuning.py
+=== Testing GCN Hyperparameter Tuning ===
+2025-09-02 15:17:59,044 INFO worker.py:1951 -- Started a local Ray instance.
+2025-09-02 15:17:59,728 - src.dgadb.tuning.core.tune_core - INFO - Initialized HyperparameterTuner for GCNModel on bitcoin-alpha
+Search space parameters: ['embedding_dim', 'hidden_dim', 'num_layers', 'dropout', 'learning_rate', 'num_epoch', 'decoder_epochs', 'decoder_learning_rate', 'remove_self_loops']
+Starting hyperparameter tuning with 2 trials...
+2025-09-02 15:17:59,731 INFO registry.py:112 -- Detected unknown callable for trainable. Converting to class.
+2025-09-02 15:17:59,792 WARNING tune.py:902 -- AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now.
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Configuration for experiment     _trainable_function_2025-09-02_15-17-59   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Search algorithm                 BasicVariantGenerator                     │
+│ Scheduler                        AsyncHyperBandScheduler                   │
+│ Number of trials                 3                                         │
+╰────────────────────────────────────────────────────────────────────────────╯
+
+View detailed results here: /home/azzedine/Projects/dgadb/test_tuning_results/_trainable_function_2025-09-02_15-17-59
+To visualize your results with TensorBoard, run: `tensorboard --logdir /tmp/ray/session_2025-09-02_15-17-58_373667_54410/artifacts/2025-09-02_15-17-59/_trainable_function_2025-09-02_15-17-59/driver_artifacts`
+
+Trial status: 1 PENDING
+Current time: 2025-09-02 15:17:59. Total running time: 0s
+Logical resource usage: 2.0/16 CPUs, 0/1 GPUs (0.0/1.0 accelerator_type:G)
+╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Trial name                        status       embedding_dim     learning_rate     num_epoch │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│ _trainable_function_3f5b5_00000   PENDING                512        0.00931444            50 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Trial _trainable_function_3f5b5_00000 started with configuration:
+╭──────────────────────────────────────────────────────────╮
+│ Trial _trainable_function_3f5b5_00000 config             │
+├──────────────────────────────────────────────────────────┤
+│ embedding_dim                                        512 │
+│ learning_rate                                    0.00931 │
+│ num_epoch                                             50 │
+╰──────────────────────────────────────────────────────────╯
+(_trainable_function pid=55584) 2025-09-02 15:18:02,605 - src.dgadb.tuning.core.tune_core - ERROR - Trial failed with error: 'BASE_PATH'
+
+Trial _trainable_function_3f5b5_00000 completed after 1 iterations at 2025-09-02 15:18:02. Total running time: 2s
+╭──────────────────────────────────────────────────────────────╮
+│ Trial _trainable_function_3f5b5_00000 result                 │
+├──────────────────────────────────────────────────────────────┤
+│ checkpoint_dir_name                                          │
+│ time_this_iter_s                                      0.0142 │
+│ time_total_s                                          0.0142 │
+│ training_iteration                                         1 │
+│ auc                                                       0. │
+│ error                                            'BASE_PATH' │
+│ loss                                                      1. │
+╰──────────────────────────────────────────────────────────────╯
+
+Trial _trainable_function_3f5b5_00001 started with configuration:
+╭──────────────────────────────────────────────────────────╮
+│ Trial _trainable_function_3f5b5_00001 config             │
+├──────────────────────────────────────────────────────────┤
+│ embedding_dim                                        256 │
+│ learning_rate                                    0.00026 │
+│ num_epoch                                            100 │
+╰──────────────────────────────────────────────────────────╯
+
+Trial _trainable_function_3f5b5_00001 completed after 1 iterations at 2025-09-02 15:18:05. Total running time: 5s
+╭──────────────────────────────────────────────────────────────╮
+│ Trial _trainable_function_3f5b5_00001 result                 │
+├──────────────────────────────────────────────────────────────┤
+│ checkpoint_dir_name                                          │
+│ time_this_iter_s                                     0.00897 │
+│ time_total_s                                         0.00897 │
+│ training_iteration                                         1 │
+│ auc                                                       0. │
+│ error                                            'BASE_PATH' │
+│ loss                                                      1. │
+╰──────────────────────────────────────────────────────────────╯
+
+Trial _trainable_function_3f5b5_00002 started with configuration:
+╭──────────────────────────────────────────────────────────╮
+│ Trial _trainable_function_3f5b5_00002 config             │
+├──────────────────────────────────────────────────────────┤
+│ embedding_dim                                        128 │
+│ learning_rate                                    0.06829 │
+│ num_epoch                                             50 │
+╰──────────────────────────────────────────────────────────╯
+
+Trial _trainable_function_3f5b5_00002 completed after 1 iterations at 2025-09-02 15:18:08. Total running time: 8s
+╭──────────────────────────────────────────────────────────────╮
+│ Trial _trainable_function_3f5b5_00002 result                 │
+├──────────────────────────────────────────────────────────────┤
+│ checkpoint_dir_name                                          │
+│ time_this_iter_s                                     0.00652 │
+│ time_total_s                                         0.00652 │
+│ training_iteration                                         1 │
+│ auc                                                       0. │
+│ error                                            'BASE_PATH' │
+│ loss                                                      1. │
+╰──────────────────────────────────────────────────────────────╯
+2025-09-02 15:18:08,018 INFO tune.py:1009 -- Wrote the latest version of all result files and experiment state to '/home/azzedine/Projects/dgadb/test_tuning_results/_trainable_function_2025-09-02_15-17-59' in 0.0030s.
+
+Trial status: 3 TERMINATED
+Current time: 2025-09-02 15:18:08. Total running time: 8s
+Logical resource usage: 0/16 CPUs, 0/1 GPUs (0.0/1.0 accelerator_type:G)
+Current best trial: 3f5b5_00000 with loss=1.0 and params={'embedding_dim': 512, 'learning_rate': 0.009314443053460424, 'num_epoch': 50}
+╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Trial name                        status         embedding_dim     learning_rate     num_epoch     iter     total time (s)     auc     loss │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ _trainable_function_3f5b5_00000   TERMINATED               512       0.00931444             50        1         0.0142004        0        1 │
+│ _trainable_function_3f5b5_00001   TERMINATED               256       0.000259656           100        1         0.00896931       0        1 │
+│ _trainable_function_3f5b5_00002   TERMINATED               128       0.0682858              50        1         0.00651622       0        1 │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+2025-09-02 15:18:08,022 - src.dgadb.tuning.core.tune_core - INFO - Tuning completed. Best auc: 0.0000
+2025-09-02 15:18:08,022 - src.dgadb.tuning.core.tune_core - INFO - Best configuration: {'embedding_dim': 512, 'learning_rate': 0.009314443053460424, 'num_epoch': 50}
+2025-09-02 15:18:08,022 - src.dgadb.tuning.core.tune_core - INFO - Results saved to: /home/azzedine/Projects/dgadb/test_tuning_results/GCNModel_bitcoin-alpha_20250902_151808.json
+Tuning completed!
+Best AUC: 0.0000
+Best config: {'embedding_dim': 512, 'learning_rate': 0.009314443053460424, 'num_epoch': 50}
+(_trainable_function pid=55888) 2025-09-02 15:18:08,010 - src.dgadb.tuning.core.tune_core - ERROR - Trial failed with error: 'BASE_PATH' [repeated 2x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)

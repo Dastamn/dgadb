@@ -52,3 +52,6 @@ urllib3==2.5.0
 virtualenv==20.32.0
 torch_geometric==2.6.1
 torch-cluster==2.3.1
+ray[tune]==2.32.0
+optuna==3.6.1
+hyperopt==0.2.7
