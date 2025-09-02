@@ -149,7 +149,11 @@ class TemporalGraph:
 
 
 class TemporalGraphLoader:
-    def __init__(self, base_directory: str, metadata_suffix: str = "_meta") -> None:
+    def __init__(
+        self,
+        base_directory: str = "processed/",
+        metadata_suffix: str = "_meta"
+    ) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.base_directory = base_directory
         self.metadata_suffix = metadata_suffix
