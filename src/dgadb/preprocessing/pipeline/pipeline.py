@@ -80,7 +80,7 @@ class Pipeline:
         if not config_name.endswith(".yaml"):
             config_name += ".yaml"
 
-        config_path = os.path.join(_CONFIG_PATH, config_name)
+        config_path = os.path.join(_CONFIG_PATH, "datasets", config_name)
         logger.info(f"Loading config: '{config_path}'")
 
         if not os.path.exists(config_path):
@@ -104,6 +104,12 @@ class Pipeline:
             raise error
 
         logger.info("Building preprocessing pipeline from config...")
+
+        meta_dict = {
+            "anom_train_ratio": config["anomalies"]["anom_train_ratio"],
+            "anom_val_ratio": config["anomalies"]["anom_val_ratio"],
+            "anom_test_ratio": config["anomalies"]["anom_test_ratio"]
+        }
 
         pipeline_steps: list[PipelineStep] = []
 
@@ -163,6 +169,10 @@ class Pipeline:
 
             pipeline_steps.append(step_instance)
 
+            if step_name=="TemporalSplitter":
+                for k,v in step_params.items():
+                    meta_dict[k] = v
+
         pipeline_callbacks: list[Callback] = []
 
         # TODO @Dastamn: Add support for callbacks in config
@@ -176,7 +186,7 @@ class Pipeline:
 
         logger.info("Pipeline built successfully.")
 
-        return Pipeline(pipeline_steps, pipeline_callbacks)
+        return Pipeline(pipeline_steps, pipeline_callbacks), meta_dict
 
     def __repr__(self) -> str:
         steps_ = "; ".join(repr(step) for step in self.steps)

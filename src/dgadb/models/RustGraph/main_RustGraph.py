@@ -44,8 +44,6 @@ class RustGraphModel:
         self.dataset_name: str = meta_dict["dataset_name"]
         self.train_ratio: float = float(meta_dict["train_ratio"])
         self.val_ratio: float = float(meta_dict["val_ratio"])
-        # self.anomaly_ratio: float = float(meta_dict["anomaly_ratio"])
-        self.anomaly_ratio: float = meta_dict["anomaly_ratio"]
         self.has_val: bool = self.val_ratio > 0.0
 
         self.print_freq: int = int(hyperparams.get("print_freq", 10))

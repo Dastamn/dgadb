@@ -1,0 +1,29 @@
+model: RustGraph
+
+
+
+hyperparameters:
+  epochs: 250
+  learning-rate:
+    default:
+      type: grid_search
+      search_space: [0.0001]
+    bitcoin-alpha:
+      fixed: 0.001
+
+  emb-dim:
+    default:
+      type: grid_search
+      search_space: [128]
+
+  snapshot_size:
+    default:
+      type: random_search
+      search_space: [2000]
+    bitcoin-alpha:
+      type: grid_search
+      search_space: [2000]
+    bitcoin-otc:
+      fixed: 1000
+    email-dnc:
+      fixed: 2000
