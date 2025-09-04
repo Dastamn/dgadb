@@ -58,7 +58,8 @@ class RustGraphModel:
         self.noise_ratio: float = float(hyperparams.get("noise_ratio", 0.0))
 
         # training parameters
-        self.epochs: int = int(hyperparams.get("num_epochs", 250))
+        # self.epochs: int = int(hyperparams.get("num_epochs", 250))
+        self.epochs: int = int(hyperparams.get("epochs", 250))
         self.lr: float = float(hyperparams.get("lr", 0.001))
         self.weight_decay: float = float(hyperparams.get("weight_decay", 0.01))
 
@@ -127,12 +128,13 @@ class RustGraphModel:
         self.graph = graph
 
     @time_func
-    def train(self) -> None:
+    def train(self, runnable=None) -> None:
         y_new = None
         max_auc, max_epoch = -float("inf"), -1
         self.model.train()
         y_new = None
-        for epoch in tqdm(range(self.epochs)):
+        # for epoch in tqdm(range(self.epochs)):
+        for epoch in range(self.epochs):
             self.model.train()
             with torch.autograd.set_detect_anomaly(True):
                 bce_loss, reg_loss, gen_loss, con_loss, y_new, h_t, _, _ = self.model(
@@ -151,7 +153,7 @@ class RustGraphModel:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10)
                 self.optimizer.step()
 
-            if (epoch + 1) % self.print_freq == 0 or epoch == self.epochs - 1:
+            if ((epoch + 1) % self.print_freq == 0 or epoch == self.epochs - 1) or runnable is not None:
                 split = "val" if self.has_val else "train"
                 preds_per_snap, labels_per_snap = self.inference(split=split)
                 preds = np.hstack(preds_per_snap)
@@ -162,6 +164,9 @@ class RustGraphModel:
                 logger.info(f"Loss: {loss:.4f} in epoch: {epoch},\t")
                 logger.info(
                     f"AUC on {split} set: {auc_all:.4f} in epoch: {epoch},\t")
+
+                if runnable is not None:
+                    runnable(auc_all)
 
         logger.info(f"MAX AUC: {max_auc:.4f} in epoch: {max_epoch},\t")
 

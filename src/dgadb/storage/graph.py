@@ -61,7 +61,8 @@ class Graph:
 
     def _validate_and_set(self, key: str, value: torch.Tensor, is_node: bool):
         if not isinstance(value, torch.Tensor):
-            raise TypeError(f"{'Node' if is_node else 'Edge'} key '{key}' must be a torch.Tensor")
+            raise TypeError(
+                f"{'Node' if is_node else 'Edge'} key '{key}' must be a torch.Tensor")
         if is_node:
             if key not in N_KEYS:
                 raise ValueError(f"Invalid node key: {key}")
@@ -72,10 +73,13 @@ class Graph:
             self._edges[key] = value
 
     def __getattr__(self, name: str) -> Any:
-        if name in self._nodes:
-            return self._nodes[name]
-        if name in self._edges:
-            return self._edges[name]
+        _nodes = object.__getattribute__(self, "_nodes")
+        _edges = object.__getattribute__(self, "_edges")
+
+        if name in _nodes:
+            return _nodes[name]
+        if name in _edges:
+            return _edges[name]
         raise AttributeError(f"Graph object has no attribute '{name}'")
 
     def __setattr__(self, name: str, value: Any):
@@ -105,7 +109,7 @@ class Graph:
         for k in self._edges:
             self._edges[k] = self._edges[k].to(device)
         return self
-    
+
     def generate_snapshots(self, snapshot_size: int, temporal_snapshots: bool = False):
         """
         Assigns snapshot IDs to edges based on either temporal or structural slicing.
@@ -114,7 +118,7 @@ class Graph:
         snapshot_size : int
             The size or duration of each snapshot. For temporal slicing this represents
             the time window. For structural slicing this is the number of edges per snapshot.
-        
+
         temporal_snapshots : bool, optional (default=False)
             If True, snapshots are generated based on temporal intervals using the 'e_timestamp' field.
             If False, snapshots are generated structurally by grouping a fixed number of edges.
@@ -190,7 +194,8 @@ class Graph:
                 return idx, snaps, next_start
 
             start = 0
-            train_idx, train_snaps, start = _assign_structural(train_mask, start)
+            train_idx, train_snaps, start = _assign_structural(
+                train_mask, start)
             if train_idx.numel() > 0:
                 e_snapshot_id[train_idx] = train_snaps
 
@@ -206,7 +211,6 @@ class Graph:
                 e_snapshot_id[test_idx] = test_snaps
 
         self._edges["e_snapshot_id"] = e_snapshot_id
-
 
     def snapshots(self, split="all", accumulate=True, all_nodes: bool = True):
         """
@@ -248,8 +252,9 @@ class Graph:
         elif split == "test":
             split_mask = self.e_test_mask
         else:
-            raise ValueError("split must be one of {'train','val','test','all'}")
-        
+            raise ValueError(
+                "split must be one of {'train','val','test','all'}")
+
         # only keep edges from split
         e_sids = self._edges["e_snapshot_id"][split_mask]
         snap_ids = torch.unique(e_sids)
@@ -265,7 +270,7 @@ class Graph:
 
             if e_idx.numel() == 0:
                 continue
-            
+
             edges_sub = {}
             for k, v in self._edges.items():
                 if k == "e_pairs":
@@ -287,7 +292,8 @@ class Graph:
                     present = torch.isin(self._nodes["n_id"], edge_node_ids)
                     n_mask = n_time_mask & present
                 n_idx = n_mask.nonzero(as_tuple=True)[0]
-                nodes_sub = {k: v[n_idx] for k, v in self._nodes.items() if v.shape[0] == n_mask.shape[0]}
+                nodes_sub = {k: v[n_idx] for k, v in self._nodes.items(
+                ) if v.shape[0] == n_mask.shape[0]}
 
             else:
                 if all_nodes:
@@ -296,9 +302,11 @@ class Graph:
                 else:
                     # just include nodes present in current edges
                     edge_node_ids = torch.unique(edges_sub["e_pairs"])
-                    id_map = {id.item(): i for i, id in enumerate(edge_node_ids)}
+                    id_map = {id.item(): i for i,
+                              id in enumerate(edge_node_ids)}
                     nodes_sub = {}
-                    n_mask = torch.tensor([x.item() in id_map for x in self._nodes["n_id"]])
+                    n_mask = torch.tensor(
+                        [x.item() in id_map for x in self._nodes["n_id"]])
                     n_idx = n_mask.nonzero(as_tuple=True)[0]
                     for k, v in self._nodes.items():
                         if v.shape[0] == mask.shape[0]:
