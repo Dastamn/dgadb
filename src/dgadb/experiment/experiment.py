@@ -5,6 +5,7 @@ from src.dgadb.preprocessing.pipeline.pipeline import Pipeline
 from src.dgadb.models.RustGraph.main_RustGraph import RustGraphModel
 from src.dgadb.storage import convert_temporal_graph_to_legacy_graph, Graph
 from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
+from src.dgadb.evaluation.evaluator import Evaluator
 import os
 import yaml
 from sklearn.metrics import roc_auc_score
@@ -29,19 +30,24 @@ class Experiment2:
 class Experiment():
     def __init__(self, exp_name: str, dataset_name: str) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.exp_config = self._load_config(exp_name)
-        self.model = _MODELS[self.exp_config["model"]]
+        self.exp_config = self._load_config("experiments", exp_name)
+        self.method_name = self.exp_config["model"]
+        self.method = _MODELS[self.method_name]
+        self.anomaly_as_0 = self.exp_config.get("anomaly_as_0", False)
         self.num_samples = self.exp_config.get("num_samples", 1)
         # self.time_budget_s = self.exp_config.get("time_budget_s", 3600)
         self.time_budget_s = self.exp_config.get("time_budget_s", 60)
         self.dataset_name = dataset_name
         self.param_space = self._load_param_space(self.exp_config)
+        self.dataset_config = None
 
-    def _load_config(self, config_name):
+    def _load_config(self, config_type, config_name):
         if not config_name.endswith(".yaml"):
             config_name += ".yaml"
+        if not config_type in ["datasets", "experiments"]:
+            raise ValueError("No such config_type")
 
-        config_path = os.path.join(_CONFIG_PATH, "experiments", config_name)
+        config_path = os.path.join(_CONFIG_PATH, config_type, config_name)
         self.logger.info(f"Loading config: '{config_path}'")
 
         if not os.path.exists(config_path):
@@ -96,10 +102,11 @@ class Experiment():
 
         return param_space
 
-    def preprocessing(self, flip_labels: bool):
-        pipeline, meta_dict = Pipeline.from_config(
+    def preprocessing(self):
+        pipeline, meta_dict, dataset_config = Pipeline.from_config(
             self.dataset_name, force_rerun=True)
         self.meta_dict = meta_dict
+        self.dataset_config = dataset_config
         self.meta_dict["dataset_name"] = self.dataset_name
         container = pipeline.run()
         tg = container.to_temporal_graph()
@@ -111,32 +118,32 @@ class Experiment():
             anom_test_ratio=self.meta_dict.get("anom_test_ratio", 0.0),
             noise_ratio=0.0)
 
-        if flip_labels:
+        if self.anomaly_as_0:
             anomalous_temporal_graph.flip_edge_labels()
 
         self.graph = convert_temporal_graph_to_legacy_graph(
             anomalous_temporal_graph)
         del self.graph._nodes["n_feat"]
 
-    def training_function(self, config: dict, model_class: Type[RustGraphModel], graph: Graph, meta_dict: dict, *args):
+    def training_function(self, config: dict, graph: Graph, meta_dict: dict, *args):
         def tune_report(metric):
             tune.report(metrics={"metric": metric})
 
         graph.generate_snapshots(
             snapshot_size=config["snapshot_size"], temporal_snapshots=False)
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = model_class(device, meta_dict,
+        self.model = self.method(device, meta_dict,
                             config, roc_auc_score)
         graph = graph.to(device)
-        model.setup(graph)
-        model.train(tune_report)
+        self.model.setup(graph)
+        self.model.train(tune_report)
 
     def run(self):
         cpu_count = multiprocessing.cpu_count()
         tuner = tune.Tuner(
             tune.with_resources(
                 tune.with_parameters(
-                    self.training_function, model_class=RustGraphModel, graph=self.graph, meta_dict=self.meta_dict),
+                    self.training_function, graph=self.graph, meta_dict=self.meta_dict),
                 {"cpu": cpu_count // 2}),
             param_space=self.param_space,
             tune_config=tune.TuneConfig(
@@ -144,7 +151,23 @@ class Experiment():
         )
 
         results = tuner.fit()
-        print(results)
+        best_result = results.get_best_result("metric", "max")
+        best_config = best_result.config
+        self.evaluator = Evaluator(dataset_name=self.dataset_name,
+                                   method_name=self.method_name,
+                                   dataset_config=self.dataset_config,
+                                   method_config=best_config,
+                                   experiment_config=self.exp_config,
+                                   anomaly_as_0=self.anomaly_as_0,
+                                   output_dir="eval-data")
+        preds, labels = self.model.inference("test")
+        self.evaluator.eval_preds(labels, preds)
+        self.evaluator.log_roc()
+        self.evaluator.save_results()
+
+if __name__ == "__main__":
+        
+        """
         best_result = results.get_best_result("metric", "max")
 
         print(best_result)
@@ -171,10 +194,10 @@ class Experiment():
 
         print("--- Best Result ---")
         print(json.dumps(output, indent=4))
-
+        """
 
 if __name__ == "__main__":
-    dataset_name = "reddit"
+    dataset_name = "bitcoin-alpha"
     e = Experiment(exp_name="rustgraph_test", dataset_name=dataset_name)
-    e.preprocessing(flip_labels=True)
-    e.run()
+    e.preprocessing()
+    e.run() 
