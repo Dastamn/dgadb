@@ -186,7 +186,7 @@ class Pipeline:
 
         logger.info("Pipeline built successfully.")
 
-        return Pipeline(pipeline_steps, pipeline_callbacks), meta_dict
+        return Pipeline(pipeline_steps, pipeline_callbacks), meta_dict, config
 
     def __repr__(self) -> str:
         steps_ = "; ".join(repr(step) for step in self.steps)
