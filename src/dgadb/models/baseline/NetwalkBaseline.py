@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
-
+from sklearn.metrics import roc_auc_score
 from src.dgadb.storage import TemporalGraph
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ class CliqueAutoencoder(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights as in the original TensorFlow implementation"""
         for module in [self.enc, self.dec]:
             # Uniform unit scaling initializer
             fan_in = module.in_features
@@ -45,7 +44,6 @@ class CliqueAutoencoder(nn.Module):
             nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor, corrupt_prob: float = 0.0) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass with optional corruption (denoising autoencoder)"""
         if self.training and corrupt_prob > 0.0:
             # Add uniform noise
             noise = torch.rand_like(x) * 0.1
@@ -76,8 +74,7 @@ class NetWalkBaseline:
         self.walk_len: int = int(hyperparams.get("walk_length", 3))
         self.walks_per_node: int = int(hyperparams.get("walks_per_node", 20))
         self.init_percent: float = float(hyperparams.get("init_percent", 0.8))  # fraction of train edges for the initial graph
-        self.snap_size: int = int(hyperparams.get("snap_size", 100))
-        self.snap_size = 2000
+        self.snap_size: int = int(hyperparams.get("snap_size", 1000))
         self.reservoir_dim: int = int(hyperparams.get("reservoir_dim", self.snap_size))
         self.rand_seed: int = int(hyperparams.get("random_state", 24))
 
@@ -124,15 +121,15 @@ class NetWalkBaseline:
 
 
         # paper style anom injection
-        self.inject_test_ratio: float = float(hyperparams.get("inject_test_ratio", 0.10))
-        self.spectral_k: int = int(hyperparams.get("spectral_k", 10))
-        self.injection_seed: int = int(hyperparams.get("injection_seed", 1))
+        #self.inject_test_ratio: float = float(hyperparams.get("inject_test_ratio", 0.10))
+        #self.spectral_k: int = int(hyperparams.get("spectral_k", 10))
+        #self.injection_seed: int = int(hyperparams.get("injection_seed", 1))
 
-        logger.info(
-            f"NetWalkBaseline init: walk_len={self.walk_len}, wpn={self.walks_per_node}, "
-            f"init_percent={self.init_percent}, snap_size={self.snap_size}, res_dim={self.reservoir_dim}, "
-            f"hidden={self.hidden}, epochs={self.epochs}, opt={self.optimizer_name},  k={self.kmeans_k}"
-        )
+        #logger.info(
+        #    f"NetWalkBaseline init: walk_len={self.walk_len}, wpn={self.walks_per_node}, "
+        #    f"init_percent={self.init_percent}, snap_size={self.snap_size}, res_dim={self.reservoir_dim}, "
+        #   f"hidden={self.hidden}, epochs={self.epochs},   k={self.kmeans_k}"
+        #)
 
     def setup(self, temporal_graph: TemporalGraph) -> None:
         self.num_nodes = int(temporal_graph.num_nodes)
@@ -166,7 +163,7 @@ class NetWalkBaseline:
         # store snapshots
         self._train_snapshots = train_snapshots
 
-    def train(self) -> None:
+    def train(self, runnable=None) -> None:
         self._ensure_setup()
         assert self.ae is not None and self.opt is not None and self.num_nodes is not None
 
@@ -196,9 +193,31 @@ class NetWalkBaseline:
             # train on combined walks
             x = self._walks_to_onehot(combined_walks)
             self._fit_autoencoder(x)
-
+            
             if (snap_i % 10) == 0:
                 logger.info(f"NetWalk train: processed snapshot {snap_i}/{len(self._train_snapshots)}")
+            if runnable is not None:
+                # compute current state for evaluation
+                current_embeddings = self._compute_node_embeddings()
+
+                # fit temporary KMeans
+                ei = self.edge_index[:, self.train_mask]
+                train_codes = self._edge_codes_from_embeddings(current_embeddings, ei)
+                temp_kmeans = KMeans(n_clusters=self.kmeans_k, random_state=self.rand_seed, n_init=10)
+                temp_kmeans.fit(train_codes)
+                temp_centroids = temp_kmeans.cluster_centers_
+
+                # evaluate on validation
+                val_ei = self.edge_index[:, self.val_mask]
+                val_codes = self._edge_codes_from_embeddings(current_embeddings, val_ei)
+                d = cdist(val_codes, temp_centroids)
+                min_d = d.min(axis=1).astype(np.float32)
+                probs = self._minmax(min_d)
+
+                val_labels = self.edge_labels[self.val_mask].cpu().numpy()
+                auc = roc_auc_score(val_labels, probs)
+                # report to ray tune
+                runnable(auc)
 
         # Final node embedding
         self._embeddings = self._compute_node_embeddings()
@@ -488,7 +507,7 @@ class NetWalkBaseline:
             if ((epoch + 1) % self.print_freq) == 0:
                 avg_loss = total_loss / max(1, num_batches)
                 logger.info(f"[AE] epoch {epoch+1}/{self.epochs} | loss={avg_loss:.4f}")
-                
+
     def _compute_clique_loss(self, codes: torch.Tensor) -> torch.Tensor:
         """Compute clique loss exactly as in the paper"""
         H, total_cols = codes.shape
