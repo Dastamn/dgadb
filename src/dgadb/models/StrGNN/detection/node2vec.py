@@ -68,7 +68,11 @@ class Graph:
             else:
                 unnormalized_probs.append(G[dst][dst_nbr]["weight"] / q)
         norm_const = sum(unnormalized_probs)
-        normalized_probs = [float(u_prob) / norm_const for u_prob in unnormalized_probs]
+        if norm_const == 0:
+            # Handle isolated nodes or nodes with all zero-weight edges
+            normalized_probs = [1.0 / len(unnormalized_probs) if unnormalized_probs else 1.0 for _ in unnormalized_probs]
+        else:
+            normalized_probs = [float(u_prob) / norm_const for u_prob in unnormalized_probs]
 
         return alias_setup(normalized_probs)
 
@@ -83,7 +87,11 @@ class Graph:
         for node in G.nodes():
             unnormalized_probs = [G[node][nbr]["weight"] for nbr in sorted(G.neighbors(node))]
             norm_const = sum(unnormalized_probs)
-            normalized_probs = [float(u_prob) / norm_const for u_prob in unnormalized_probs]
+            if norm_const == 0:
+                # Handle isolated nodes or nodes with all zero-weight edges
+                normalized_probs = [1.0 / len(unnormalized_probs) if unnormalized_probs else 1.0 for _ in unnormalized_probs]
+            else:
+                normalized_probs = [float(u_prob) / norm_const for u_prob in unnormalized_probs]
             alias_nodes[node] = alias_setup(normalized_probs)
 
         alias_edges = {}
