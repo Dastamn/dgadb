@@ -29,7 +29,8 @@ class Evaluator:
 
     def _get_output_paths(self) -> tuple[str, str]:
         run_name = datetime.now().strftime("%Y%m%d_%H%M%S/")
-        target_dir = os.path.join(self.output_dir, self.dataset_name, run_name)
+        target_dir = os.path.join(
+            self.output_dir, self.dataset_name, self.method_name, run_name)
         os.makedirs(target_dir, exist_ok=True)
 
         base_filename = os.path.join(target_dir, self.method_name)
@@ -76,14 +77,14 @@ class Evaluator:
             return
         else:
             auc = self.results["roc_auc"]
-            self.logger.info(f"AUC on test set with best hyperparams: {auc:4f}")
+            self.logger.info(
+                f"AUC on test set with best hyperparams: {auc:4f}")
 
     def save_results(self, **kwargs):
         if not self.results:
             self.logger.warning("No results to save!")
             return
 
-        
         dataset_config_path, experiment_config_path, method_config_path, results_path = self._get_output_paths()
         path_file_map = {
             dataset_config_path: self.dataset_config,
@@ -96,4 +97,3 @@ class Evaluator:
             with open(p, 'w') as f:
                 json.dump({**c, **kwargs}, f, indent=4)
         self.logger.info(f"Saved results and configs.")
-
