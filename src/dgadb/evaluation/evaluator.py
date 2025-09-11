@@ -43,10 +43,15 @@ class Evaluator:
 
     def eval_preds(self, y_true: torch.Tensor, y_scores: torch.Tensor):
         if self.anomaly_as_0:
-            y_pred = y_pred.copy()
-            y_pred = 1 - y_pred
-            y_true = y_true.copy()
-            y_pred = 1 - y_pred
+            # y_pred = y_pred.copy()
+            # y_pred = 1 - y_pred
+            # y_true = y_true.copy()
+            # y_pred = 1 - y_pred
+            y_true = 1 - y_true
+            y_scores = 1 - y_scores
+
+        # min_score, max_score = torch.min(y_scores), torch.max(y_scores)
+        # y_scores = (y_scores - min_score) / (max_score - min_score)
 
         best_f1, best_thr = metrics.best_f1_score(y_true, y_scores)
         y_pred = (y_scores >= best_thr).to(y_true.dtype)
