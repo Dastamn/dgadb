@@ -11,7 +11,7 @@ import yaml
 from sklearn.metrics import roc_auc_score
 import torch
 from ray import train, tune
-from ray.tune.stopper import TrialPlateauStopper, ExperimentPlateauStopper, CombinedStopper
+from ray.tune.stopper import TrialPlateauStopper, ExperimentPlateauStopper, CombinedStopper, MaximumIterationStopper
 from ray.tune import Checkpoint
 from typing import Type
 import multiprocessing
@@ -19,6 +19,8 @@ import tempfile
 
 from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
+
+import argparse
 
 
 _BASE_PATH = os.environ["BASE_PATH"]
@@ -32,13 +34,17 @@ _MODELS = {
 
 
 class Experiment():
-    def __init__(self, exp_name: str, dataset_name: str) -> None:
+    def __init__(self, exp_name: str, dataset_name: str, num_samples: int) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.exp_config = self._load_config("experiments", exp_name)
+
+        # meta dict
+        self.meta_dict = self.exp_config["anomalies"]
+
         self.method_name = self.exp_config["model"]
         self.method = _MODELS[self.method_name]
         self.anomaly_as_0 = self.exp_config.get("anomaly_as_0", False)
-        self.num_samples = self.exp_config.get("num_samples", 4)
+        self.num_samples = self.exp_config.get("num_samples", num_samples)
         # self.time_budget_s = self.exp_config.get("time_budget_s", 3600)
         self.time_budget_s = self.exp_config.get("time_budget_s", 3600)
         self.dataset_name = dataset_name
@@ -109,7 +115,7 @@ class Experiment():
     def preprocessing(self):
         pipeline, meta_dict, dataset_config = Pipeline.from_config(
             self.dataset_name, force_rerun=True)
-        self.meta_dict = meta_dict
+        self.meta_dict = {**self.meta_dict, **meta_dict}
         self.dataset_config = dataset_config
         self.meta_dict["dataset_name"] = self.dataset_name
         container = pipeline.run()
@@ -161,16 +167,21 @@ class Experiment():
             ),
             ExperimentPlateauStopper(
                 metric="metric",
-                top=self.num_samples,
+                top=max(2, self.num_samples),
                 patience=5,
-            )
+            ),
+            MaximumIterationStopper(50)
         )
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tuner = tune.Tuner(
-                tune.with_resources(
-                    tune.with_parameters(
-                        self.training_function, tg=self.tg, meta_dict=self.meta_dict),
-                    {"cpu": cpu_count // self.num_samples}),
+                # tune.with_resources(
+                #     tune.with_parameters(
+                #         self.training_function, tg=self.tg, meta_dict=self.meta_dict),
+                #     {"cpu": min(self.num_samples, cpu_count)}
+                # ),
+                tune.with_parameters(
+                    self.training_function, tg=self.tg, meta_dict=self.meta_dict),
                 param_space=self.param_space,
                 tune_config=tune.TuneConfig(
                     num_samples=self.num_samples, metric="metric", mode="max", time_budget_s=self.time_budget_s),
@@ -248,8 +259,44 @@ if __name__ == "__main__":
     print(json.dumps(output, indent=4))
     """
 
+datasets = [
+    "bitcoin-alpha",
+    "bitcoin-otc",
+    "uc-social",
+    "digg-homo",
+    "as-topology",
+    "email-dnc",
+    "enron",
+    "epinions",
+    "mooc",
+    "reddit",
+    "dgraph",
+    "wiki"
+]
+
+
 if __name__ == "__main__":
-    dataset_name = "bitcoin-alpha"
-    e = Experiment(exp_name="strgnn_test", dataset_name=dataset_name)
+
+    parser = argparse.ArgumentParser(
+        description="RustGraph pipeline all datasets")
+    parser.add_argument("--method", type=str,
+                        default=None, help="Method name")
+    parser.add_argument("--dataset", type=str,
+                        default=None, help="Dataset name")
+    parser.add_argument("--num_samples", type=int, default=4)
+
+    args = parser.parse_args()
+
+    dataset_name = args.dataset
+    if dataset_name not in datasets:
+        raise RuntimeError(f"Unknown dataset: '{dataset_name}'.")
+
+    method_name = args.method.lower()
+    if method_name not in [k.lower() for k in _MODELS]:
+        raise RuntimeError(f"Unknown method: '{dataset_name}'.")
+
+    # dataset_name = "bitcoin-alpha"
+    e = Experiment(exp_name=f"{method_name}_test",
+                   dataset_name=dataset_name, num_samples=args.num_samples)
     e.preprocessing()
     e.run()
