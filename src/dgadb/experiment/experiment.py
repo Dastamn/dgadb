@@ -17,11 +17,17 @@ from typing import Type
 import multiprocessing
 import tempfile
 
+from src.dgadb.models.TADDY.TADDY_main import TADDYModel
+from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
+
+
 _BASE_PATH = os.environ["BASE_PATH"]
 _CONFIG_PATH = os.path.join(_BASE_PATH, "configs")
 
 _MODELS = {
-    "RustGraph": RustGraphModel
+    "RustGraph": RustGraphModel,
+    "TADDY": TADDYModel,
+    "StrGNN": STRGNNModel
 }
 
 
@@ -116,10 +122,9 @@ class Experiment():
             anom_test_ratio=self.meta_dict.get("anom_test_ratio", 0.0),
             noise_ratio=0.0)
 
-        if self.anomaly_as_0:
+        if not self.anomaly_as_0:
             tg.flip_edge_labels()
         self.tg = tg
-
 
     def training_function(self, config: dict, tg: TemporalGraph, meta_dict: dict, *args):
         def tune_report(metric, model, epoch):
@@ -150,6 +155,7 @@ class Experiment():
         cpu_count = multiprocessing.cpu_count()
         stopper = CombinedStopper(
             TrialPlateauStopper(
+                std=0.001,
                 metric="metric",
                 grace_period=10
             ),
@@ -197,7 +203,8 @@ class Experiment():
                                        anomaly_as_0=self.anomaly_as_0,
                                        output_dir="eval-data")
             preds, labels = best_model.inference("test")
-            self.evaluator.eval_preds(labels, preds)
+            self.evaluator.eval_preds(
+                torch.tensor(labels), torch.tensor(preds))
             self.evaluator.log_roc()
             self.evaluator.save_results()
 
@@ -243,6 +250,6 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     dataset_name = "bitcoin-alpha"
-    e = Experiment(exp_name="rustgraph_test", dataset_name=dataset_name)
+    e = Experiment(exp_name="strgnn_test", dataset_name=dataset_name)
     e.preprocessing()
     e.run()
