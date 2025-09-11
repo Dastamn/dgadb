@@ -3,7 +3,7 @@ import json
 import logging
 from src.dgadb.preprocessing.pipeline.pipeline import Pipeline
 from src.dgadb.models.RustGraph.main_RustGraph import RustGraphModel
-from src.dgadb.storage import convert_temporal_graph_to_legacy_graph, Graph
+from src.dgadb.storage import convert_temporal_graph_to_legacy_graph, TemporalGraph
 from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
 from src.dgadb.evaluation.evaluator import Evaluator
 import os
@@ -34,7 +34,7 @@ class Experiment():
         self.anomaly_as_0 = self.exp_config.get("anomaly_as_0", False)
         self.num_samples = self.exp_config.get("num_samples", 4)
         # self.time_budget_s = self.exp_config.get("time_budget_s", 3600)
-        self.time_budget_s = self.exp_config.get("time_budget_s", 60)
+        self.time_budget_s = self.exp_config.get("time_budget_s", 3600)
         self.dataset_name = dataset_name
         self.param_space = self._load_param_space(self.exp_config)
         self.dataset_config = None
@@ -109,7 +109,7 @@ class Experiment():
         container = pipeline.run()
         tg = container.to_temporal_graph()
 
-        anomalous_temporal_graph = inject_anomalies_addgraph_style(
+        tg = inject_anomalies_addgraph_style(
             tg,
             anom_train_ratio=self.meta_dict.get("anom_train_ratio", 0.0),
             anom_val_ratio=self.meta_dict.get("anom_val_ratio", 0.0),
@@ -117,13 +117,11 @@ class Experiment():
             noise_ratio=0.0)
 
         if self.anomaly_as_0:
-            anomalous_temporal_graph.flip_edge_labels()
+            tg.flip_edge_labels()
+        self.tg = tg
 
-        self.graph = convert_temporal_graph_to_legacy_graph(
-            anomalous_temporal_graph)
-        del self.graph._nodes["n_feat"]
 
-    def training_function(self, config: dict, graph: Graph, meta_dict: dict, *args):
+    def training_function(self, config: dict, tg: TemporalGraph, meta_dict: dict, *args):
         def tune_report(metric, model, epoch):
             # ray checkpoint
             checkpoint_dir = os.path.join(
@@ -141,13 +139,11 @@ class Experiment():
 
             tune.report(metrics={"metric": metric}, checkpoint=checkpoint)
 
-        graph.generate_snapshots(
-            snapshot_size=config["snapshot_size"], temporal_snapshots=False)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = self.method(device, meta_dict,
                                  config, roc_auc_score)
-        graph = graph.to(device)
-        self.model.setup(graph)
+        tg = tg.to(device)
+        self.model.setup(self.tg)
         self.model.train(tune_report)
 
     def run(self):
@@ -167,7 +163,7 @@ class Experiment():
             tuner = tune.Tuner(
                 tune.with_resources(
                     tune.with_parameters(
-                        self.training_function, graph=self.graph, meta_dict=self.meta_dict),
+                        self.training_function, tg=self.tg, meta_dict=self.meta_dict),
                     {"cpu": cpu_count // self.num_samples}),
                 param_space=self.param_space,
                 tune_config=tune.TuneConfig(

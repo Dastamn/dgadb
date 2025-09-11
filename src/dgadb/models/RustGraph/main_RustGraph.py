@@ -8,7 +8,8 @@
 
 
 # in the original code they do node2vec embeddings on the entire edgeset which is data leakage between train and test
-from src.dgadb.storage.graph import Graph
+from src.dgadb.storage.temporal_graph import TemporalGraph
+from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
 from src.dgadb.models.RustGraph.model import Model
 import torch
 import logging
@@ -81,13 +82,12 @@ class RustGraphModel:
         self.h_t = None
 
     @time_func
-    def setup(self, graph: Graph) -> None:
+    def setup(self, tg:TemporalGraph) -> None:
 
         # node2vec embeddings (should only contain train edges)
-        edge_index_train = graph._edges["e_pairs"][:,
-                                                   graph._edges["e_train_mask"]]
-
-        n = graph.num_nodes
+        edge_index_full = torch.stack([tg.src, tg.tgt], dim=0)
+        edge_index_train = edge_index_full[:, tg.train_mask]
+        n = tg.num_nodes
 
         edges_np = edge_index_train.t().cpu().numpy()
         epoch_num = 50
@@ -110,8 +110,9 @@ class RustGraphModel:
         #     logger.info(f"Saving n2v features at: {n2v_filename}")
         #     torch.save(x, n2v_filename)
 
+        
         x = n2v_train(edges_np, self.x_dim, self.device, n, epoch_num)
-        graph._nodes["n_feat"] = x
+        tg.node_attr = x
         # logger.info(f"Saving n2v features at: {n2v_filename}")
         # torch.save(x, n2v_filename)
 
@@ -123,10 +124,19 @@ class RustGraphModel:
             window=self.window,
             eps=self.eps,
             device=self.device,
+            snap_size=self.snap_size
         ).to(self.device)
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-        self.graph = graph
+        
+        self.graph = tg
+
+        self.train_snapshot_loader = TemporalGraphSnapshotLoader(
+            tg, 
+            strategy="window", 
+            split="train", 
+            window_size=self.snap_size
+        )
 
     @time_func
     def train(self, runnable=None) -> None:

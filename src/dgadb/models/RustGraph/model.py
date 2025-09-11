@@ -15,7 +15,8 @@ from torch_geometric.utils import (
     is_undirected,
 )
 from scipy.sparse.linalg import eigs, eigsh
-from src.dgadb.storage.graph import Graph
+from src.dgadb.storage.temporal_graph import TemporalGraph
+from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
 
 
 class GConv(nn.Module):
@@ -184,6 +185,7 @@ class Model(nn.Module):
         window: int,
         eps: float,
         device: torch.device | str,
+        snap_size: int
     ):
         super().__init__()
 
@@ -194,6 +196,8 @@ class Model(nn.Module):
         self.dec = InnerProductDecoder()
         self.mse = nn.MSELoss(reduction="mean")
 
+        self.snap_size = snap_size
+
         self.fcc = FCC(z_dim, 1, self.device)
         self.linear = nn.Sequential(nn.Linear(z_dim, x_dim), nn.ReLU())
 
@@ -203,7 +207,7 @@ class Model(nn.Module):
         self.z_dim = z_dim
         self.EPS = 1e-15
 
-    def forward(self, graph: Graph, split="train", accumulate=True, y_rect=None, h_t=None):
+    def forward(self, graph: TemporalGraph, split="train", accumulate=True, y_rect=None, h_t=None):
         kld_loss = 0
         recon_loss = 0
         reg_loss = 0
@@ -212,13 +216,22 @@ class Model(nn.Module):
         next_y_list = []
         y_list = []
 
-        for t, snap in enumerate(graph.snapshots(split=split, accumulate=accumulate, all_nodes=True)):
-            snap = snap.to(self.device)
-            x = snap.n_feat
-            edge_index = snap.e_pairs
-            y = snap.e_label.float().unsqueeze(1)
-            # node_index = torch.arange(x.size(0), device=self.device)
+        snapshot_loader = TemporalGraphSnapshotLoader(
+            graph, 
+            strategy="window", 
+            split=split, 
+            window_size=self.snap_size
+        )
+
+        for t, snapshot in enumerate(snapshot_loader):
+            snap_data = snapshot.cumulative if accumulate else snapshot.current
+            snap_data = snap_data.to(self.device)
+
+            x = snap_data.node_attr
+            edge_index = snap_data.edge_index
+            y = snap_data.edge_labels.unsqueeze(1).float()
             node_index = torch.unique(edge_index)
+
 
             if y_rect is not None:
                 y = y_rect[t]
@@ -231,7 +244,7 @@ class Model(nn.Module):
                 h_t = torch.zeros(self.layer_num, x.size(
                     0), self.h_dim, device=self.device)
 
-            ev = self._compute_ev_from_graph(snap, is_undirected=True)
+            ev = self._compute_ev_from_graph(snap_data, is_undirected=True)
             if t == 0:
                 diff = torch.zeros(
                     x.size(0), 1, device=self.device, dtype=x.dtype)
@@ -281,17 +294,26 @@ class Model(nn.Module):
 
         return bce_loss, reg_loss, recon_loss + kld_loss, nce_loss, next_y_list, h_t, score_list, y_list
 
-    def _compute_ev_from_graph(self, graph, is_undirected=False):
-        edge_index = graph.e_pairs
-        num_nodes = graph.num_nodes
-        edge_weight = graph.e_weight if "e_weight" in graph.edge_dict() else None
+    def _compute_ev_from_graph(self, graph: TemporalGraph, is_undirected: bool = False):
+        edge_index = graph.edge_index
 
-        edge_index, edge_weight = get_laplacian(
-            edge_index, edge_weight, normalization=None, num_nodes=num_nodes)
-        L = to_scipy_sparse_matrix(edge_index, edge_weight, num_nodes)
-        eig_fn = eigs if not is_undirected else eigsh
+        if graph.node_attr is not None:
+            num_nodes = graph.node_attr.size(0) 
+        else:
+            num_nodes = graph.num_nodes
+
+        edge_weight = graph.w if graph.w is not None else None
+
+        edge_index_L, edge_weight_L = get_laplacian(
+            edge_index, edge_weight, normalization=None, num_nodes=num_nodes
+        )
+        L = to_scipy_sparse_matrix(edge_index_L, edge_weight_L, num_nodes)
+
+        eig_fn = eigsh if is_undirected else eigs
         _, ev = eig_fn(L, k=1, which="LM", return_eigenvectors=True)
-        return torch.from_numpy(ev).to(self.device).squeeze(-1)
+
+        return torch.from_numpy(ev).to(self.device).squeeze(-1)  # [num_nodes]
+
 
     def reset_parameters(self, stdv=1e-1):
         for weight in self.parameters():
