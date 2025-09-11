@@ -18,6 +18,9 @@ import numpy as np
 import time
 from src.dgadb.models.RustGraph.data import n2v_train
 from src.dgadb.models.utils import time_func
+from ray.tune import Checkpoint
+import tempfile
+from ray import tune, train
 
 
 logging.basicConfig(
@@ -164,9 +167,26 @@ class RustGraphModel:
                     f"AUC on {split} set: {auc_all:.4f} in epoch: {epoch},\t")
 
                 if runnable is not None:
-                    runnable(auc_all)
+                    # ray checkpoint
+                    # with tempfile.TemporaryDirectory() as tempdir:
+                    # trial_id = tune.get_context().get_trial_id()
+                    # checkpoint_dir = os.path.join(
+                    #     os.environ["BASE_PATH"],
+                    #     "model_checkpoint/rustgraph",
+                    #     self.dataset_name,
+                    #     trial_id,
+                    #     f"epoch_{epoch}")
 
-        logger.info(f"MAX AUC: {max_auc:.4f} in epoch: {max_epoch},\t")
+                    # os.makedirs(checkpoint_dir, exist_ok=True)
+                    # # with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    # checkpoint = None
+                    # # if tune.get_context().get_world_rank() == 0:
+                    # torch.save(
+                    #     self, os.path.join(checkpoint_dir, "model.pt"))
+
+                    # checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+                    runnable(auc_all, self, epoch)
 
     @time_func
     def inference(self, split="test"):
@@ -181,8 +201,8 @@ class RustGraphModel:
         # per_snapshot_score = [
         #    self.epoch_evaluation_metric(y_true, s) for y_true, s in zip(labels_per_snap, preds_per_snap)
         # ]
-        # preds = np.hstack(preds_per_snap)
-        # labels = np.hstack(labels_per_snap)
+        preds = torch.hstack(preds_per_snap)
+        labels = torch.hstack(labels_per_snap)
 
-        # return preds, labels
+        return preds, labels
         return preds_per_snap, labels_per_snap

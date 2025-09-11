@@ -11,8 +11,11 @@ import yaml
 from sklearn.metrics import roc_auc_score
 import torch
 from ray import train, tune
+from ray.tune.stopper import TrialPlateauStopper, ExperimentPlateauStopper, CombinedStopper
+from ray.tune import Checkpoint
 from typing import Type
 import multiprocessing
+import tempfile
 
 _BASE_PATH = os.environ["BASE_PATH"]
 _CONFIG_PATH = os.path.join(_BASE_PATH, "configs")
@@ -22,11 +25,6 @@ _MODELS = {
 }
 
 
-class Experiment2:
-    def __init__(self, config_name: str, config_dir: str = "configs/experiments") -> None:
-        self.logger = logging.getLogger(self.__class__.__name__)
-
-
 class Experiment():
     def __init__(self, exp_name: str, dataset_name: str) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -34,7 +32,7 @@ class Experiment():
         self.method_name = self.exp_config["model"]
         self.method = _MODELS[self.method_name]
         self.anomaly_as_0 = self.exp_config.get("anomaly_as_0", False)
-        self.num_samples = self.exp_config.get("num_samples", 1)
+        self.num_samples = self.exp_config.get("num_samples", 4)
         # self.time_budget_s = self.exp_config.get("time_budget_s", 3600)
         self.time_budget_s = self.exp_config.get("time_budget_s", 60)
         self.dataset_name = dataset_name
@@ -126,78 +124,129 @@ class Experiment():
         del self.graph._nodes["n_feat"]
 
     def training_function(self, config: dict, graph: Graph, meta_dict: dict, *args):
-        def tune_report(metric):
-            tune.report(metrics={"metric": metric})
+        def tune_report(metric, model, epoch):
+            # ray checkpoint
+            checkpoint_dir = os.path.join(
+                os.environ["BASE_PATH"],
+                f"model_checkpoint/{self.method_name}",
+                self.dataset_name,
+                tune.get_context().get_trial_id(),
+                f"epoch_{epoch}")
+
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            torch.save(
+                model, os.path.join(checkpoint_dir, "model.pt"))
+
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+            tune.report(metrics={"metric": metric}, checkpoint=checkpoint)
 
         graph.generate_snapshots(
             snapshot_size=config["snapshot_size"], temporal_snapshots=False)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = self.method(device, meta_dict,
-                            config, roc_auc_score)
+                                 config, roc_auc_score)
         graph = graph.to(device)
         self.model.setup(graph)
         self.model.train(tune_report)
 
     def run(self):
         cpu_count = multiprocessing.cpu_count()
-        tuner = tune.Tuner(
-            tune.with_resources(
-                tune.with_parameters(
-                    self.training_function, graph=self.graph, meta_dict=self.meta_dict),
-                {"cpu": cpu_count // 2}),
-            param_space=self.param_space,
-            tune_config=tune.TuneConfig(
-                num_samples=self.num_samples, metric="metric", mode="max", time_budget_s=self.time_budget_s),
+        stopper = CombinedStopper(
+            TrialPlateauStopper(
+                metric="metric",
+                grace_period=10
+            ),
+            ExperimentPlateauStopper(
+                metric="metric",
+                top=self.num_samples,
+                patience=5,
+            )
         )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tuner = tune.Tuner(
+                tune.with_resources(
+                    tune.with_parameters(
+                        self.training_function, graph=self.graph, meta_dict=self.meta_dict),
+                    {"cpu": cpu_count // self.num_samples}),
+                param_space=self.param_space,
+                tune_config=tune.TuneConfig(
+                    num_samples=self.num_samples, metric="metric", mode="max", time_budget_s=self.time_budget_s),
+                run_config=tune.RunConfig(
+                    stop=stopper,
+                    name=f"exp_{self.dataset_name}",
+                    storage_path=tmpdir
+                    # checkpoint_config=tune.CheckpointConfig(
+                    #     num_to_keep=1,
+                    #     checkpoint_score_attribute="metric",
+                    #     checkpoint_score_order="max",
+                    # )
+                )
+            )
 
-        results = tuner.fit()
-        best_result = results.get_best_result("metric", "max")
-        best_config = best_result.config
-        self.evaluator = Evaluator(dataset_name=self.dataset_name,
-                                   method_name=self.method_name,
-                                   dataset_config=self.dataset_config,
-                                   method_config=best_config,
-                                   experiment_config=self.exp_config,
-                                   anomaly_as_0=self.anomaly_as_0,
-                                   output_dir="eval-data")
-        preds, labels = self.model.inference("test")
-        self.evaluator.eval_preds(labels, preds)
-        self.evaluator.log_roc()
-        self.evaluator.save_results()
+            results = tuner.fit()
+            best_result = results.get_best_result("metric", "max")
+            checkpoint = best_result.checkpoint
+
+            with checkpoint.as_directory() as checkpoint_dir:
+                best_model = torch.load(
+                    os.path.join(checkpoint_dir, "model.pt"))
+
+            best_config = best_result.config
+            self.evaluator = Evaluator(dataset_name=self.dataset_name,
+                                       method_name=self.method_name,
+                                       dataset_config=self.dataset_config,
+                                       method_config=best_config,
+                                       experiment_config=self.exp_config,
+                                       anomaly_as_0=self.anomaly_as_0,
+                                       output_dir="eval-data")
+            preds, labels = best_model.inference("test")
+            self.evaluator.eval_preds(labels, preds)
+            self.evaluator.log_roc()
+            self.evaluator.save_results()
+
+            # save best model
+            save_path = os.path.join(
+                _BASE_PATH, "best_model", self.method_name, self.dataset_name)
+            os.makedirs(save_path, exist_ok=True)
+            torch.save(best_model, os.path.join(save_path, "model.pt"))
+            with open(os.path.join(save_path, "config.json"), "w") as f:
+                json.dump(best_config, f, indent=4)
+
 
 if __name__ == "__main__":
-        
-        """
-        best_result = results.get_best_result("metric", "max")
 
-        print(best_result)
+    """
+    best_result = results.get_best_result("metric", "max")
 
-        output = {
-            "model": self.exp_config["model"],
-            "dataset": self.dataset_name,
-            "best_config": best_result.config,
-            # "log_path": best_result.log_dir,
-            # "total_time_s": best_result.time_total_s,
-        }
+    print(best_result)
 
-        if best_result.metrics is not None and "metric" in best_result.metrics:
-            output["metric"] = best_result.metrics["metric"]
+    output = {
+        "model": self.exp_config["model"],
+        "dataset": self.dataset_name,
+        "best_config": best_result.config,
+        # "log_path": best_result.log_dir,
+        # "total_time_s": best_result.time_total_s,
+    }
 
-        # Save results
-        output_dir = Path("results") / self.dataset_name
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_file = output_dir / f"{self.exp_config['model']}_results.json"
+    if best_result.metrics is not None and "metric" in best_result.metrics:
+        output["metric"] = best_result.metrics["metric"]
 
-        self.logger.info(f"Saving best result to {output_file}")
-        with open(output_file, "w") as f:
-            json.dump(output, f, indent=4)
+    # Save results
+    output_dir = Path("results") / self.dataset_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"{self.exp_config['model']}_results.json"
 
-        print("--- Best Result ---")
-        print(json.dumps(output, indent=4))
-        """
+    self.logger.info(f"Saving best result to {output_file}")
+    with open(output_file, "w") as f:
+        json.dump(output, f, indent=4)
+
+    print("--- Best Result ---")
+    print(json.dumps(output, indent=4))
+    """
 
 if __name__ == "__main__":
     dataset_name = "bitcoin-alpha"
     e = Experiment(exp_name="rustgraph_test", dataset_name=dataset_name)
     e.preprocessing()
-    e.run() 
+    e.run()
