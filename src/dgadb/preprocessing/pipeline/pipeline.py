@@ -106,9 +106,9 @@ class Pipeline:
         logger.info("Building preprocessing pipeline from config...")
 
         meta_dict = {
-            "anom_train_ratio": config["anomalies"]["anom_train_ratio"],
-            "anom_val_ratio": config["anomalies"]["anom_val_ratio"],
-            "anom_test_ratio": config["anomalies"]["anom_test_ratio"]
+            # "anom_train_ratio": config["anomalies"]["anom_train_ratio"],
+            # "anom_val_ratio": config["anomalies"]["anom_val_ratio"],
+            # "anom_test_ratio": config["anomalies"]["anom_test_ratio"]
         }
 
         pipeline_steps: list[PipelineStep] = []
@@ -169,8 +169,8 @@ class Pipeline:
 
             pipeline_steps.append(step_instance)
 
-            if step_name=="TemporalSplitter":
-                for k,v in step_params.items():
+            if step_name == "TemporalSplitter":
+                for k, v in step_params.items():
                     meta_dict[k] = v
 
         pipeline_callbacks: list[Callback] = []
@@ -189,5 +189,5 @@ class Pipeline:
         return Pipeline(pipeline_steps, pipeline_callbacks), meta_dict, config
 
     def __repr__(self) -> str:
-        steps_ = "; ".join(repr(step) for step in self.steps) 
+        steps_ = "; ".join(repr(step) for step in self.steps)
         return f"{self.__class__.__name__}({steps_})"
