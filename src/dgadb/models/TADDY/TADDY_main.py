@@ -92,7 +92,7 @@ class TADDYModel:
 
         self.dataset_name = meta_dict["dataset_name"]
         self.train_per = meta_dict["train_ratio"]
-        self.anomaly_per = meta_dict["anomaly_ratio"]
+        self.anomaly_per = meta_dict["anom_val_ratio"]
         self.val_per = meta_dict["val_ratio"]
         self.has_val = True if self.val_per > 0 else False
 
@@ -102,7 +102,7 @@ class TADDYModel:
         # initialize containers for embeddings
         self.embeddings: dict[str, np.ndarray] = {}
 
-    def setup_(self, temporal_graph: TemporalGraph) -> None:
+    def setup(self, temporal_graph: TemporalGraph) -> None:
         logger.info("Setup started...")
 
         train_mask = temporal_graph.train_mask
@@ -214,7 +214,7 @@ class TADDYModel:
             weight_decay=self.weight_decay,
         )
 
-    def setup(self, df: pl.DataFrame) -> None:
+    def setup_(self, df: pl.DataFrame) -> None:
         """Set up data preprocessing and initialize the model.
 
         Processes the input graph, builds adjacency matrices, and initializes the TADDY model with the specified
@@ -493,7 +493,7 @@ class TADDYModel:
             raise RuntimeError(
                 "Model not properly initialized. Call setup() before train() or inference().")
 
-    def train(self) -> None:
+    def train(self, runnable) -> None:
         """Train the TADDY model using the configured data and hyperparameters.
 
         Performs embedding computation, negative sampling, and iterative training
@@ -583,12 +583,16 @@ class TADDYModel:
                 f"Epoch: {epoch + 1}, loss:{loss_train:.4f}, Time: {time.time() - t_epoch_begin:.4f}s")
             split = "val" if self.has_val else "test"
 
-            if ((epoch + 1) % self.print_freq) == 0:
-                _, _, preds_full, labels_full, _ = self.inference(
+            if (((epoch + 1) % self.print_freq) == 0) or runnable:
+                # _, _, preds_full, labels_full, _ = self.inference(
+                #     split=split)  # do val here when implemented
+                preds_full, labels_full = self.inference(
                     split=split)  # do val here when implemented
                 auc_full = self.epoch_evaluation_metric(
                     labels_full, preds_full)
                 logger.info(f"Total auc on {split}: {auc_full:.4f}")
+
+                runnable(auc_full, self, epoch)
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
         """
@@ -643,6 +647,7 @@ class TADDYModel:
         preds_full = np.hstack(preds)
 
         inf_time = time.time() - start_time
+        return preds_full, labels_full
         return preds, labels, preds_full, labels_full, inf_time
 
 
