@@ -42,7 +42,8 @@ class STRGNNModel:
         self.latent_dim = hyperparams.get("latent_dim", [32])
         self.out_dim = hyperparams.get("out_dim", 0)
         self.edge_feat_dim = hyperparams.get("edge_feat_dim", 0)
-        self.sortpooling_k = hyperparams.get("sortpooling_k", 30)  # was 0.6 in og
+        self.sortpooling_k = hyperparams.get(
+            "sortpooling_k", 30)  # was 0.6 in og
         self.conv1d_activation = hyperparams.get("conv1d_activation", "relu")
         self.hidden = hyperparams.get("hidden", 50)
         self.num_class = hyperparams.get("num_class", 2)
@@ -54,7 +55,6 @@ class STRGNNModel:
     def setup(self, temporal_graph: TemporalGraph) -> None:
         logger.info("STRGNN setup started...")
 
-        
         # Extract basic graph information
         num_nodes = temporal_graph.num_nodes
 
@@ -67,12 +67,14 @@ class STRGNNModel:
         # Get masks
         train_mask = temporal_graph.train_mask.cpu().numpy()
         test_mask = temporal_graph.test_mask.cpu().numpy()
-        val_mask = temporal_graph.val_mask.cpu().numpy() if temporal_graph.val_mask is not None else None
+        val_mask = temporal_graph.val_mask.cpu().numpy(
+        ) if temporal_graph.val_mask is not None else None
 
         # Split edges by mask
         train_indices = np.where(train_mask)[0]
         test_indices = np.where(test_mask)[0]
-        val_indices = np.where(val_mask)[0] if val_mask is not None else np.array([])
+        val_indices = np.where(val_mask)[
+            0] if val_mask is not None else np.array([])
 
         # Create snapshots based on timestamps
         unique_timestamps = np.unique(timestamps)
@@ -99,8 +101,7 @@ class STRGNNModel:
             val_tgt = tgt[val_indices]
             val_snap_ids = snapshot_ids[val_indices]
             val_labels = edge_labels[val_indices]
-        
-        
+
         # Create adjacency matrices for each snapshot
         net = []
         for snap_id in range(num_snapshots):
@@ -112,7 +113,8 @@ class STRGNNModel:
             if len(snap_src) > 0:
                 # Create adjacency matrix for this snapshot
                 snap_data = np.ones_like(snap_src, dtype=np.int32)
-                A_snap = ssp.csr_matrix((snap_data, (snap_src, snap_tgt)), shape=(num_nodes, num_nodes))
+                A_snap = ssp.csr_matrix(
+                    (snap_data, (snap_src, snap_tgt)), shape=(num_nodes, num_nodes))
                 A_snap = A_snap + A_snap.transpose()  # make symmetric
                 A_snap.setdiag(0)  # remove self-loops
             else:
@@ -131,20 +133,26 @@ class STRGNNModel:
             embeddings = None
 
         # Prepare positive/negative samples
-        self.data_dict["train_pos"] = (train_src[train_labels == 1], train_tgt[train_labels == 1])
-        self.data_dict["train_neg"] = (train_src[train_labels == 0], train_tgt[train_labels == 0])
+        self.data_dict["train_pos"] = (
+            train_src[train_labels == 1], train_tgt[train_labels == 1])
+        self.data_dict["train_neg"] = (
+            train_src[train_labels == 0], train_tgt[train_labels == 0])
         self.data_dict["train_pos_id"] = train_snap_ids[train_labels == 1]
         self.data_dict["train_neg_id"] = train_snap_ids[train_labels == 0]
 
-        self.data_dict["test_pos"] = (test_src[test_labels == 1], test_tgt[test_labels == 1])
-        self.data_dict["test_neg"] = (test_src[test_labels == 0], test_tgt[test_labels == 0])
+        self.data_dict["test_pos"] = (
+            test_src[test_labels == 1], test_tgt[test_labels == 1])
+        self.data_dict["test_neg"] = (
+            test_src[test_labels == 0], test_tgt[test_labels == 0])
         self.data_dict["test_pos_id"] = test_snap_ids[test_labels == 1]
         self.data_dict["test_neg_id"] = test_snap_ids[test_labels == 0]
 
         # Add validation data if available
         if len(val_indices) > 0:
-            self.data_dict["val_pos"] = (val_src[val_labels == 1], val_tgt[val_labels == 1])
-            self.data_dict["val_neg"] = (val_src[val_labels == 0], val_tgt[val_labels == 0])
+            self.data_dict["val_pos"] = (
+                val_src[val_labels == 1], val_tgt[val_labels == 1])
+            self.data_dict["val_neg"] = (
+                val_src[val_labels == 0], val_tgt[val_labels == 0])
             self.data_dict["val_pos_id"] = val_snap_ids[val_labels == 1]
             self.data_dict["val_neg_id"] = val_snap_ids[val_labels == 0]
 
@@ -210,7 +218,8 @@ class STRGNNModel:
         if embeddings is not None:
             self.attr_dim = embeddings.shape[1]  # node2vec dimension (128)
 
-        logger.debug(f"feat_dim={self.feat_dim}, attr_dim={self.attr_dim}, total={self.feat_dim + self.attr_dim}")
+        logger.debug(
+            f"feat_dim={self.feat_dim}, attr_dim={self.attr_dim}, total={self.feat_dim + self.attr_dim}")
 
         # DGCNN model setup
         self.classifier = Classifier(
@@ -230,11 +239,12 @@ class STRGNNModel:
         )
         if self.device == "cuda":
             self.classifier = self.classifier.cuda()
-        self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(
+            self.classifier.parameters(), lr=self.learning_rate)
 
     def dyn_links2subgraphs_with_val(self, net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
-                                test_pos_id, test_pos, test_neg_id, test_neg,
-                                val_pos_id, val_pos, val_neg_id, val_neg, **kwargs):
+                                     test_pos_id, test_pos, test_neg_id, test_neg,
+                                     val_pos_id, val_pos, val_neg_id, val_neg, **kwargs):
 
         train_graphs, test_graphs, max_n_label = dyn_links2subgraphs(
             net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
@@ -263,7 +273,8 @@ class STRGNNModel:
 
             # Compute training score
             train_score = self.epoch_evaluation_metric(labels, preds)
-            logger.info(f"Epoch {epoch}: train loss={avg_loss[0]:.5f}, train score={train_score:.5f}")
+            logger.info(
+                f"Epoch {epoch}: train loss={avg_loss[0]:.5f}, train score={train_score:.5f}")
 
             if val_graphs is not None:
                 val_preds, val_labels = self.inference("val")
@@ -271,17 +282,18 @@ class STRGNNModel:
                 logger.info(f"Epoch {epoch}: val score={val_score:.5f}")
 
                 if runnable is not None:
-                    runnable(val_score)
+                    runnable(val_score, self, epoch)
             elif runnable is not None:
-                runnable(train_score)
+                runnable(train_score, self, epoch)
 
-    def inference(self, split: str = "test") ->  tuple[np.ndarray, np.ndarray]:
-        self.classifier.eval()     
+    def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray]:
+        self.classifier.eval()
         if split == "train":
             graphs = self.data_dict["train_graphs"]
         elif split == "val" and "val_graphs" in self.data_dict:
             graphs = self.data_dict["val_graphs"]
         else:
             graphs = self.data_dict["test_graphs"]
-        avg_loss, labels, preds = loop_dataset(graphs, self.classifier, list(range(len(graphs))), bsize=self.batch_size)
+        avg_loss, labels, preds = loop_dataset(
+            graphs, self.classifier, list(range(len(graphs))), bsize=self.batch_size)
         return preds, labels

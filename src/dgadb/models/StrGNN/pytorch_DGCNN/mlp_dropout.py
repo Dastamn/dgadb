@@ -1,3 +1,4 @@
+from pytorch_util import weights_init
 import os
 import sys
 import numpy as np
@@ -12,7 +13,6 @@ from tqdm import tqdm
 import pdb
 
 sys.path.append("%s/lib" % os.path.dirname(os.path.realpath(__file__)))
-from pytorch_util import weights_init
 
 
 class MLPRegression(nn.Module):
@@ -67,7 +67,8 @@ class MLPClassifier(nn.Module):
             loss = F.nll_loss(logits, y)
 
             pred = logits.data.max(1, keepdim=True)[1]
-            acc = pred.eq(y.data.view_as(pred)).cpu().sum().item() / float(y.size()[0])
-            return logits, loss, acc
+            acc = pred.eq(y.data.view_as(pred)).cpu(
+            ).sum().item() / float(y.size()[0])
+            return F.sigmoid(logits), loss, acc
         else:
-            return logits
+            return F.sigmoid(logits)
