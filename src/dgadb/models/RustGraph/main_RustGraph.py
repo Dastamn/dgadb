@@ -82,7 +82,7 @@ class RustGraphModel:
         self.h_t = None
 
     @time_func
-    def setup(self, tg:TemporalGraph) -> None:
+    def setup(self, tg: TemporalGraph) -> None:
 
         # node2vec embeddings (should only contain train edges)
         edge_index_full = torch.stack([tg.src, tg.tgt], dim=0)
@@ -110,7 +110,6 @@ class RustGraphModel:
         #     logger.info(f"Saving n2v features at: {n2v_filename}")
         #     torch.save(x, n2v_filename)
 
-        
         x = n2v_train(edges_np, self.x_dim, self.device, n, epoch_num)
         tg.node_attr = x
         # logger.info(f"Saving n2v features at: {n2v_filename}")
@@ -128,15 +127,8 @@ class RustGraphModel:
         ).to(self.device)
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-        
-        self.graph = tg
 
-        self.train_snapshot_loader = TemporalGraphSnapshotLoader(
-            tg, 
-            strategy="window", 
-            split="train", 
-            window_size=self.snap_size
-        )
+        self.graph = tg
 
     @time_func
     def train(self, runnable=None) -> None:

@@ -217,9 +217,9 @@ class Model(nn.Module):
         y_list = []
 
         snapshot_loader = TemporalGraphSnapshotLoader(
-            graph, 
-            strategy="window", 
-            split=split, 
+            graph,
+            strategy="window",
+            split=split,
             window_size=self.snap_size
         )
 
@@ -232,7 +232,6 @@ class Model(nn.Module):
             y = snap_data.edge_labels.unsqueeze(1).float()
             node_index = torch.unique(edge_index)
 
-
             if y_rect is not None:
                 y = y_rect[t]
 
@@ -244,7 +243,8 @@ class Model(nn.Module):
                 h_t = torch.zeros(self.layer_num, x.size(
                     0), self.h_dim, device=self.device)
 
-            ev = self._compute_ev_from_graph(snap_data, is_undirected=True)
+            ev = self._compute_ev_from_graph(
+                snap_data, num_nodes=graph.num_nodes, is_undirected=True)
             if t == 0:
                 diff = torch.zeros(
                     x.size(0), 1, device=self.device, dtype=x.dtype)
@@ -294,13 +294,13 @@ class Model(nn.Module):
 
         return bce_loss, reg_loss, recon_loss + kld_loss, nce_loss, next_y_list, h_t, score_list, y_list
 
-    def _compute_ev_from_graph(self, graph: TemporalGraph, is_undirected: bool = False):
+    def _compute_ev_from_graph(self, graph: TemporalGraph, num_nodes, is_undirected: bool = False):
         edge_index = graph.edge_index
 
-        if graph.node_attr is not None:
-            num_nodes = graph.node_attr.size(0) 
-        else:
-            num_nodes = graph.num_nodes
+        # if graph.node_attr is not None:
+        #     num_nodes = graph.node_attr.size(0)
+        # else:
+        #     num_nodes = graph.num_nodes
 
         edge_weight = graph.w if graph.w is not None else None
 
@@ -313,7 +313,6 @@ class Model(nn.Module):
         _, ev = eig_fn(L, k=1, which="LM", return_eigenvectors=True)
 
         return torch.from_numpy(ev).to(self.device).squeeze(-1)  # [num_nodes]
-
 
     def reset_parameters(self, stdv=1e-1):
         for weight in self.parameters():
@@ -371,21 +370,21 @@ class Model(nn.Module):
                     self.EPS) * weight).mean()
         return pos_loss + neg_loss + feature_loss
 
-    def _compute_ev(self, data, normalization=None, is_undirected=False):
-        assert normalization in [None, "sym", "rw"], "Invalid normalization"
-        edge_weight = data.edge_attr
-        if edge_weight is not None and edge_weight.numel() != data.num_edges:
-            edge_weight = None
+    # def _compute_ev(self, data, normalization=None, is_undirected=False):
+    #     assert normalization in [None, "sym", "rw"], "Invalid normalization"
+    #     edge_weight = data.edge_attr
+    #     if edge_weight is not None and edge_weight.numel() != data.num_edges:
+    #         edge_weight = None
 
-        edge_index, edge_weight = get_laplacian(
-            data.edge_index, edge_weight, normalization, num_nodes=data.num_nodes)
-        L = to_scipy_sparse_matrix(edge_index, edge_weight, data.num_nodes)
-        eig_fn = eigs
-        if is_undirected and normalization != "rw":
-            eig_fn = eigsh
-        lambda_max, ev = eig_fn(L, k=1, which="LM", return_eigenvectors=True)
-        ev = torch.from_numpy(ev)
-        return ev
+    #     edge_index, edge_weight = get_laplacian(
+    #         data.edge_index, edge_weight, normalization, num_nodes=data.num_nodes)
+    #     L = to_scipy_sparse_matrix(edge_index, edge_weight, data.num_nodes)
+    #     eig_fn = eigs
+    #     if is_undirected and normalization != "rw":
+    #         eig_fn = eigsh
+    #     lambda_max, ev = eig_fn(L, k=1, which="LM", return_eigenvectors=True)
+    #     ev = torch.from_numpy(ev)
+    #     return ev
 
 
 """
