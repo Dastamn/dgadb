@@ -274,7 +274,7 @@ class TemporalGraphLoader:
 
                 from src.dgadb.preprocessing import Pipeline
 
-                pipeline, _ = Pipeline.from_config(dataset_name)
+                pipeline, _, _= Pipeline.from_config(dataset_name)
                 temmporal_graph = pipeline.run().to_temporal_graph()
                 if device:
                     temmporal_graph = temmporal_graph.to(device)

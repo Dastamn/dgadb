@@ -4,8 +4,8 @@
 import os
 import pickle
 import numpy as np
-import polars as pl
 import pandas as pd
+from src.dgadb.storage.temporal_graph import TemporalGraph
 from typing import Optional
 import logging
 import torch
@@ -30,7 +30,7 @@ def _fmt_ratio(x: float) -> str:
 
 
 class _SimpleCollate:
-    """Minimal clone of Collate.dyg_collate_fn from the original code"""
+    """Clone of Collate.dyg_collate_fn from the original implemenmtation"""
 
     def __init__(self) -> None:
         pass
@@ -164,42 +164,34 @@ class _DygDatasetCompat(tud.Dataset):
         }
 
 
-def _build_generaldyg_pkl_from_polars_direct(
-    df: pl.DataFrame,
+def _build_generaldyg_pkl_from_temporal_graph(
+    temporal_graph: TemporalGraph,
     dataset_name: str,
     dir_data: str,
     train_ratio: float,
     val_ratio: float,
-    anomaly_ratio: float,
-    time_col: Optional[str] = "timestamp",
+    anomaly_ratio_train: float,
+    anomaly_ratio_val: float,
+    anomaly_ratio_test: float,
     seed: Optional[int] = 42,
 ) -> str:
-    """
-    Build GeneralDYG .pkl directly from a Polars dataframe, using the
-    ego graph logic from BatchGraphSample
-
-    Required df columns:
-        ['edge_id','src','tgt','label']
-        Optional boolean masks: ['train_mask','test_mask'] and (optionally) 'val_mask'.
-        If val_mask is missing, we derive it from ratios.
-
-    The output .pkl is saved as:
-        {dataset_name}_t{train_ratio}_v{val_ratio}_a{anomaly_ratio}.pkl
-    in dir_data, where DygDataset will look for it later.
-    """
     os.makedirs(dir_data, exist_ok=True)
 
-    needed = ["edge_id", "src", "tgt", "label"]
-    for c in needed:
-        if c not in df.columns:
-            raise ValueError(f"Missing required column: {c}")
+    # Extract data from tg
+    src = temporal_graph.src.cpu().numpy()
+    tgt = temporal_graph.tgt.cpu().numpy()
+    edge_labels = temporal_graph.edge_labels.cpu().numpy()
 
-    graph_df = df.select(
-        pl.col("src").alias("u").cast(pl.Int64),
-        pl.col("tgt").alias("i").cast(pl.Int64),
-        pl.col("edge_id").alias("id").cast(pl.Int64),
-        pl.col("label").cast(pl.Int64),
-    ).to_pandas()
+    # Create edge ids
+    edge_ids = np.arange(len(src))
+
+    # Convert to pandas df for BatchGraphSample
+    graph_df = pd.DataFrame({
+        'u': src.astype(np.int64),
+        'i': tgt.astype(np.int64), 
+        'id': edge_ids.astype(np.int64),
+        'label': edge_labels.astype(np.int64)
+    })
 
     class _Cfg:
         pass
@@ -207,7 +199,7 @@ def _build_generaldyg_pkl_from_polars_direct(
     cfg = _Cfg()
     cfg.dir_data = dir_data
     cfg.data_set = dataset_name
-    cfg.neg = int(round(anomaly_ratio * 10))
+    #cfg.neg = int(round(anomaly_ratio * 10))
 
     sampler = BatchGraphSample(cfg, graph_df)
     idx_column = graph_df["id"].to_numpy()
@@ -237,11 +229,13 @@ def _build_generaldyg_pkl_from_polars_direct(
         "masks": mask_arr,
     }
 
-    # filename per your spec
+    # filename
     t_str = _fmt_ratio(train_ratio)
     v_str = _fmt_ratio(val_ratio)
-    a_str = _fmt_ratio(anomaly_ratio)
-    pkl_name = f"{dataset_name}_t{t_str}_v{v_str}_a{a_str}.pkl"
+    atr_str = _fmt_ratio(anomaly_ratio_train)
+    av_str = _fmt_ratio(anomaly_ratio_val)
+    ate_str = _fmt_ratio(anomaly_ratio_test)
+    pkl_name = f"{dataset_name}_t{t_str}_v{v_str}_atr{atr_str}_av{av_str}_ate{ate_str}.pkl"
     pkl_path = os.path.join(dir_data, pkl_name)
 
     with open(pkl_path, "wb") as f:
@@ -251,37 +245,7 @@ def _build_generaldyg_pkl_from_polars_direct(
 
 
 class GeneralDYGModel:
-    """GeneralDYG wrapper.
-
-    This class is designed for the GeneralDYG original implementation (CensNet + Transformer + CombinedModel).
-
-    Args:
-        device: torch device to run computations on.
-        meta_dict: metadata for dataset naming & splits. Expected keys:
-            - "dataset_name" (str): logical dataset name used in the pickle filename
-            - "dir_data" (str): directory where the {dataset}.pkl resides (or will be created)
-            - "train_ratio" (float): fraction of edges for training
-            - "val_ratio" (float): fraction of edges for validation
-            - "anomaly_ratio" (float): anomaly percentage (0..1)
-        hyperparams: model/training hyperparameters. Common keys:
-            - "batch_size" (int)
-            - "learning_rate" (float)
-            - "n_epochs" (int)
-            - "input_dim" (int): embedding dim used by DygDataset / CensNet input
-            - "hidden_dim" (int): Transformer hidden size
-            - "drop_out" (float)
-            - "n_heads" (int)
-            - "n_layer" (int)
-            - "num_data_workers" (int)
-            - "gpus" (int | None): passthrough; GeneralDYG uses CPU/GPU via .to(device)
-        epoch_evaluation_metric: function(labels, preds) -> scalar metric (e.g., ROC-AUC) to log per epoch.
-
-    Notes:
-        - We assume you will generate the GeneralDYG pickle in setup() with
-          the filename pattern: {dataset_name}_t{train}_v{val}_a{anomaly}.pkl in dir_data.
-        - This class will later construct DygDataset(train/test), DataLoaders, and the CombinedModel.
-    """
-
+    
     def __init__(
         self,
         device: torch.device,
@@ -340,14 +304,9 @@ class GeneralDYGModel:
             f"heads={self.n_heads}, layers={self.n_layer}, dropout={self.drop_out}"
         )
 
-    def setup(self, df: pl.DataFrame) -> None:
-        """
-        Prepare data & model.
-        - Resolve the expected pkl name
-        - Optionally build the pkl from df if missing
-        - Create dataset/dataloaders
-        - Instantiate CombinedModel + optimizer
-        """
+
+    
+    def setup(self, temporal_graph: TemporalGraph) -> None:
         # resolve pickle name
         t_str = _fmt_ratio(self.train_ratio)
         v_str = _fmt_ratio(self.val_ratio)
@@ -357,8 +316,8 @@ class GeneralDYGModel:
 
         if not os.path.exists(self.pkl_path):
             logger.info("Building GeneralDYG pickle since it was not found.")
-            self.pkl_path = _build_generaldyg_pkl_from_polars_direct(
-                df=df,
+            self.pkl_path = _build_generaldyg_pkl_from_temporal_graph(
+                temporal_graph=temporal_graph,
                 dataset_name=self.dataset_name,
                 dir_data=self.dir_data,
                 train_ratio=self.train_ratio,
@@ -369,15 +328,17 @@ class GeneralDYGModel:
         if not os.path.exists(self.pkl_path):
             raise FileNotFoundError(f"Pickle not found: {self.pkl_path}")
 
-        N = df.height
-        has_train_mask = "train_mask" in df.columns
-        has_val_mask = "val_mask" in df.columns
+        # Get counts from TemporalGraph masks
+        N = len(temporal_graph.src)
 
-        # train_mask and test_mask always present val_mask optional
-        self.train_count = (
-            int(df.filter(pl.col("train_mask")).height) if has_train_mask else int(round(self.train_ratio * N))
-        )
-        self.val_count = int(df.filter(pl.col("val_mask")).height) if has_val_mask else 0
+        train_mask = temporal_graph.train_mask.cpu().numpy()
+        test_mask = temporal_graph.test_mask.cpu().numpy()
+        val_mask = temporal_graph.val_mask.cpu().numpy() if temporal_graph.val_mask is not None else None
+
+        self.train_count = int(np.sum(train_mask))
+        self.val_count = int(np.sum(val_mask)) if val_mask is not None else 0
+
+        logger.info(f"Data splits: train={self.train_count}, val={self.val_count}, test={int(np.sum(test_mask))}")
 
         # datasets & loaders
         train_ds = _DygDatasetCompat(
@@ -468,7 +429,7 @@ class GeneralDYGModel:
         )
         return logits, y
 
-    def train(self) -> None:
+    def train(self, runnable=None) -> None:
         if any(x is None for x in [self.model, self.optimizer, self.loader_train, self.loader_test]):
             raise RuntimeError("Call setup() before train().")
 
@@ -493,15 +454,14 @@ class GeneralDYGModel:
             logger.info(f"Epoch {epoch + 1:03d} | train_loss={train_loss:.4f} | time={time.time() - t0:.2f}s")
 
             if ((epoch + 1) % self.print_freq) == 0:
-                split = "val" if (self.loader_val is not None) else "test"
-                preds, labels, _ = self.inference(split=split)
-                if len(np.unique(labels)) > 1:
-                    auc = float(self.epoch_evaluation_metric(labels, preds))
-                    logger.info(f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = {auc:.4f}")
-                else:
-                    logger.info(f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = NaN (single class)")
+                split = "val" if (self.loader_val is not None) else "train"
+                preds, labels = self.inference(split=split)
+                auc = float(self.epoch_evaluation_metric(labels, preds))
+                if runnable is not None:
+                    runnable(auc)
+                logger.info(f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = {auc:.4f}")
 
-    def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray, float]:
+    def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray]:
         if self.model is None:
             raise RuntimeError("Call setup() first.")
         if split not in {"train", "val", "test"}:
@@ -517,10 +477,9 @@ class GeneralDYGModel:
 
         self.model.eval()
         preds, labels = [], []
-        t0 = time.time()
         with torch.no_grad():
             for batch in loader:
                 logits, y = self._forward_batch(batch)
                 preds.append(torch.sigmoid(logits).cpu().numpy().ravel())
                 labels.append(y.cpu().numpy().ravel())
-        return np.concatenate(preds), np.concatenate(labels), time.time() - t0
+        return np.concatenate(preds), np.concatenate(labels)

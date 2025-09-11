@@ -189,5 +189,5 @@ class Pipeline:
         return Pipeline(pipeline_steps, pipeline_callbacks), meta_dict, config
 
     def __repr__(self) -> str:
-        steps_ = "; ".join(repr(step) for step in self.steps)
+        steps_ = "; ".join(repr(step) for step in self.steps) 
         return f"{self.__class__.__name__}({steps_})"

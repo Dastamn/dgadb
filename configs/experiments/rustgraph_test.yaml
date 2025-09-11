@@ -1,9 +1,10 @@
 model: RustGraph
+anomaly_as_0: True
 
 
 
 hyperparameters:
-  epochs: 250
+  epochs: 3
   learning-rate:
     default:
       type: grid_search
