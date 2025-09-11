@@ -1,18 +1,9 @@
 import torch
 import numpy as np
 from src.dgadb.storage.temporal_graph import TemporalGraph
-import sys
-import copy
-import math
-import time
-import pdb
 import pickle as pickle
 import scipy.io as sio
 import scipy.sparse as ssp
-import os
-import os.path
-import random
-import argparse
 import pickle
 from src.dgadb.models.StrGNN.pytorch_DGCNN.main import *
 from src.dgadb.models.StrGNN.detection.util_functions import *
@@ -26,8 +17,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# TODO: StrGNN works if given a dataset with labels. I have not implemented negative/positive sampling because I believe this should be done similarly for all methods.
-# TODO: Get it working with validation sets
 class STRGNNModel:
     def __init__(
         self,
