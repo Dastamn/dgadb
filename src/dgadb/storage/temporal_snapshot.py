@@ -2,7 +2,7 @@ import logging
 import torch
 from dataclasses import dataclass
 from typing import Iterator, Literal, Optional
-from .temporal_graph import TemporalGraph
+from .temporal_graph import TemporalGraph, TemporalGraphView
 
 _SNAPSHOTTING_STRATEGIES: list[str] = ["window", "event"]
 
@@ -10,21 +10,21 @@ _SNAPSHOTTING_STRATEGIES: list[str] = ["window", "event"]
 @dataclass
 class TemporalGraphSnapshot:
     snapshot_id: int
-    current: TemporalGraph
-    cumulative: TemporalGraph
+    current: TemporalGraphView
+    cumulative: TemporalGraphView
 
-    @property
-    def num_cumulative_nodes(self):
-        return self.cumulative.num_nodes
+    # @property
+    # def num_cumulative_nodes(self):
+    #     return self.cumulative.num_nodes
 
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}(snapshot_id={self.snapshot_id}, "
-            f"current_edges={self.current.num_edges}, "
-            f"cumulative_nodes={self.num_cumulative_nodes}, "
-            f"cumulative_edges={self.cumulative.num_edges}"
-            ")"
-        )
+    # def __repr__(self) -> str:
+    #     return (
+    #         f"{self.__class__.__name__}(snapshot_id={self.snapshot_id}, "
+    #         f"current_edges={self.current.num_edges}, "
+    #         f"cumulative_nodes={self.num_cumulative_nodes}, "
+    #         f"cumulative_edges={self.cumulative.num_edges}"
+    #         ")"
+    #     )
 
 
 class TemporalGraphSnapshotLoader:
@@ -81,11 +81,6 @@ class TemporalGraphSnapshotLoader:
     def reset(self):
         self._current_snapshot_num = 0
 
-        initial_cumulative_end_idx = (self._snapshot_global_indices[0][0]
-                                      if len(self) > 0 else 0)
-        self.cumulative_graph = self._slice_data(
-            slice(0, initial_cumulative_end_idx))
-
     def _compute_snapshot_indices(self) -> list[tuple[int, int]]:
         indices_list = []
 
@@ -139,7 +134,6 @@ class TemporalGraphSnapshotLoader:
             f"Unknown strategy: '{self.strategy}'. Choose from {_SNAPSHOTTING_STRATEGIES}.")
 
     def __len__(self) -> int:
-        """Returns the number of snapshots that will be yielded."""
         return len(self._snapshot_global_indices)
 
     def __iter__(self) -> Iterator[TemporalGraphSnapshot]:
@@ -151,14 +145,16 @@ class TemporalGraphSnapshotLoader:
             raise StopIteration
 
         start_i, end_i = self._snapshot_global_indices[self._current_snapshot_num]
-        current_graph = self._slice_data(slice(start_i, end_i))
-        # val = train + val, test = train + val + test
-        self.cumulative_graph = self._slice_data(slice(0, end_i))
+        current_slice = slice(start_i, end_i)
+        cumulative_slice = slice(0, end_i)
+
+        current_view = TemporalGraphView(self.data, current_slice)
+        cumulative_view = TemporalGraphView(self.data, cumulative_slice)
 
         snapshot = TemporalGraphSnapshot(
             snapshot_id=self._current_snapshot_num,
-            current=current_graph,
-            cumulative=self.cumulative_graph
+            current=current_view,
+            cumulative=cumulative_view
         )
 
         self._current_snapshot_num += 1

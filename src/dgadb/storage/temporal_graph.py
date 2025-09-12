@@ -153,6 +153,29 @@ class TemporalGraph:
         )
 
 
+class TemporalGraphView:
+    def __init__(self, temporal_graph: TemporalGraph, slice_obj: slice):
+        self._temporal_graph = temporal_graph
+        self._slice = slice_obj
+        self._num_edges = len(range(slice_obj.start, slice_obj.stop)[
+                              0:slice_obj.step]) if slice_obj else 0
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._temporal_graph, name)
+        if torch.is_tensor(attr) and attr.size(0) == self._temporal_graph.num_edges:
+            return attr[self._slice]
+
+        return attr
+
+    @property
+    def num_edges(self) -> int:
+        return self._num_edges
+
+    @property
+    def edge_index(self) -> torch.Tensor:
+        return torch.stack([self.src, self.tgt], dim=1).T
+
+
 class TemporalGraphLoader:
     def __init__(
         self,
