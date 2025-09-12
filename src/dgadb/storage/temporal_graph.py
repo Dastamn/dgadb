@@ -36,6 +36,8 @@ class TemporalGraph:
 
     def __post_init__(self) -> None:
         self.check_device()
+        if getattr(self, "total_num_nodes"):
+            self.metadata["total_num_nodes"] = self.num_nodes
 
     @property
     def device(self) -> torch.device:
@@ -274,7 +276,7 @@ class TemporalGraphLoader:
 
                 from src.dgadb.preprocessing import Pipeline
 
-                pipeline, _, _= Pipeline.from_config(dataset_name)
+                pipeline, _, _ = Pipeline.from_config(dataset_name)
                 temmporal_graph = pipeline.run().to_temporal_graph()
                 if device:
                     temmporal_graph = temmporal_graph.to(device)

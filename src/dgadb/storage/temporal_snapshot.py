@@ -72,7 +72,6 @@ class TemporalGraphSnapshotLoader:
             if torch.is_tensor(value) and value.size(0) == self.data.num_edges
         }
 
-        # 'mask' will be all 1s for the right split, all 0s for the others
         return TemporalGraph(
             **sliced_attrs,
             node_attr=self.data.node_attr,
@@ -81,6 +80,11 @@ class TemporalGraphSnapshotLoader:
 
     def reset(self):
         self._current_snapshot_num = 0
+
+        initial_cumulative_end_idx = (self._snapshot_global_indices[0][0]
+                                      if len(self) > 0 else 0)
+        self.cumulative_graph = self._slice_data(
+            slice(0, initial_cumulative_end_idx))
 
     def _compute_snapshot_indices(self) -> list[tuple[int, int]]:
         indices_list = []
@@ -149,14 +153,13 @@ class TemporalGraphSnapshotLoader:
         start_i, end_i = self._snapshot_global_indices[self._current_snapshot_num]
         current_graph = self._slice_data(slice(start_i, end_i))
         # val = train + val, test = train + val + test
-        cumulative_graph = self._slice_data(slice(0, end_i))
+        self.cumulative_graph = self._slice_data(slice(0, end_i))
 
         snapshot = TemporalGraphSnapshot(
             snapshot_id=self._current_snapshot_num,
             current=current_graph,
-            cumulative=cumulative_graph
+            cumulative=self.cumulative_graph
         )
 
         self._current_snapshot_num += 1
-
         return snapshot
