@@ -41,27 +41,31 @@ class DygDataset(torch.utils.data.Dataset):
             #     self.full_data,self.positive_eids = self.up_sample_data(self.full_data, self.positive_eids, self.config.mask_ratio)
             #
 
+    
     def get_data(self, graph, split_flag):
-        src = graph._edges["e_pairs"][0, :].detach().cpu().numpy()
-        tgt = graph._edges["e_pairs"][1, :].detach().cpu().numpy()
-        timestamps = graph._edges["e_timestamp"].detach().cpu().numpy()
-        labels = graph._edges["e_label"].detach().cpu().numpy()
-        edge_ids = graph._edges["e_id"].detach().cpu().numpy()
+        # TemporalGraph attributes
+        src = graph.src.detach().cpu().numpy()
+        tgt = graph.tgt.detach().cpu().numpy()
+        timestamps = graph.t.detach().cpu().numpy()
+        labels = graph.edge_labels.detach().cpu().numpy()
 
-        # random.seed(2020)
+        # Create edge IDs if not present (assuming sequential)
+        edge_ids = np.arange(len(src))
 
-        train_mask = graph._edges["e_train_mask"].detach().cpu().numpy().astype(bool)
+        # Get split masks
+        train_mask = graph.train_mask.detach().cpu().numpy().astype(bool)
         val_mask = (
-            graph._edges["e_val_mask"].detach().cpu().numpy().astype(bool) if "e_val_mask" in graph._edges else None
+            graph.val_mask.detach().cpu().numpy().astype(bool) if hasattr(graph, 'val_mask') and graph.val_mask is not None else None
         )
-        test_mask = graph._edges["e_test_mask"].detach().cpu().numpy().astype(bool)
+        test_mask = graph.test_mask.detach().cpu().numpy().astype(bool)
 
         train_eids = np.where(train_mask)[0]
-        val_eids = np.where(val_mask)[0] if "e_val_mask" in graph._edges else None
+        val_eids = np.where(val_mask)[0] if val_mask is not None else None
         test_eids = np.where(test_mask)[0]
 
-        edge_features = graph._edges["e_feat"].detach().cpu().numpy()
-        node_features = graph._nodes["n_feat"].detach().cpu().numpy()
+        # Get features
+        edge_features = graph.edge_attr.detach().cpu().numpy().astype(np.float32) if graph.edge_attr is not None else np.zeros((len(src), 1), dtype=np.float32)
+        node_features = graph.node_attr.detach().cpu().numpy().astype(np.float32) if graph.node_attr is not None else np.zeros((graph.num_nodes, 1), dtype=np.float32)
 
         full_data = SADData(src, tgt, timestamps, edge_ids, labels)
 

@@ -7,7 +7,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 import src.dgadb.models.SAD.datasets as ds
-from src.dgadb.storage.graph import Graph
 import torch
 import logging
 import os
@@ -15,7 +14,7 @@ from tqdm import tqdm
 import numpy as np
 from src.dgadb.models.utils import time_func
 import os
-from src.dgadb.storage.graph import Graph
+from src.dgadb.storage.temporal_graph import TemporalGraph
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +40,10 @@ class SADModel:
         self.dataset_name: str = meta_dict["dataset_name"]
         self.train_ratio: float = float(meta_dict["train_ratio"])
         self.val_ratio: float = float(meta_dict["val_ratio"])
-        self.anomaly_ratio: float = float(meta_dict["anomaly_ratio"])
+        self.anom_train_ratio: float = float(meta_dict["anom_train_ratio"])
+        self.anom_val_ratio: float = float(meta_dict["anom_val_ratio"])
+        self.anom_test_ratio: float = float(meta_dict["anom_test_ratio"])
+
         self.has_val: bool = self.val_ratio > 0.0
         self.dataset_name: str = meta_dict["dataset_name"]
 
@@ -72,14 +74,14 @@ class SADModel:
         # data loading
         self.n_neighbors = hyperparams.get("n_neighbors", 20)
         self.batch_size = hyperparams.get("batch_size", 256)
-        self.n_epochs = hyperparams.get("num_epochs", 10)
-        self.num_data_workers = hyperparams.get("num_data_workers", 25)
+        self.n_epochs = hyperparams.get("epochs", 10)
+        self.num_data_workers = hyperparams.get("num_data_workers", 1)
         self.gpus = hyperparams.get("gpus", 1)
         self.accelerator = hyperparams.get("accelerator", "ddp")
 
         # model
         self.ckpt_file = hyperparams.get("ckpt_file", "./")
-        self.input_dim = hyperparams.get("input_dim", 172)
+        self.input_dim = hyperparams.get("input_dim", 1)
         self.hidden_dim = hyperparams.get("hidden_dim", 128)
         self.n_heads = hyperparams.get("n_heads", 2)
         self.drop_out = hyperparams.get("drop_out", 0.2)
@@ -87,7 +89,7 @@ class SADModel:
         self.learning_rate = hyperparams.get("learning_rate", 5e-4)
 
     @time_func
-    def setup(self, graph: Graph) -> None:
+    def setup(self, graph: TemporalGraph) -> None:
         dataset_train = ds.DygDataset(graph, "train", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
         dataset_val = ds.DygDataset(graph, "val", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
         dataset_test = ds.DygDataset(graph, "test", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
@@ -198,7 +200,7 @@ class SADModel:
         return score, np.mean(m_loss), m_dev, m_label
 
     @time_func
-    def train(self) -> None:
+    def train(self, runnable=None) -> None:
         for epoch in range(self.n_epochs):
             ave_loss = 0
             count_flag = 0
@@ -259,11 +261,11 @@ class SADModel:
             logger.info(
                 f"Epoch {epoch} - train mean loss:{np.mean(m_loss)}, class loss: {np.mean(loss_class_list)}, anomaly loss: {np.mean(loss_anomaly_list)}, sup loss: {np.mean(loss_supc_list)}"
             )
-            if epoch % self.print_freq:
-                split = "val" if self.has_val else "train"
-                m_label, m_pred = self.inference(split=split)
-                score = self.epoch_evaluation_metric(m_label, m_pred)
-                logger.info(f"Epoch score on {split} data: {score:4f}")
+            split = "val" if self.has_val else "train"
+            m_pred, m_label = self.inference(split=split)
+            score = self.epoch_evaluation_metric(m_label, m_pred)
+            logger.info(f"Epoch score on {split} data: {score:4f}")
+            runnable(score, self, epoch)
 
     @time_func
     def inference(self, split="test"):
@@ -292,4 +294,4 @@ class SADModel:
                 m_label = np.concatenate((m_label, y))
                 m_dev = np.concatenate((m_dev, dev_score))
 
-        return m_label, m_pred
+        return m_pred, m_label
