@@ -22,6 +22,7 @@ from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
 
 from src.dgadb.models.baseline.Node2Vec import n2vModel
 from src.dgadb.models.baseline.NetwalkBaseline import NetWalkBaseline
+from src.dgadb.models.SAD.main_SAD import SADModel
 
 import argparse
 
@@ -34,7 +35,8 @@ _MODELS = {
     "TADDY": TADDYModel,
     "StrGNN": STRGNNModel,
     "Node2Vec": n2vModel,
-    "NetWalk": NetWalkBaseline
+    "NetWalk": NetWalkBaseline,
+    "SAD": SADModel
 }
 
 
@@ -156,7 +158,6 @@ class Experiment():
             tune.report(metrics={"metric": metric}, checkpoint=checkpoint)
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print("DEVICE", device)
         self.model = self.method(device, meta_dict,
                                  config, roc_auc_score)
         tg = tg.to(device)

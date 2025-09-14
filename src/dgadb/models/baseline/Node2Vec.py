@@ -9,7 +9,7 @@ from torch.nn.functional import sigmoid
 
 from src.dgadb.storage import TemporalGraph
 from src.dgadb.storage import TemporalGraphSnapshotLoader
-
+from sklearn.metrics import roc_auc_score
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +21,7 @@ class n2vModel:
         device: torch.DeviceObjType,
         meta_dict: dict[str, str | int | float],
         hyperparams: dict[str, int | float],
-        epoch_evaluation_metric: Callable[[torch.FloatTensor, torch.FloatTensor], float],
+        epoch_evaluation_metric: Callable[[torch.FloatTensor, torch.FloatTensor], float] = roc_auc_score,
     ) -> None:
         
         self.device = device
@@ -92,7 +92,7 @@ class n2vModel:
             raise RuntimeError(
                 "Model not properly initialized. Call setup() before train() or inference().")
 
-    def train(self) -> None:
+    def train(self, runnable=None) -> None:
         
         self._ensure_setup()
         logger.info(f"Starting training for {self.num_epochs} epochs...")
@@ -106,7 +106,11 @@ class n2vModel:
                 self.optimizer.step()
                 total_loss += loss.item()
             epoch_loss = total_loss / len(self.loader)
-            logger.info(f"Epoch {epoch+1}/{self.num_epochs} - mean loss: {epoch_loss:.4f}") 
+            logger.info(f"Epoch {epoch+1}/{self.num_epochs} - mean loss: {epoch_loss:.4f}")
+            probs, labels = self.inference(split="val")
+            auc = self.epoch_evaluation_metric(labels, probs)
+            if runnable is not None:
+                runnable(auc, self, epoch)
 
     def inference(self, split: str = "test"):
         split_mask_map = {
