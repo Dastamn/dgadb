@@ -20,6 +20,9 @@ import tempfile
 from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
 
+from src.dgadb.models.baseline.Node2Vec import n2vModel
+from src.dgadb.models.baseline.NetwalkBaseline import NetWalkBaseline
+
 import argparse
 
 
@@ -29,7 +32,9 @@ _CONFIG_PATH = os.path.join(_BASE_PATH, "configs")
 _MODELS = {
     "RustGraph": RustGraphModel,
     "TADDY": TADDYModel,
-    "StrGNN": STRGNNModel
+    "StrGNN": STRGNNModel,
+    "Node2Vec": n2vModel,
+    "NetWalk": NetWalkBaseline
 }
 
 
@@ -151,6 +156,7 @@ class Experiment():
             tune.report(metrics={"metric": metric}, checkpoint=checkpoint)
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        print("DEVICE", device)
         self.model = self.method(device, meta_dict,
                                  config, roc_auc_score)
         tg = tg.to(device)
