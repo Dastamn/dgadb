@@ -6,7 +6,7 @@ anomalies:
   anom_test_ratio: 0.1
 
 hyperparameters:
-  epochs: 200
+  epochs: 10
 
   snapshot_size:
     default:
