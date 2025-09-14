@@ -181,13 +181,13 @@ class Experiment():
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tuner = tune.Tuner(
-                # tune.with_resources(
-                #     tune.with_parameters(
-                #         self.training_function, tg=self.tg, meta_dict=self.meta_dict),
-                #     {"cpu": min(self.num_samples, cpu_count)}
-                # ),
-                tune.with_parameters(
-                    self.training_function, tg=self.tg, meta_dict=self.meta_dict),
+                tune.with_resources(
+                    tune.with_parameters(
+                        self.training_function, tg=self.tg, meta_dict=self.meta_dict),
+                    {"cpu": min(self.num_samples, cpu_count), "gpu": 1}
+                ),
+                # tune.with_parameters(
+                #     self.training_function, tg=self.tg, meta_dict=self.meta_dict),
                 param_space=self.param_space,
                 tune_config=tune.TuneConfig(
                     num_samples=self.num_samples, metric="metric", mode="max", time_budget_s=self.time_budget_s),
