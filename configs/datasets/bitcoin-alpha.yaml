@@ -19,7 +19,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/bitcoin-alpha
+        dataset_dir: data/bitcoin-alpha
     - name: StructureNormalizer
       params:
         directionality: canonical

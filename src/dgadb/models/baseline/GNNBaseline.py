@@ -77,7 +77,7 @@ class GNNBaseline(BaseModel):
             params=self.model.parameters(), lr=self.learning_rate
         )
 
-    def train(self):
+    def train(self, runnable=None):
         self._ensure_setup()
         assert self.temporal_graph is not None
         assert self.model is not None
