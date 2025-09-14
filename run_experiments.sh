@@ -1,71 +1,43 @@
 #!/usr/bin/env bash
+# run_experiments.sh
+# Usage examples:
+#   METHODS="A B" DATASETS="D E" ./run_experiments.sh
+#   METHODS="A B" DATASETS="D E" ./run_experiments.sh --num_samples 100
+#   METHODS="A"   DATASETS="X Y" ./run_experiments.sh --num_samples 200 --num_gpus 2 --foo bar
 
-# python -m src.dgadb.experiment.experiment --method <M> --dataset <D>
-# for all combinations of methods and datasets
+set -u
+set -o pipefail
 
-set -u  #  continue on errors
-
-# --- Edit these lists
-METHODS=(A C D)
-DATASETS=(B E F)
-# ------------------------
-# OR RUN:
-# METHODS_OVERRIDE="A B" DATASETS_OVERRIDE="B C" ./run_experiments.sh
-
-
-# overriding via environment variables, e.g.:
-#   METHODS="A B" DATASETS="X Y" ./run_experiments.sh
-if [[ -n "${METHODS_OVERRIDE:-}" ]]; then
-  # e.g., METHODS_OVERRIDE="A B C"
-  read -r -a METHODS <<< "$METHODS_OVERRIDE"
+# Require METHODS and DATASETS (space-separated)
+if [[ -z "${METHODS:-}" || -z "${DATASETS:-}" ]]; then
+  echo "Usage: METHODS=\"A B\" DATASETS=\"D E\" $0 [extra python flags like --num_samples 100 --num_gpus 2]"
+  exit 1
 fi
-if [[ -n "${DATASETS_OVERRIDE:-}" ]]; then
-  # e.g., DATASETS_OVERRIDE="B D"
-  read -r -a DATASETS <<< "$DATASETS_OVERRIDE"
-fi
+
+# Turn env vars into arrays
+read -r -a METHODS_ARR <<< "$METHODS"
+read -r -a DATASETS_ARR <<< "$DATASETS"
+
+# Collect any extra flags given to this script to pass through to Python
+EXTRA_ARGS=( "$@" )
 
 TS="$(date +%Y%m%d_%H%M%S)"
-LOG_DIR="run_logs/run_logs_${TS}"
+LOG_DIR="run_logs/${TS}"
 mkdir -p "$LOG_DIR"
 
-failures=()
-successes=0
-total=0
-
-echo "Starting experiment grid at $(date)"
-echo "Methods:  ${METHODS[*]}"
-echo "Datasets: ${DATASETS[*]}"
-echo "Logs will be written to: $LOG_DIR"
-echo
-
-for method in "${METHODS[@]}"; do
-  for dataset in "${DATASETS[@]}"; do
-    ((total++))
+for method in "${METHODS_ARR[@]}"; do
+  for dataset in "${DATASETS_ARR[@]}"; do
+    echo "Running method=$method dataset=$dataset ${EXTRA_ARGS:+extra args: ${EXTRA_ARGS[*]}}"
     log_file="${LOG_DIR}/method_${method}__dataset_${dataset}.log"
-    cmd=( python -m src.dgadb.experiment.experiment --method "$method" --dataset "$dataset" )
 
-    echo "[$total] Running: ${cmd[*]}"
-    if "${cmd[@]}" &> "$log_file"; then
-      echo " -> SUCCESS (log: $log_file)"
-      ((successes++))
+    if python -m src.dgadb.experiment.experiment \
+         --method "$method" --dataset "$dataset" "${EXTRA_ARGS[@]}" |& tee "$log_file"; then
+      echo "✓ Done: $method / $dataset"
     else
-      echo " -> FAILED  (log: $log_file)"
-      failures+=("${method},${dataset}")
-      # continue automatically to next combo
+      echo "✗ Failed: $method / $dataset (see $log_file)"
     fi
     echo
   done
 done
 
-echo "===== SUMMARY ====="
-echo "Total runs:   $total"
-echo "Succeeded:    $successes"
-echo "Failed:       ${#failures[@]}"
-if (( ${#failures[@]} > 0 )); then
-  echo "Failures:"
-  for item in "${failures[@]}"; do
-    IFS=',' read -r m d <<< "$item"
-    echo "  - method=$m, dataset=$d  (see: ${LOG_DIR}/method_${m}__dataset_${d}.log)"
-  done
-fi
-echo "All logs: $LOG_DIR"
+echo "Logs saved in: $LOG_DIR"
