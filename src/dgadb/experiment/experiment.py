@@ -19,9 +19,11 @@ import tempfile
 
 from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
+from src.dgadb.models.GeneralDYG.GeneralDYG_main import GeneralDYGModel
 
 from src.dgadb.models.baseline.Node2Vec import n2vModel
 from src.dgadb.models.baseline.NetwalkBaseline import NetWalkBaseline
+from src.dgadb.models.baseline.GNNBaseline import GNNBaseline
 from src.dgadb.models.SAD.main_SAD import SADModel
 
 import argparse
@@ -34,9 +36,11 @@ _MODELS = {
     "RustGraph": RustGraphModel,
     "TADDY": TADDYModel,
     "StrGNN": STRGNNModel,
+    "SAD": SADModel,
+    "GeneralDYG": GeneralDYGModel,
     "Node2Vec": n2vModel,
     "NetWalk": NetWalkBaseline,
-    "SAD": SADModel
+    "GNNBaseline": GNNBaseline,
 }
 
 
@@ -141,19 +145,22 @@ class Experiment():
 
     def training_function(self, config: dict, tg: TemporalGraph, meta_dict: dict, *args):
         def tune_report(metric, model, epoch):
-            # ray checkpoint
-            checkpoint_dir = os.path.join(
-                os.environ["BASE_PATH"],
-                f"model_checkpoint/{self.method_name}",
-                self.dataset_name,
-                tune.get_context().get_trial_id(),
-                f"epoch_{epoch}")
+            if model is None:
+                checkpoint = None
+            else:
+                # ray checkpoint
+                checkpoint_dir = os.path.join(
+                    os.environ["BASE_PATH"],
+                    f"model_checkpoint/{self.method_name}",
+                    self.dataset_name,
+                    tune.get_context().get_trial_id(),
+                    f"epoch_{epoch}")
 
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            torch.save(
-                model, os.path.join(checkpoint_dir, "model.pt"))
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                torch.save(
+                    model, os.path.join(checkpoint_dir, "model.pt"))
 
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
             tune.report(metrics={"metric": metric}, checkpoint=checkpoint)
 
@@ -182,13 +189,14 @@ class Experiment():
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tuner = tune.Tuner(
-                # tune.with_resources(
-                #     tune.with_parameters(
-                #         self.training_function, tg=self.tg, meta_dict=self.meta_dict),
-                #     {"cpu": min(self.num_samples, cpu_count)}
-                # ),
-                tune.with_parameters(
-                    self.training_function, tg=self.tg, meta_dict=self.meta_dict),
+                tune.with_resources(
+                    tune.with_parameters(
+                        self.training_function, tg=self.tg, meta_dict=self.meta_dict),
+                    {"cpu": min(max(4, self.num_samples), cpu_count),
+                     "gpu": min(1, torch.cuda.device_count())}
+                ),
+                # tune.with_parameters(
+                #     self.training_function, tg=self.tg, meta_dict=self.meta_dict),
                 param_space=self.param_space,
                 tune_config=tune.TuneConfig(
                     num_samples=self.num_samples, metric="metric", mode="max", time_budget_s=self.time_budget_s),
@@ -208,31 +216,34 @@ class Experiment():
             best_result = results.get_best_result("metric", "max")
             checkpoint = best_result.checkpoint
 
-            with checkpoint.as_directory() as checkpoint_dir:
-                best_model = torch.load(
-                    os.path.join(checkpoint_dir, "model.pt"))
+            if checkpoint is not None:
+                with checkpoint.as_directory() as checkpoint_dir:
+                    best_model = torch.load(
+                        os.path.join(checkpoint_dir, "model.pt"))
 
-            best_config = best_result.config
-            self.evaluator = Evaluator(dataset_name=self.dataset_name,
-                                       method_name=self.method_name,
-                                       dataset_config=self.dataset_config,
-                                       method_config=best_config,
-                                       experiment_config=self.exp_config,
-                                       anomaly_as_0=self.anomaly_as_0,
-                                       output_dir="eval-data")
-            preds, labels = best_model.inference("test")
-            self.evaluator.eval_preds(
-                torch.tensor(labels), torch.tensor(preds))
-            self.evaluator.log_roc()
-            self.evaluator.save_results()
+                best_config = best_result.config
+                self.evaluator = Evaluator(dataset_name=self.dataset_name,
+                                           method_name=self.method_name,
+                                           dataset_config=self.dataset_config,
+                                           method_config=best_config,
+                                           experiment_config=self.exp_config,
+                                           anomaly_as_0=self.anomaly_as_0,
+                                           output_dir="eval-data")
+                preds, labels = best_model.inference("test")
+                self.evaluator.eval_preds(
+                    torch.tensor(labels), torch.tensor(preds))
+                self.evaluator.log_roc()
+                self.evaluator.save_results()
 
-            # save best model
-            save_path = os.path.join(
-                _BASE_PATH, "best_model", self.method_name, self.dataset_name)
-            os.makedirs(save_path, exist_ok=True)
-            torch.save(best_model, os.path.join(save_path, "model.pt"))
-            with open(os.path.join(save_path, "config.json"), "w") as f:
-                json.dump(best_config, f, indent=4)
+                # save best model
+                save_path = os.path.join(
+                    _BASE_PATH, "best_model", self.method_name, self.dataset_name)
+                os.makedirs(save_path, exist_ok=True)
+                torch.save(best_model, os.path.join(save_path, "model.pt"))
+                with open(os.path.join(save_path, "config.json"), "w") as f:
+                    json.dump(best_config, f, indent=4)
+            else:
+                print("CHECKPOINT IS NONE.")
 
 
 if __name__ == "__main__":
@@ -299,8 +310,8 @@ if __name__ == "__main__":
         raise RuntimeError(f"Unknown dataset: '{dataset_name}'.")
 
     method_name = args.method.lower()
-    if method_name not in [k.lower() for k in _MODELS]:
-        raise RuntimeError(f"Unknown method: '{dataset_name}'.")
+    if method_name not in [k.lower() for k in [*_MODELS, "gcn", "gat", "graphsage"]]:
+        raise RuntimeError(f"Unknown method: '{method_name}'.")
 
     # dataset_name = "bitcoin-alpha"
     e = Experiment(exp_name=f"{method_name}_test",
