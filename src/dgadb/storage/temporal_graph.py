@@ -83,6 +83,9 @@ class TemporalGraph:
                             * torch.tensor(-1, device=device))
 
     def to(self, device: Any, **kwargs):
+        if self.device == torch.device(device):
+            return self
+
         new_attrs = {}
         for key, value in self.__dict__.items():
             if torch.is_tensor(value):
