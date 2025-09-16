@@ -481,14 +481,14 @@ class GeneralDYGModel:
             logger.info(
                 f"Epoch {epoch + 1:03d} | train_loss={train_loss:.4f} | time={time.time() - t0:.2f}s")
 
-            if ((epoch + 1) % self.print_freq) == 0:
+            if ((epoch + 1) % self.print_freq) == 0 or runnable is not None:
                 split = "val" if (self.loader_val is not None) else "train"
                 preds, labels = self.inference(split=split)
                 auc = float(self.epoch_evaluation_metric(labels, preds))
-                if runnable is not None:
-                    runnable(auc)
                 logger.info(
                     f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = {auc:.4f}")
+                if runnable is not None:
+                    runnable(auc, self, epoch)
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray]:
         if self.model is None:
