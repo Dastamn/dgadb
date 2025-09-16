@@ -10,21 +10,8 @@ _SNAPSHOTTING_STRATEGIES: list[str] = ["window", "event"]
 @dataclass
 class TemporalGraphSnapshot:
     snapshot_id: int
-    current: TemporalGraphView
-    cumulative: TemporalGraphView
-
-    # @property
-    # def num_cumulative_nodes(self):
-    #     return self.cumulative.num_nodes
-
-    # def __repr__(self) -> str:
-    #     return (
-    #         f"{self.__class__.__name__}(snapshot_id={self.snapshot_id}, "
-    #         f"current_edges={self.current.num_edges}, "
-    #         f"cumulative_nodes={self.num_cumulative_nodes}, "
-    #         f"cumulative_edges={self.cumulative.num_edges}"
-    #         ")"
-    #     )
+    current: TemporalGraph | TemporalGraphView
+    cumulative: Optional[TemporalGraph | TemporalGraphView]
 
 
 class TemporalGraphSnapshotLoader:
@@ -33,12 +20,16 @@ class TemporalGraphSnapshotLoader:
         data: TemporalGraph,
         strategy: Literal["window", "event"] = "window",
         split: Optional[Literal["train", "val", "test"]] = None,
+        copy_on_load: bool = False,
+        include_cumulative: bool = False,
         **kwargs
     ) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.data = data
         self.strategy = strategy
         self.split = split
+        self.copy_on_load = copy_on_load
+        self.include_cumulative = include_cumulative
         self.kwargs = kwargs
         self._split_start_i: int = 0
         self._num_split_edges: int = self.data.num_edges
@@ -67,7 +58,7 @@ class TemporalGraphSnapshotLoader:
 
     def _slice_data(self, indices: torch.Tensor | slice) -> TemporalGraph:
         sliced_attrs = {
-            key: value[indices]
+            key: value[indices].clone()
             for key, value in self.data.__dict__.items()
             if torch.is_tensor(value) and value.size(0) == self.data.num_edges
         }
@@ -148,13 +139,19 @@ class TemporalGraphSnapshotLoader:
         current_slice = slice(start_i, end_i)
         cumulative_slice = slice(0, end_i)
 
-        current_view = TemporalGraphView(self.data, current_slice)
-        cumulative_view = TemporalGraphView(self.data, cumulative_slice)
+        if self.copy_on_load:
+            current = self._slice_data(current_slice)
+            cumulative = self._slice_data(
+                cumulative_slice) if self.include_cumulative else None
+        else:
+            current = TemporalGraphView(self.data, current_slice)
+            cumulative = TemporalGraphView(
+                self.data, cumulative_slice) if self.include_cumulative else None
 
         snapshot = TemporalGraphSnapshot(
             snapshot_id=self._current_snapshot_num,
-            current=current_view,
-            cumulative=cumulative_view
+            current=current,
+            cumulative=cumulative
         )
 
         self._current_snapshot_num += 1
