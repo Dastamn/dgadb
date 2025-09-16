@@ -22,7 +22,8 @@ read -r -a DATASETS_ARR <<< "$DATASETS"
 EXTRA_ARGS=( "$@" )
 
 TS="$(date +%Y%m%d_%H%M%S)"
-LOG_DIR="run_logs/${TS}"
+METHODS_UNDER=$(echo "$METHODS" | tr ' ' '_')
+LOG_DIR="run_logs/${TS}_${METHODS_UNDER}"
 mkdir -p "$LOG_DIR"
 
 for method in "${METHODS_ARR[@]}"; do
