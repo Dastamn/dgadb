@@ -9,10 +9,7 @@ anomalies:
 hyperparameters:
   epochs: 50
 
-  sortpooling_k:
-    default:
-      type: grid_search
-      search_space: [0.6, 10, 30]
+  sortpooling_k: 30
 
   snapshot_size:
     default:

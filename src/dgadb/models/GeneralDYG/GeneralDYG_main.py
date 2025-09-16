@@ -38,7 +38,8 @@ class _SimpleCollate:
     def __call__(self, batch):
         input_nodes_feature = [b["input_nodes_feature"] for b in batch]
         input_edges_feature = [b["input_edges_feature"] for b in batch]
-        input_edges_pad = torch.stack([b["input_edges_pad"] for b in batch], dim=0)
+        input_edges_pad = torch.stack(
+            [b["input_edges_pad"] for b in batch], dim=0)
         labels = torch.stack([b["labels"] for b in batch], dim=0)
         Tmats = [b["Tmats"] for b in batch]
         adjs = [b["adjs"] for b in batch]
@@ -98,17 +99,23 @@ class _DygDatasetCompat(tud.Dataset):
 
         # global vocab sizes
         flattened_node = (
-            np.concatenate([arr for arr in node_features]) if len(node_features) else np.array([], dtype=int)
+            np.concatenate([arr for arr in node_features]) if len(
+                node_features) else np.array([], dtype=int)
         )
         flattened_edge = (
-            np.concatenate([arr for arr in edge_features]) if len(edge_features) else np.array([], dtype=int)
+            np.concatenate([arr for arr in edge_features]) if len(
+                edge_features) else np.array([], dtype=int)
         )
-        num_nodes = int(np.max(flattened_node) + 1) if flattened_node.size else 0
-        num_edges = int(np.max(flattened_edge) + 1) if flattened_edge.size else 0
+        num_nodes = int(np.max(flattened_node) +
+                        1) if flattened_node.size else 0
+        num_edges = int(np.max(flattened_edge) +
+                        1) if flattened_edge.size else 0
 
         # random embeddings
-        Nfeatures = np.random.uniform(low=0.0, high=1.0, size=(max(num_nodes, 1), input_dim)).astype(np.float32)
-        Efeatures = np.random.uniform(low=0.0, high=1.0, size=(max(num_edges, 1), input_dim)).astype(np.float32)
+        Nfeatures = np.random.uniform(low=0.0, high=1.0, size=(
+            max(num_nodes, 1), input_dim)).astype(np.float32)
+        Efeatures = np.random.uniform(low=0.0, high=1.0, size=(
+            max(num_edges, 1), input_dim)).astype(np.float32)
 
         # build masks + padded tensors like paper code
         max_mask_edge = max((len(arr) for arr in edge_features), default=0)
@@ -119,29 +126,35 @@ class _DygDatasetCompat(tud.Dataset):
             mask_edge[i, :L] = 0.0
 
         # edges pad
-        input_edges_pad = np.zeros((NS, max_mask_edge, input_dim), dtype=np.float32)
+        input_edges_pad = np.zeros(
+            (NS, max_mask_edge, input_dim), dtype=np.float32)
         input_edges_feature = []
         for i, indices in enumerate(edge_features):
             indices = np.asarray(indices, dtype=int)
             if indices.size:
                 input_edges_pad[i, : len(indices), :] = Efeatures[indices]
-                input_edges_feature.append(torch.tensor(Efeatures[indices], dtype=torch.float32))
+                input_edges_feature.append(torch.tensor(
+                    Efeatures[indices], dtype=torch.float32))
             else:
-                input_edges_feature.append(torch.empty((0, input_dim), dtype=torch.float32))
+                input_edges_feature.append(torch.empty(
+                    (0, input_dim), dtype=torch.float32))
 
         # nodes
         input_nodes_feature = []
         for indices in node_features:
             indices = np.asarray(indices, dtype=int)
             if indices.size:
-                input_nodes_feature.append(torch.tensor(Nfeatures[indices], dtype=torch.float32))
+                input_nodes_feature.append(torch.tensor(
+                    Nfeatures[indices], dtype=torch.float32))
             else:
-                input_nodes_feature.append(torch.empty((0, input_dim), dtype=torch.float32))
+                input_nodes_feature.append(torch.empty(
+                    (0, input_dim), dtype=torch.float32))
 
         # convert arrays
         self.input_nodes_feature = input_nodes_feature
         self.input_edges_feature = input_edges_feature
-        self.input_edges_pad = torch.tensor(input_edges_pad, dtype=torch.float32)
+        self.input_edges_pad = torch.tensor(
+            input_edges_pad, dtype=torch.float32)
         self.labels = torch.tensor(labels, dtype=torch.float32)
         self.Tmats = Tmats
         self.adjs = adjs
@@ -188,7 +201,7 @@ def _build_generaldyg_pkl_from_temporal_graph(
     # Convert to pandas df for BatchGraphSample
     graph_df = pd.DataFrame({
         'u': src.astype(np.int64),
-        'i': tgt.astype(np.int64), 
+        'i': tgt.astype(np.int64),
         'id': edge_ids.astype(np.int64),
         'label': edge_labels.astype(np.int64)
     })
@@ -199,7 +212,7 @@ def _build_generaldyg_pkl_from_temporal_graph(
     cfg = _Cfg()
     cfg.dir_data = dir_data
     cfg.data_set = dataset_name
-    #cfg.neg = int(round(anomaly_ratio * 10))
+    # cfg.neg = int(round(anomaly_ratio * 10))
 
     sampler = BatchGraphSample(cfg, graph_df)
     idx_column = graph_df["id"].to_numpy()
@@ -245,7 +258,7 @@ def _build_generaldyg_pkl_from_temporal_graph(
 
 
 class GeneralDYGModel:
-    
+
     def __init__(
         self,
         device: torch.device,
@@ -257,7 +270,9 @@ class GeneralDYGModel:
         self.dataset_name: str = meta_dict["dataset_name"]
         self.train_ratio: float = float(meta_dict["train_ratio"])
         self.val_ratio: float = float(meta_dict["val_ratio"])
-        self.anomaly_ratio: float = float(meta_dict["anomaly_ratio"])
+        self.anomaly_ratio_train: float = float(meta_dict["anom_train_ratio"])
+        self.anomaly_ratio_val: float = float(meta_dict["anom_val_ratio"])
+        self.anomaly_ratio_test: float = float(meta_dict["anom_test_ratio"])
         self.has_val: bool = self.val_ratio > 0.0
 
         self.print_freq: int = int(hyperparams.get("print_freq", 1))
@@ -266,12 +281,14 @@ class GeneralDYGModel:
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
         base_path = os.environ["BASE_PATH"]
-        dataset_dir = os.path.dirname(f"{base_path}/src/dgadb/models/GeneralDYG/data/{self.dataset_name}/")
+        dataset_dir = os.path.dirname(
+            f"{base_path}/src/dgadb/models/GeneralDYG/data/{self.dataset_name}/")
         self.dir_data: str = os.path.join(base_path, dataset_dir)
 
         # hyperparameters
         self.batch_size: int = int(hyperparams.get("batch_size", 32))
-        self.learning_rate: float = float(hyperparams.get("learning_rate", 1e-3))
+        self.learning_rate: float = float(
+            hyperparams.get("learning_rate", 1e-3))
         self.n_epochs: int = int(hyperparams.get("n_epochs", 30))
 
         # model architecture
@@ -282,7 +299,8 @@ class GeneralDYGModel:
         self.n_layer: int = int(hyperparams.get("n_layer", 6))
 
         # dataloader/system
-        self.num_data_workers: int = int(hyperparams.get("num_data_workers", 0))
+        self.num_data_workers: int = int(
+            hyperparams.get("num_data_workers", 0))
         self.gpus: int | None = hyperparams.get("gpus", None)
         self.seed: int | None = hyperparams.get("seed", None)
 
@@ -298,21 +316,21 @@ class GeneralDYGModel:
         logger.info(
             "Initialized GeneralDYGModel with "
             f"device={self.device}, dataset={self.dataset_name}, "
-            f"train={self.train_ratio}, val={self.val_ratio}, anomaly={self.anomaly_ratio}, "
+            f"train={self.train_ratio}, val={self.val_ratio}, "
             f"batch_size={self.batch_size}, lr={self.learning_rate}, "
             f"input_dim={self.input_dim}, hidden_dim={self.hidden_dim}, "
             f"heads={self.n_heads}, layers={self.n_layer}, dropout={self.drop_out}"
         )
 
-
-    
     def setup(self, temporal_graph: TemporalGraph) -> None:
         # resolve pickle name
         t_str = _fmt_ratio(self.train_ratio)
         v_str = _fmt_ratio(self.val_ratio)
-        a_str = _fmt_ratio(self.anomaly_ratio)
-        base = f"{self.dataset_name}_t{t_str}_v{v_str}_a{a_str}"
-        self.pkl_path = os.path.join(self.dir_data, base + ".pkl")
+        atr_str = _fmt_ratio(self.anomaly_ratio_train)
+        av_str = _fmt_ratio(self.anomaly_ratio_val)
+        ate_str = _fmt_ratio(self.anomaly_ratio_test)
+        pkl_name = f"{self.dataset_name}_t{t_str}_v{v_str}_atr{atr_str}_av{av_str}_ate{ate_str}.pkl"
+        self.pkl_path = os.path.join(self.dir_data, pkl_name)
 
         if not os.path.exists(self.pkl_path):
             logger.info("Building GeneralDYG pickle since it was not found.")
@@ -322,7 +340,9 @@ class GeneralDYGModel:
                 dir_data=self.dir_data,
                 train_ratio=self.train_ratio,
                 val_ratio=self.val_ratio,
-                anomaly_ratio=self.anomaly_ratio,
+                anomaly_ratio_train=self.anomaly_ratio_train,
+                anomaly_ratio_val=self.anomaly_ratio_val,
+                anomaly_ratio_test=self.anomaly_ratio_test,
             )
 
         if not os.path.exists(self.pkl_path):
@@ -333,12 +353,14 @@ class GeneralDYGModel:
 
         train_mask = temporal_graph.train_mask.cpu().numpy()
         test_mask = temporal_graph.test_mask.cpu().numpy()
-        val_mask = temporal_graph.val_mask.cpu().numpy() if temporal_graph.val_mask is not None else None
+        val_mask = temporal_graph.val_mask.cpu().numpy(
+        ) if temporal_graph.val_mask is not None else None
 
         self.train_count = int(np.sum(train_mask))
         self.val_count = int(np.sum(val_mask)) if val_mask is not None else 0
 
-        logger.info(f"Data splits: train={self.train_count}, val={self.val_count}, test={int(np.sum(test_mask))}")
+        logger.info(
+            f"Data splits: train={self.train_count}, val={self.val_count}, test={int(np.sum(test_mask))}")
 
         # datasets & loaders
         train_ds = _DygDatasetCompat(
@@ -401,16 +423,21 @@ class GeneralDYGModel:
         cfg.n_layer = self.n_layer
 
         gnn = CensNet(cfg.input_dim, cfg.drop_out)
-        transformer = TransformerBinaryClassifier(cfg, self.device, hidden_size=cfg.hidden_dim)
-        self.model = CombinedModel(gnn, transformer, device=self.device).to(self.device)
+        transformer = TransformerBinaryClassifier(
+            cfg, self.device, hidden_size=cfg.hidden_dim)
+        self.model = CombinedModel(
+            gnn, transformer, device=self.device).to(self.device)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.learning_rate)
 
         logger.info("GeneralDYG setup complete.")
 
     def _forward_batch(self, batch):
-        input_nodes_feature = [t.to(self.device) for t in batch["input_nodes_feature"]]
-        input_edges_feature = [t.to(self.device) for t in batch["input_edges_feature"]]
+        input_nodes_feature = [t.to(self.device)
+                               for t in batch["input_nodes_feature"]]
+        input_edges_feature = [t.to(self.device)
+                               for t in batch["input_edges_feature"]]
         input_edges_pad = batch["input_edges_pad"].to(self.device)
         mask_edge = batch["mask_edge"].to(self.device)
         Tmats = [t.to(self.device) for t in batch["Tmats"]]
@@ -451,15 +478,17 @@ class GeneralDYGModel:
                 running_loss += loss.item()
 
             train_loss = running_loss / max(1, len(self.loader_train))
-            logger.info(f"Epoch {epoch + 1:03d} | train_loss={train_loss:.4f} | time={time.time() - t0:.2f}s")
+            logger.info(
+                f"Epoch {epoch + 1:03d} | train_loss={train_loss:.4f} | time={time.time() - t0:.2f}s")
 
-            if ((epoch + 1) % self.print_freq) == 0:
+            if ((epoch + 1) % self.print_freq) == 0 or runnable is not None:
                 split = "val" if (self.loader_val is not None) else "train"
                 preds, labels = self.inference(split=split)
                 auc = float(self.epoch_evaluation_metric(labels, preds))
+                logger.info(
+                    f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = {auc:.4f}")
                 if runnable is not None:
-                    runnable(auc)
-                logger.info(f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = {auc:.4f}")
+                    runnable(auc, self, epoch)
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray]:
         if self.model is None:

@@ -217,7 +217,8 @@ class NetWalkBaseline:
                 val_labels = self.edge_labels[self.val_mask].cpu().numpy()
                 auc = roc_auc_score(val_labels, probs)
                 # report to ray tune
-                runnable(auc)
+                if runnable is not None:
+                    runnable(auc, self, snap_i)
 
         # Final node embedding
         self._embeddings = self._compute_node_embeddings()

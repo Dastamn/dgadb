@@ -1,8 +1,7 @@
-model: GeneralDYG
-# anomaly_as_0: True
+model: Node2Vec
 
 anomalies:
-  anom_train_ratio: 0.5
+  anom_train_ratio: 0.0
   anom_val_ratio: 0.1
   anom_test_ratio: 0.1
 

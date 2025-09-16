@@ -3,8 +3,9 @@ import typing
 from abc import ABC, abstractmethod
 
 import torch
+from torch_geometric.loader import LinkLoader, NodeLoader
 
-from src.dgadb.storage import TemporalGraph
+from src.dgadb.storage import TemporalGraph, TemporalGraphSnapshotLoader
 
 
 class BaseModel(ABC):
@@ -21,27 +22,25 @@ class BaseModel(ABC):
     def _ensure_setup(self):
         hints = typing.get_type_hints(BaseModel)
         required = [
-            name for name, hint in hints.items()
-            if typing.get_origin(hint) is typing.Union
-            and type(None) in typing.get_args(hint)
+            name
+            for name, hint in hints.items()
+            if typing.get_origin(hint) is typing.Union and type(None) in typing.get_args(hint)
         ]
 
         missing = [name for name in required if getattr(self, name) is None]
 
         if missing:
             raise RuntimeError(
-                f"Missing initialization for: {', '.join(missing)}. "
-                "Call setup() before train() or inference()."
+                f"Missing initialization for: {', '.join(missing)}. Call setup() before train() or inference()."
             )
 
     @abstractmethod
-    def setup(self, temporal_graph: TemporalGraph):
-        ...
+    def setup(self, temporal_graph: TemporalGraph): ...
 
     @abstractmethod
-    def train(self):
-        ...
+    def train(self, runnable): ...
 
+    @torch.no_grad()
     @abstractmethod
-    def inference(self):
+    def test(self, loader: typing.Optional[TemporalGraphSnapshotLoader | LinkLoader | NodeLoader] = None) -> tuple[torch.Tensor, torch.Tensor]:
         ...
