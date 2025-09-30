@@ -104,7 +104,7 @@ class n2vModel:
             logger.info(
                 f"Epoch {epoch+1}/{self.num_epochs} - mean loss: {epoch_loss:.4f}")
             probs, labels = self.inference(split="val")
-            auc = self.epoch_evaluation_metric(labels, probs.detach())
+            auc = self.epoch_evaluation_metric(labels, probs.detach().cpu())
             if runnable is not None:
                 runnable(auc, self, epoch, save=False)
 
