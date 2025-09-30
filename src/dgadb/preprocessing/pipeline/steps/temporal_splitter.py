@@ -65,3 +65,5 @@ class TemporalSplitter(PipelineStep):
     def update_metadata(self, data: GraphDataContainer) -> None:
         data.is_split = True
         data.split_col = self.split_col
+        data.splits = {"train_ratio": self.train_ratio,
+                       "val_ratio": self.val_ratio, "test_ratio": self.test_ratio}
