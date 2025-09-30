@@ -316,7 +316,7 @@ if __name__ == "__main__":
             metric="metric",
             grace_period=10
         ),
-        MaximumIterationStopper(2)
+        MaximumIterationStopper(20)
     )
 
     tuner.run_tuner(stopper)
