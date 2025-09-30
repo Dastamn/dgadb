@@ -239,7 +239,7 @@ class Tuner:
                 tune.with_parameters(
                     self.run_model, tg=self.tg),
                 {"cpu": max(1, cpu_count // num_trials),
-                    "gpu": min(1, torch.cuda.device_count())}
+                    "gpu": max(1, torch.cuda.device_count())}
             ),
             param_space=param_space,
             tune_config=tune.TuneConfig(
