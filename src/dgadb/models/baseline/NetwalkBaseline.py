@@ -14,7 +14,6 @@ from src.dgadb.storage import TemporalGraph
 logger = logging.getLogger(__name__)
 
 
-
 class CliqueAutoencoder(nn.Module):
     def __init__(self, num_nodes: int, hidden: int, walk_len: int):
         super().__init__()
@@ -28,7 +27,8 @@ class CliqueAutoencoder(nn.Module):
         self.act = nn.Sigmoid()
 
         # Laplacian matrix
-        phi = np.ones((walk_len, walk_len), dtype=np.float32) - np.eye(walk_len, dtype=np.float32)
+        phi = np.ones((walk_len, walk_len), dtype=np.float32) - \
+            np.eye(walk_len, dtype=np.float32)
         D = np.diag(np.sum(phi, axis=1))
         L = D - phi
         self.register_buffer("L", torch.tensor(L, dtype=torch.float32))
@@ -73,9 +73,11 @@ class NetWalkBaseline:
         # Walk pipeline
         self.walk_len: int = int(hyperparams.get("walk_length", 3))
         self.walks_per_node: int = int(hyperparams.get("walks_per_node", 20))
-        self.init_percent: float = float(hyperparams.get("init_percent", 0.8))  # fraction of train edges for the initial graph
+        # fraction of train edges for the initial graph
+        self.init_percent: float = float(hyperparams.get("init_percent", 0.8))
         self.snap_size: int = int(hyperparams.get("snap_size", 1000))
-        self.reservoir_dim: int = int(hyperparams.get("reservoir_dim", self.snap_size))
+        self.reservoir_dim: int = int(
+            hyperparams.get("reservoir_dim", self.snap_size))
         self.rand_seed: int = int(hyperparams.get("random_state", 24))
 
         self.print_freq: int = int(hyperparams.get("print_freq", 1))
@@ -83,8 +85,10 @@ class NetWalkBaseline:
         # AE and loss hyperparams
         self.hidden: int = int(hyperparams.get("representation_size", 128))
         self.epochs: int = int(hyperparams.get("epochs", 10))
-        self.batch_size_walks: int = int(hyperparams.get("batch_size", 40))  # batches are over walk columns batch_size * walk_len
-        self.learning_rate: float = float(hyperparams.get("learning_rate", 0.01))
+        # batches are over walk columns batch_size * walk_len
+        self.batch_size_walks: int = int(hyperparams.get("batch_size", 40))
+        self.learning_rate: float = float(
+            hyperparams.get("learning_rate", 0.01))
         self.gamma: float = float(hyperparams.get("gama", 340.0))
         self.lamb: float = float(hyperparams.get("lamb", 0.0017))
         self.beta: float = float(hyperparams.get("beta", 1.0))
@@ -119,17 +123,16 @@ class NetWalkBaseline:
         self._centroids: Optional[np.ndarray] = None
         self._kmeans: Optional[KMeans] = None
 
-
         # paper style anom injection
-        #self.inject_test_ratio: float = float(hyperparams.get("inject_test_ratio", 0.10))
-        #self.spectral_k: int = int(hyperparams.get("spectral_k", 10))
-        #self.injection_seed: int = int(hyperparams.get("injection_seed", 1))
+        # self.inject_test_ratio: float = float(hyperparams.get("inject_test_ratio", 0.10))
+        # self.spectral_k: int = int(hyperparams.get("spectral_k", 10))
+        # self.injection_seed: int = int(hyperparams.get("injection_seed", 1))
 
-        #logger.info(
+        # logger.info(
         #    f"NetWalkBaseline init: walk_len={self.walk_len}, wpn={self.walks_per_node}, "
         #    f"init_percent={self.init_percent}, snap_size={self.snap_size}, res_dim={self.reservoir_dim}, "
         #   f"hidden={self.hidden}, epochs={self.epochs},   k={self.kmeans_k}"
-        #)
+        # )
 
     def setup(self, temporal_graph: TemporalGraph) -> None:
         self.num_nodes = int(temporal_graph.num_nodes)
@@ -146,7 +149,8 @@ class NetWalkBaseline:
         train_snapshots = []
         cur = init_E
         while cur < Etr:
-            train_snapshots.append(ei_train[cur: min(cur + self.snap_size, Etr), :])
+            train_snapshots.append(
+                ei_train[cur: min(cur + self.snap_size, Etr), :])
             cur += self.snap_size
 
         # Initialize reservoir from the initial graph
@@ -156,7 +160,8 @@ class NetWalkBaseline:
         self._prev_walks = self._initial_random_walks(init_edges)
 
         # Build autoencoder
-        self.ae = CliqueAutoencoder(num_nodes=self.num_nodes, hidden=self.hidden, walk_len=self.walk_len).to(self.device)
+        self.ae = CliqueAutoencoder(
+            num_nodes=self.num_nodes, hidden=self.hidden, walk_len=self.walk_len).to(self.device)
 
         self.opt = optim.Adam(self.ae.parameters(), lr=self.learning_rate)
 
@@ -173,7 +178,7 @@ class NetWalkBaseline:
 
         # Iterate train snapshots
         # update reservoir
-        # generate new walks 
+        # generate new walks
         # then train
         for snap_i, edges in enumerate(self._train_snapshots, start=1):
             self._reservoir_update(edges)
@@ -183,8 +188,8 @@ class NetWalkBaseline:
             affected_nodes = set(edges.reshape(-1))
 
             # keep old walks NOT starting from affected nodes
-            old_walks = [w for w in self._prev_walks 
-                        if w and len(w) > 0 and w[0] not in affected_nodes]
+            old_walks = [w for w in self._prev_walks
+                         if w and len(w) > 0 and w[0] not in affected_nodes]
 
             # combine new and filtered old walks
             combined_walks = new_walks + old_walks
@@ -193,54 +198,65 @@ class NetWalkBaseline:
             # train on combined walks
             x = self._walks_to_onehot(combined_walks)
             self._fit_autoencoder(x)
-            
+
             if (snap_i % 10) == 0:
-                logger.info(f"NetWalk train: processed snapshot {snap_i}/{len(self._train_snapshots)}")
+                logger.info(
+                    f"NetWalk train: processed snapshot {snap_i}/{len(self._train_snapshots)}")
+            # if runnable is not None:
+                # print("runnable not none")
+                # print(self._embeddings is None)
+            # compute current state for evaluation
+            # current_embeddings = self._compute_node_embeddings()
+            self._embeddings = self._compute_node_embeddings()
+
+            # fit temporary KMeans
+            ei = self.edge_index[:, self.train_mask]
+            train_codes = self._edge_codes_from_embeddings(
+                self._embeddings, ei)
+            self._kmeans = KMeans(
+                n_clusters=self.kmeans_k, random_state=self.rand_seed, n_init=10)
+            self._kmeans.fit(train_codes)
+            self._centroids = self._kmeans.cluster_centers_
+
+            # evaluate on validation
+            val_ei = self.edge_index[:, self.val_mask]
+            val_codes = self._edge_codes_from_embeddings(
+                self._embeddings, val_ei)
+            d = cdist(val_codes, self._centroids)
+            min_d = d.min(axis=1).astype(np.float32)
+            probs = self._minmax(min_d)
+
+            val_labels = self.edge_labels[self.val_mask].cpu().numpy()
+            auc = roc_auc_score(val_labels, probs)
+            print("val AUC:", auc)
+            # report to ray tune
             if runnable is not None:
-                # compute current state for evaluation
-                current_embeddings = self._compute_node_embeddings()
-
-                # fit temporary KMeans
-                ei = self.edge_index[:, self.train_mask]
-                train_codes = self._edge_codes_from_embeddings(current_embeddings, ei)
-                temp_kmeans = KMeans(n_clusters=self.kmeans_k, random_state=self.rand_seed, n_init=10)
-                temp_kmeans.fit(train_codes)
-                temp_centroids = temp_kmeans.cluster_centers_
-
-                # evaluate on validation
-                val_ei = self.edge_index[:, self.val_mask]
-                val_codes = self._edge_codes_from_embeddings(current_embeddings, val_ei)
-                d = cdist(val_codes, temp_centroids)
-                min_d = d.min(axis=1).astype(np.float32)
-                probs = self._minmax(min_d)
-
-                val_labels = self.edge_labels[self.val_mask].cpu().numpy()
-                auc = roc_auc_score(val_labels, probs)
-                # report to ray tune
-                if runnable is not None:
-                    runnable(auc, self, snap_i)
+                runnable(auc, self, snap_i)
 
         # Final node embedding
         self._embeddings = self._compute_node_embeddings()
 
         # UNCOMMENT BELOW TO USE NETWALK PAPER'S ANOMALY INJECTION INSTEAD. Expects graph with no anomalies before
-        #self._inject_intercommunity_anomalies_spectral(
+        # self._inject_intercommunity_anomalies_spectral(
         #    test_ratio=self.inject_test_ratio,
         #    k=self.spectral_k,
         #    seed=self.injection_seed,
-        #)
+        # )
 
         # Fit KMeans on train edge encodings
         ei = self.edge_index[:, self.train_mask]
         train_codes = self._edge_codes_from_embeddings(self._embeddings, ei)
-        self._kmeans = KMeans(n_clusters=self.kmeans_k, random_state=self.rand_seed, n_init=10)
+        self._kmeans = KMeans(n_clusters=self.kmeans_k,
+                              random_state=self.rand_seed, n_init=10)
         self._kmeans.fit(train_codes)
         self._centroids = self._kmeans.cluster_centers_
-        logger.info("NetWalk: embeddings learned and k-means fitted on TRAIN embs.")
+        logger.info(
+            "NetWalk: embeddings learned and k-means fitted on TRAIN embs.")
 
     def inference(self, split: str = "test"):
 
-        mask = {"train": self.train_mask, "val": self.val_mask, "test": self.test_mask}[split]
+        mask = {"train": self.train_mask, "val": self.val_mask,
+                "test": self.test_mask}[split]
         ei = self.edge_index[:, mask]
         labels = self.edge_labels[mask].to(self.device).float()
 
@@ -251,11 +267,9 @@ class NetWalkBaseline:
         probs = self._minmax(min_d)
         return torch.from_numpy(probs).to(self.device), labels
 
-
     def _ensure_setup(self):
         if any(x is None for x in [self.num_nodes, self.edge_index, self.edge_labels, self.train_mask]):
             raise RuntimeError("Call setup(TemporalGraph) before train().")
-
 
     def _build_reservoir(self, init_edges: np.ndarray) -> None:
 
@@ -275,9 +289,11 @@ class NetWalkBaseline:
             self._degree[v] = deg
             if deg > 0:
                 idx = self._rng.randint(deg, size=self.reservoir_dim)
-                self._reservoir[v] = np.array([nbrs[i] for i in idx], dtype=np.int64)
+                self._reservoir[v] = np.array(
+                    [nbrs[i] for i in idx], dtype=np.int64)
             else:
-                self._reservoir[v] = np.full(self.reservoir_dim, -1, dtype=np.int64)
+                self._reservoir[v] = np.full(
+                    self.reservoir_dim, -1, dtype=np.int64)
         logger.info("Reservoir initialized from initial graph.")
 
     def _reservoir_update(self, edges: np.ndarray) -> None:
@@ -309,7 +325,7 @@ class NetWalkBaseline:
         for k in adj.keys():
             adj[k] = list(set(adj[k]))
 
-        #nodes = list(range(self.num_nodes))
+        # nodes = list(range(self.num_nodes))
         nodes = [n for n, nbrs in adj.items() if len(nbrs) > 0]
         walks: list[list[int]] = []
         for _ in range(self.walks_per_node):
@@ -354,7 +370,6 @@ class NetWalkBaseline:
 
         return walks
 
-    
     def _sample_from_reservoir(self, node: int) -> int:
         arr = self._reservoir.get(node, None)
         if arr is None:
@@ -366,7 +381,7 @@ class NetWalkBaseline:
             return node
 
         return int(self._rng.choice(valid))
-    
+
     def _inject_intercommunity_anomalies_spectral(self, test_ratio: float, k: int, seed: int) -> None:
         import numpy as np
         from sklearn.cluster import SpectralClustering
@@ -380,7 +395,8 @@ class NetWalkBaseline:
 
         A = np.zeros((N, N), dtype=np.float32)
         ei = self.edge_index.detach().cpu().numpy()
-        u = ei[0]; v = ei[1]
+        u = ei[0]
+        v = ei[1]
         A[u, v] = 1.0
         A[v, u] = 1.0
         np.fill_diagonal(A, 0.0)
@@ -392,11 +408,13 @@ class NetWalkBaseline:
         )
         node_labels = sc.fit_predict(A)
 
-        uu = np.minimum(u, v); vv = np.maximum(u, v)
+        uu = np.minimum(u, v)
+        vv = np.maximum(u, v)
         observed = set(zip(uu.tolist(), vv.tolist()))
 
         def _inject_for_test():
-            idx = self.test_mask.nonzero(as_tuple=False).squeeze(1).cpu().numpy()
+            idx = self.test_mask.nonzero(
+                as_tuple=False).squeeze(1).cpu().numpy()
             m = int(idx.size)
             t = int(np.floor(test_ratio * m))
             if t <= 0:
@@ -410,8 +428,10 @@ class NetWalkBaseline:
                 a = rng.randint(0, N, size=ktry)
                 b = rng.randint(0, N, size=ktry)
                 keep = (a != b)
-                a = a[keep]; b = b[keep]
-                a2 = np.minimum(a, b); b2 = np.maximum(a, b)
+                a = a[keep]
+                b = b[keep]
+                a2 = np.minimum(a, b)
+                b2 = np.maximum(a, b)
                 for (aa, bb, aaa, bbb) in zip(a, b, a2, b2):
                     if (aaa, bbb) in observed:
                         continue
@@ -429,29 +449,35 @@ class NetWalkBaseline:
         if not test_fakes:
             return
 
-        add_ei = torch.tensor(test_fakes, dtype=self.edge_index.dtype, device=device).T
-        add_labels = torch.ones(len(test_fakes), dtype=self.edge_labels.dtype, device=device)  # 1 = anomaly
+        add_ei = torch.tensor(
+            test_fakes, dtype=self.edge_index.dtype, device=device).T
+        add_labels = torch.ones(
+            len(test_fakes), dtype=self.edge_labels.dtype, device=device)  # 1 = anomaly
 
         start = self.edge_index.size(1)
-        self.edge_index  = torch.cat([self.edge_index, add_ei], dim=1)
+        self.edge_index = torch.cat([self.edge_index, add_ei], dim=1)
         self.edge_labels = torch.cat([self.edge_labels, add_labels], dim=0)
 
-        add_false = torch.zeros(len(test_fakes), dtype=torch.bool, device=device)
+        add_false = torch.zeros(
+            len(test_fakes), dtype=torch.bool, device=device)
         self.train_mask = torch.cat([self.train_mask, add_false], dim=0)
         if self.val_mask is not None:
-            self.val_mask = torch.cat([self.val_mask, add_false.clone()], dim=0)
+            self.val_mask = torch.cat(
+                [self.val_mask, add_false.clone()], dim=0)
         self.test_mask = torch.cat([self.test_mask, add_false.clone()], dim=0)
 
         # mark the appended positions as test
         pos = torch.arange(start, start + len(test_fakes), device=device)
         self.test_mask[pos] = True
+
     def _walks_to_onehot(self, walks: list[list[int]]) -> torch.Tensor:
         assert self.num_nodes is not None
         if not walks:
             return torch.zeros((self.num_nodes, 0), dtype=torch.float32, device=self.device)
 
         cols = len(walks) * self.walk_len
-        X = torch.zeros((self.num_nodes, cols), dtype=torch.float32, device=self.device)
+        X = torch.zeros((self.num_nodes, cols),
+                        dtype=torch.float32, device=self.device)
         c = 0
         for w in walks:
             for node in w:
@@ -484,7 +510,7 @@ class NetWalkBaseline:
                 # KL divergence loss
                 rho_hat = torch.clamp(codes.mean(dim=1), 1e-8, 1 - 1e-8)
                 kl_loss = self.beta * torch.mean(
-                    self.rho * torch.log(self.rho / rho_hat) + 
+                    self.rho * torch.log(self.rho / rho_hat) +
                     (1 - self.rho) * torch.log((1 - self.rho) / (1 - rho_hat))
                 )
 
@@ -494,7 +520,8 @@ class NetWalkBaseline:
                 weight_decay = 0.0
                 for name, param in self.ae.named_parameters():
                     if 'weight' in name:
-                        weight_decay += (self.lamb / 2.0) * torch.sum(param ** 2)
+                        weight_decay += (self.lamb / 2.0) * \
+                            torch.sum(param ** 2)
 
                 # total loss
                 total_loss_batch = clique_loss + ae_loss + kl_loss + weight_decay
@@ -507,7 +534,8 @@ class NetWalkBaseline:
 
             if ((epoch + 1) % self.print_freq) == 0:
                 avg_loss = total_loss / max(1, num_batches)
-                logger.info(f"[AE] epoch {epoch+1}/{self.epochs} | loss={avg_loss:.4f}")
+                logger.info(
+                    f"[AE] epoch {epoch+1}/{self.epochs} | loss={avg_loss:.4f}")
 
     def _compute_clique_loss(self, codes: torch.Tensor) -> torch.Tensor:
         """Compute clique loss exactly as in the paper"""
@@ -519,7 +547,8 @@ class NetWalkBaseline:
             return torch.tensor(0.0, device=codes.device)
 
         usable_cols = num_walks * self.walk_len
-        codes_reshaped = codes[:, :usable_cols].T.view(num_walks, self.walk_len, H)
+        codes_reshaped = codes[:, :usable_cols].T.view(
+            num_walks, self.walk_len, H)
 
         # clique constraint
         codes_t = codes_reshaped.transpose(1, 2)
@@ -535,17 +564,18 @@ class NetWalkBaseline:
         assert self.ae is not None and self.num_nodes is not None
         self.ae.eval()
         with torch.no_grad():
-            I = torch.eye(self.num_nodes, dtype=torch.float32, device=self.device)
+            I = torch.eye(self.num_nodes, dtype=torch.float32,
+                          device=self.device)
             _, codes = self.ae(I, corrupt_prob=0.0)
-        return codes.T.detach().cpu().numpy() 
+        return codes.T.detach().cpu().numpy()
 
     def _edge_codes_from_embeddings(self, emb: np.ndarray, edge_index: torch.Tensor) -> np.ndarray:
         u = edge_index[0].cpu().numpy()
         v = edge_index[1].cpu().numpy()
-        su = emb[u, :]
+        su = emb[u, :]  # TODO: nonetype not subscriptable
         sv = emb[v, :]
         # hadamard emb
-        #codes = su * sv
+        # codes = su * sv
         # return codes.astype(np.float32)
         return ((su + sv) * 0.5).astype(np.float32)
 
