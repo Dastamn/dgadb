@@ -105,14 +105,7 @@ class Pipeline:
 
         logger.info("Building preprocessing pipeline from config...")
 
-        meta_dict = {
-            # "anom_train_ratio": config["anomalies"]["anom_train_ratio"],
-            # "anom_val_ratio": config["anomalies"]["anom_val_ratio"],
-            # "anom_test_ratio": config["anomalies"]["anom_test_ratio"]
-        }
-
         pipeline_steps: list[PipelineStep] = []
-
         for i, step_config in enumerate(config["pipeline"]["steps"]):
             step_name = step_config["name"]
             step_params = step_config.get("params", {})
@@ -169,12 +162,7 @@ class Pipeline:
 
             pipeline_steps.append(step_instance)
 
-            if step_name == "TemporalSplitter":
-                for k, v in step_params.items():
-                    meta_dict[k] = v
-
         pipeline_callbacks: list[Callback] = []
-
         # TODO @Dastamn: Add support for callbacks in config
         pipeline_cache_dir = config["pipeline"].get("cache_dir", None)
         if pipeline_cache_dir is not None:
@@ -186,7 +174,18 @@ class Pipeline:
 
         logger.info("Pipeline built successfully.")
 
-        return Pipeline(pipeline_steps, pipeline_callbacks), meta_dict, config
+        return Pipeline(pipeline_steps, pipeline_callbacks)
+
+    def add_step(self, step: PipelineStep) -> None:
+        step_type = type(step)
+        for i, s in enumerate(self.steps):
+            if isinstance(s, step_type):
+                self.steps[i] = step
+                self.logger.info(f"Replaced pipeline step: {step_type}.")
+                return
+
+        self.steps.append(step)
+        self.logger.info(f"Added pipeline step: {step_type}.")
 
     def __repr__(self) -> str:
         steps_ = "; ".join(repr(step) for step in self.steps)

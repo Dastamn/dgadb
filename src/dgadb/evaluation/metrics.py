@@ -1,11 +1,9 @@
 import torch
+from .utils import check_matching_shapes
 
 
+@check_matching_shapes
 def confusion_matrix(y_true: torch.Tensor, y_pred: torch.Tensor) -> tuple[int, int, int, int]:
-    if y_true.shape != y_pred.shape:
-        raise ValueError(
-            f"Shapes of true and predicted labels must match, got: {y_true.shape} != {y_pred.shape}")
-
     y_true_bool = y_true.bool()
     y_pred_bool = y_pred.bool()
 
@@ -17,11 +15,8 @@ def confusion_matrix(y_true: torch.Tensor, y_pred: torch.Tensor) -> tuple[int, i
     return tp, fp, tn, fn
 
 
+@check_matching_shapes
 def accuracy(y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
-    if y_true.shape != y_pred.shape:
-        raise ValueError(
-            f"Shapes of true and predicted labels must match, got: {y_true.shape} != {y_pred.shape}")
-
     return (y_true == y_pred).float().mean().item()
 
 
@@ -30,11 +25,8 @@ def precision(y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
     return tp / (tp + fp) if (tp + fp) > 0 else 0.0
 
 
+@check_matching_shapes
 def precision_at_k(y_true: torch.Tensor, y_scores: torch.Tensor, k: int) -> float:
-    if y_true.shape != y_scores.shape:
-        raise ValueError(
-            f"Shapes of true labels and scores must match, got: {y_true.shape} != {y_scores.shape}")
-
     if k == 0:
         return 0.0
 
@@ -44,11 +36,8 @@ def precision_at_k(y_true: torch.Tensor, y_scores: torch.Tensor, k: int) -> floa
     return (num_hits_at_k / k).item()
 
 
+@check_matching_shapes
 def average_precision(y_true: torch.Tensor, y_scores: torch.Tensor) -> float:
-    if y_true.shape != y_scores.shape:
-        raise ValueError(
-            f"Shapes of true labels and scores must match, got: {y_true.shape} != {y_scores.shape}")
-
     total_y_true = torch.sum(y_true)
     if total_y_true == 0:
         return 0.0
@@ -69,11 +58,8 @@ def recall(y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
     return tp / (tp + fn) if (tp + fn) > 0 else 0.0
 
 
+@check_matching_shapes
 def recall_at_k(y_true: torch.Tensor, y_scores: torch.Tensor, k: int) -> float:
-    if y_true.shape != y_scores.shape:
-        raise ValueError(
-            f"Shapes of true labels and scores must match, got: {y_true.shape} != {y_scores.shape}")
-
     if k == 0:
         return 0.0
 
@@ -97,11 +83,8 @@ def f1_score(y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
     return 2 * precision_value * recall_value / denom if denom > 0 else 0.0
 
 
+@check_matching_shapes
 def best_f1_score(y_true: torch.Tensor, y_scores: torch.Tensor) -> tuple[float, float]:
-    if y_true.shape != y_scores.shape:
-        raise ValueError(
-            f"Shapes of true labels and scores must match, got: {y_true.shape} != {y_scores.shape}")
-
     y_true = y_true.float()
 
     desc_score_indices = torch.argsort(y_scores, descending=True)
@@ -132,11 +115,8 @@ def best_f1_score(y_true: torch.Tensor, y_scores: torch.Tensor) -> tuple[float, 
     return best_f1.item(), best_thr.item()
 
 
+@check_matching_shapes
 def mean_reciprocal_rank(y_true: torch.Tensor, y_scores: torch.Tensor) -> float:
-    if y_true.shape != y_scores.shape:
-        raise ValueError(
-            f"Shapes of true labels and scores must match, got: {y_true.shape} != {y_scores.shape}")
-
     y_true_bool = y_true.to(torch.bool)
 
     sorted_indices = torch.argsort(y_scores, descending=True)

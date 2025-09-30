@@ -124,13 +124,19 @@ class Experiment():
         return param_space
 
     def preprocessing(self):
-        pipeline, meta_dict, dataset_config = Pipeline.from_config(
-            self.dataset_name, force_rerun=True)
-        self.meta_dict = {**self.meta_dict, **meta_dict}
-        self.dataset_config = dataset_config
-        self.meta_dict["dataset_name"] = self.dataset_name
+        # pipeline, meta_dict, dataset_config = Pipeline.from_config(
+        #     self.dataset_name, force_rerun=True)
+        pipeline = Pipeline.from_config(self.dataset_name, force_rerun=True)
+        # self.meta_dict = {**self.meta_dict, **meta_dict}
+        # self.dataset_config = dataset_config
+        # self.meta_dict["dataset_name"] = self.dataset_name
         container = pipeline.run()
         tg = container.to_temporal_graph()
+        self.meta_dict = {
+            "dataset_name": self.dataset_name,
+            **tg.metadata.get("splits", {}),
+            **self.exp_config.get("anomalies", {})
+        }
 
         tg = inject_anomalies_addgraph_style(
             tg,
@@ -184,7 +190,7 @@ class Experiment():
                 top=max(2, self.num_samples),
                 patience=5,
             ),
-            MaximumIterationStopper(50)
+            MaximumIterationStopper(1)
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -222,13 +228,15 @@ class Experiment():
                         os.path.join(checkpoint_dir, "model.pt"))
 
                 best_config = best_result.config
-                self.evaluator = Evaluator(dataset_name=self.dataset_name,
-                                           method_name=self.method_name,
-                                           dataset_config=self.dataset_config,
-                                           method_config=best_config,
-                                           experiment_config=self.exp_config,
-                                           anomaly_as_0=self.anomaly_as_0,
-                                           output_dir="eval-data")
+                self.evaluator = Evaluator(
+                    dataset_name=self.dataset_name,
+                    method_name=self.method_name,
+                    #    dataset_config=self.dataset_config,
+                    #    method_config=best_config,
+                    #    experiment_config=self.exp_config,
+                    anomaly_as_0=self.anomaly_as_0,
+                    output_dir="eval-data"
+                )
                 preds, labels = best_model.inference("test")
                 self.evaluator.eval_preds(
                     torch.tensor(labels), torch.tensor(preds))
@@ -301,7 +309,7 @@ if __name__ == "__main__":
                         default=None, help="Method name")
     parser.add_argument("--dataset", type=str,
                         default=None, help="Dataset name")
-    parser.add_argument("--num_samples", type=int, default=4)
+    parser.add_argument("--num_samples", type=int, default=1)
 
     args = parser.parse_args()
 
