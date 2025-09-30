@@ -18,6 +18,7 @@ import os
 from ray.tune.stopper import CombinedStopper, MaximumIterationStopper, Stopper, TrialPlateauStopper, ExperimentPlateauStopper
 from sklearn.metrics import roc_auc_score
 from ray.tune import Checkpoint
+from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
 
 from src.dgadb.models.TADDY.TADDY_main import TADDYModel
 from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
@@ -89,17 +90,27 @@ class Tuner:
 
         tg_loader = TemporalGraphLoader(*args)
         anom_conf = self.run_config["anomalies"]
+
         self.tg = tg_loader.load(
             dataset_name,
-            anom_type=anom_conf["anom_type"],
-            anom_train_ratio=anom_conf["anom_train_ratio"],
-            anom_val_ratio=anom_conf["anom_val_ratio"],
-            anom_test_ratio=anom_conf["anom_test_ratio"],
+            # anom_type=anom_conf["anom_type"],
+            # anom_train_ratio=anom_conf["anom_train_ratio"],
+            # anom_val_ratio=anom_conf["anom_val_ratio"],
+            # anom_test_ratio=anom_conf["anom_test_ratio"],
             create_if_not_found=True,
-            reset_labels=True
+            # reset_labels=True
         )
-        tg_loader.save(self.tg)
-        self.dataset_name = generate_temporal_graph_filename(self.tg)
+        if any([anom_conf["anom_train_ratio"], anom_conf["anom_val_ratio"], anom_conf["anom_test_ratio"]]):
+            self.logger.info(f"Injecting anomalies: {anom_conf}")
+            self.tg = inject_anomalies_addgraph_style(
+                self.tg,
+                anom_train_ratio=anom_conf["anom_train_ratio"],
+                anom_val_ratio=anom_conf["anom_val_ratio"],
+                anom_test_ratio=anom_conf["anom_test_ratio"],
+            )
+        # tg_loader.save(self.tg)
+        # self.dataset_name = generate_temporal_graph_filename(self.tg)
+        self.dataset_name = dataset_name
 
         if anom_conf["anomaly_as_0"]:
             self.tg.flip_edge_labels()
@@ -316,7 +327,7 @@ if __name__ == "__main__":
             metric="metric",
             grace_period=10
         ),
-        MaximumIterationStopper(20)
+        MaximumIterationStopper(2)
     )
 
     tuner.run_tuner(stopper)
