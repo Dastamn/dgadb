@@ -1,0 +1,80 @@
+global_settings:
+  time_budget: 259_200 # 3 days
+
+  anomalies:
+    anomaly_as_0: False
+    anom_train_ratio: 0.5
+    anom_val_ratio: 0.1
+    anom_test_ratio: 0.1
+    anom_type: structural
+
+  search_strategy:
+    type: random_search
+    num_trials: 1
+
+  hyperparameters:
+    epochs: 5
+
+datasets:
+  uc-social:
+    snapshot_size: { fixed: 2000 }
+  bitcoin-alpha:
+    snapshot_size: { fixed: 1000 }
+  bitcoin-otc:
+    snapshot_size: { fixed: 1000 }
+  email-dnc:
+    snapshot_size: { fixed: 2000 }
+  as-topology:
+    snapshot_size: { fixed: 6000 }
+  reddit:
+    snapshot_size: { fixed: 55000 }
+  mooc:
+    snapshot_size: { fixed: 45000 }
+  wiki:
+    snapshot_size: { fixed: 6000 }
+  enron:
+    snapshot_size: { fixed: 6000 }
+
+methods:
+  StrGNN:
+    anomalies:
+      anomaly_as_0: True
+
+    hyperparameters:
+      learning_rate:
+        type: grid_search
+        search_space: [0.01, 0.005, 0.001]
+
+    # overrides:
+    #   reddit:
+    #     hyperparameters:
+    #       snapshot_size:
+    #         type: random_search
+    #         search_space: [45000, 50000, 55000]
+    #   mooc:
+    #     hyperparameters:
+    #       epochs: 300
+
+  SAD:
+    hyperparameters:
+      epochs: 10
+      batch_size: 256
+
+  Node2Vec:
+    anomalies:
+      anom_train_ratio: 0.0
+
+  NetWalk:
+    anomalies:
+      anom_train_ratio: 0.0
+
+  RustGraph:
+    anomalies:
+      anomaly_as_0: True
+
+  TADDY:
+    anomalies:
+      anomaly_as_0: True
+      anom_train_ratio: 0.0
+
+  GeneralDYG: {}
