@@ -162,7 +162,7 @@ class AnomalyInjector:
             raise ValueError("'t_deltas_p' is None.")
 
         indices = torch.multinomial(
-            self.t_deltas_p, num_samples=size, replacement=True)
+            self.t_deltas_p, num_samples=int(size), replacement=True)
         return self.t_deltas[indices]
 
     def _generate_plausible_timestamps(
@@ -172,11 +172,12 @@ class AnomalyInjector:
         last_t: torch.Tensor,
         random_time_walk_max_steps: int = 15,
     ) -> torch.Tensor:
-        start_base_point = (first_t + self.granularity - 1) // self.granularity
-        end_base_point = last_t // self.granularity
+        start_base_point = int(
+            (first_t + self.granularity - 1) // self.granularity)
+        end_base_point = int(last_t // self.granularity)
 
         if start_base_point > end_base_point:
-            return torch.full((n,), first_t, dtype=torch.int64, device=self.device)
+            return torch.full((n,), int(first_t), dtype=torch.int64, device=self.device)
 
         random_base_points = torch.randint(
             start_base_point, end_base_point + 1, size=(n,), device=self.device)
@@ -188,7 +189,7 @@ class AnomalyInjector:
 
         num_steps_per_walk = torch.randint(
             1, random_time_walk_max_steps, size=(n,), device=self.device)
-        total_steps = torch.sum(num_steps_per_walk)
+        total_steps = int(torch.sum(num_steps_per_walk))
 
         t_deltas = self._sample_t_deltas(total_steps)
 
@@ -271,7 +272,7 @@ class AnomalyInjector:
 
         start_index = (anchor_index - win_len).clamp(min=0)
         end_index = (anchor_index + win_len).clamp(max=num_edges)
-        idx = torch.arange(start_index, end_index, device=src.device)
+        idx = torch.arange(int(start_index), int(end_index), device=src.device)
 
         return src[idx], tgt[idx], t[idx], msg[idx]
 
@@ -353,7 +354,7 @@ class AnomalyInjector:
         t: torch.Tensor,
         msg: torch.Tensor,
         edge_p: Optional[torch.Tensor] = None,
-        temporal_window_size: Optional[int | float] = 1500,
+        temporal_window_size: Optional[int | float] = None,
         struct_max_num_candidate: int = 1_000_000,
         struct_oversampling_ratio: float = 1.2,
         use_fallbacks: bool = False
@@ -989,8 +990,8 @@ class AnomalyInjector:
             train_mask=final_train_mask[final_sort_indices],
             val_mask=final_val_mask[final_sort_indices],
             test_mask=final_test_mask[final_sort_indices],
-            w=(self.temporal_graph.w.clone()
-               if self.temporal_graph.w is not None else None),
+            # w=(self.temporal_graph.w.clone()
+            #    if self.temporal_graph.w is not None else None),
             node_attr=(self.temporal_graph.node_attr.clone()
                        if self.temporal_graph.node_attr is not None else None),
             node_labels=(self.temporal_graph.node_labels.clone()
