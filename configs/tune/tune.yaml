@@ -13,7 +13,7 @@ global_settings:
     num_trials: 1
 
   hyperparameters:
-    epochs: 5
+    epochs: 50
 
 datasets:
   uc-social:
