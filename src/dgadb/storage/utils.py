@@ -18,7 +18,7 @@ def generate_temporal_graph_filename(temporal_graph: TemporalGraph):
         train_ratio = splits_meta.get("train", {}).get("ratio", 0.0)
         val_ratio = splits_meta.get("val", {}).get("ratio", 0.0)
         test_ratio = splits_meta.get("test", {}).get("ratio", 0.0)
-        ratio_str = f"ratios-{train_ratio}-{val_ratio}-{test_ratio}"
+        ratio_str = f"{train_ratio}-{val_ratio}-{test_ratio}"
 
         gen_params = anom_meta.get("generation_parameters", {})
         if not gen_params:
