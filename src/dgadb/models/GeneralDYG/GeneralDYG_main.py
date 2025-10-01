@@ -387,7 +387,7 @@ class GeneralDYGModel:
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_data_workers,
-            pin_memory=True,
+            pin_memory=False,
             collate_fn=collate,
         )
 

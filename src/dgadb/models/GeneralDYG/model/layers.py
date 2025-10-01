@@ -18,20 +18,24 @@ class GraphConvolution(Module):
         self.out_features_e = out_features_e
         self.in_features_v = in_features_v
         self.out_features_v = out_features_v
-        self.device = device
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if node_layer:
             self.node_layer = True
-            self.weight = Parameter(torch.FloatTensor(in_features_v, out_features_v))
-            self.p = Parameter(torch.from_numpy(np.random.normal(size=(1, in_features_e))).float())
+            self.weight = Parameter(torch.FloatTensor(
+                in_features_v, out_features_v))
+            self.p = Parameter(torch.from_numpy(
+                np.random.normal(size=(1, in_features_e))).float())
             if bias:
                 self.bias = Parameter(torch.FloatTensor(out_features_v))
             else:
                 self.register_parameter("bias", None)
         else:
             self.node_layer = False
-            self.weight = Parameter(torch.FloatTensor(in_features_e, out_features_e))
-            self.p = Parameter(torch.from_numpy(np.random.normal(size=(1, in_features_v))).float())
+            self.weight = Parameter(torch.FloatTensor(
+                in_features_e, out_features_e))
+            self.p = Parameter(torch.from_numpy(
+                np.random.normal(size=(1, in_features_v))).float())
             if bias:
                 self.bias = Parameter(torch.FloatTensor(out_features_e))
             else:
@@ -48,10 +52,13 @@ class GraphConvolution(Module):
     def forward(self, H_v, H_e, adj_e, adj_v, T):
         if self.node_layer:
             # multiplier1 = torch.spmm(T, torch.diag((H_e @ self.p.t()).t()[0])) @ T.to_dense().t()
-            multiplier1 = torch.spmm(T, torch.diag((H_e @ self.p.t()).t()[0])) @ T.t()
+            multiplier1 = torch.spmm(T, torch.diag(
+                (H_e @ self.p.t()).t()[0])) @ T.t()
             mask1 = torch.eye(multiplier1.shape[0])
             mask1 = mask1.to(self.device)
-            M1 = mask1 * torch.ones(multiplier1.shape[0]).to(self.device) + (1.0 - mask1) * multiplier1
+            M1 = mask1 * \
+                torch.ones(multiplier1.shape[0]).to(
+                    self.device) + (1.0 - mask1) * multiplier1
             # adjusted_A = torch.mul(M1, adj_v.to_dense())
 
             adjusted_A = torch.mul(M1, adj_v.to_dense())
@@ -62,16 +69,21 @@ class GraphConvolution(Module):
 
         else:
             # multiplier2 = torch.spmm(T.t(), torch.diag((H_v @ self.p.t()).t()[0])) @ T.to_dense()
-            multiplier2 = torch.spmm(T.t(), torch.diag((H_v @ self.p.t()).t()[0])) @ T
+            multiplier2 = torch.spmm(
+                T.t(), torch.diag((H_v @ self.p.t()).t()[0])) @ T
             mask2 = torch.eye(multiplier2.shape[0])
             mask2 = mask2.to(self.device)
-            M3 = mask2 * torch.ones(multiplier2.shape[0]).to(self.device) + (1.0 - mask2) * multiplier2
+            M3 = mask2 * \
+                torch.ones(multiplier2.shape[0]).to(
+                    self.device) + (1.0 - mask2) * multiplier2
             # adjusted_A = torch.mul(M3, adj_e.to_dense())
             adjusted_A = torch.mul(M3, adj_e.to_dense())
 
-            max_vals = adjusted_A.max(dim=0, keepdim=True).values.clamp_min(1e-12)
+            max_vals = adjusted_A.max(
+                dim=0, keepdim=True).values.clamp_min(1e-12)
             normalized_adjusted_A = adjusted_A / max_vals
-            output = torch.mm(normalized_adjusted_A, torch.mm(H_e, self.weight))
+            output = torch.mm(normalized_adjusted_A,
+                              torch.mm(H_e, self.weight))
             if self.bias is not None:
                 ret = output + self.bias
             return H_v, ret
