@@ -41,12 +41,19 @@ class GCNAD(BaseADModel[GCNADComponents]):
         self.act = act
         self.learning_rate = learning_rate
 
+    @property
+    def initial_features(self):
+        if self._initial_features is None:
+            raise RuntimeError(
+                "Model is not initialized. Call `setup(data)` first.")
+        return self._initial_features
+
     def setup(self, data: TemporalGraph, **kwargs) -> None:
         device = self.device
-        self.initial_features = (
+        self._initial_features = (
             data.node_attr.clone()
             if data.node_attr is not None
-            else torch.eye(data.num_nodes)
+            else torch.eye(data.num_nodes, dtype=torch.float32, device=device)
         ).to(device)
 
         if self._components is not None:
@@ -62,6 +69,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
         optimizer = torch.optim.Adam(
             params=encoder.parameters(), lr=self.learning_rate
         )
+
         self._components = GCNADComponents(
             encoder=encoder,
             decoder=decoder,
@@ -129,7 +137,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
 
     def predict(self, snapshot: TemporalGraphSnapshot) -> torch.Tensor:
         device = self.device
-        encoder = self.components.encoder.to(self.device)
+        encoder = self.components.encoder.to(device)
         encoder.eval()
         with torch.no_grad():
             cumulative_graph = snapshot.cumulative
