@@ -233,7 +233,11 @@ class TemporalGraphLoader:
         search_criteria = {
             "dataset_name": dataset_name,
             "anomaly_type": anom_type,
-            "anomaly_ratios": (anom_train_ratio, anom_val_ratio, anom_test_ratio),
+            "anomaly_ratios": (
+                anom_train_ratio or 0.0,
+                anom_val_ratio or 0.0,
+                anom_test_ratio or 0.0
+            ),
             "anomaly_generation_parameters": kwargs
         }
         self.logger.info(
@@ -281,11 +285,11 @@ class TemporalGraphLoader:
                     continue
 
                 splits_meta = meta["anomaly_injection"].get("splits", {})
-                if anom_train_ratio is not None and splits_meta.get("train", {}).get("ratio") != anom_train_ratio:
+                if splits_meta.get("train", {}).get("ratio") != anom_train_ratio:
                     continue
-                if anom_val_ratio is not None and splits_meta.get("val", {}).get("ratio") != anom_val_ratio:
+                if splits_meta.get("val", {}).get("ratio") != anom_val_ratio:
                     continue
-                if anom_test_ratio is not None and splits_meta.get("test", {}).get("ratio") != anom_test_ratio:
+                if splits_meta.get("test", {}).get("ratio") != anom_test_ratio:
                     continue
 
                 gen_params = meta.get("anomaly_injection", {}) \
