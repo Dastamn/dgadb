@@ -1,17 +1,18 @@
-from sklearn.metrics import roc_auc_score
-from src.dgadb.evaluation import evaluate
-from src.dgadb.storage import TemporalGraphView
-from dataclasses import dataclass, fields
-from src.dgadb.storage import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from __future__ import annotations
+
 import logging
 import typing
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, fields, field
+from typing import Generic, Optional, Self, TypeVar
 
 import torch
+from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
 from torch_geometric.loader import LinkLoader, NodeLoader
 
-from src.dgadb.storage import TemporalGraph, TemporalGraphSnapshotLoader
-from typing import Callable, Generic, Optional, Self, TypeVar
+from src.dgadb.storage import TemporalGraph, TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
 
 
 class BaseModel(ABC):
@@ -54,6 +55,16 @@ class BaseModel(ABC):
 
 
 @dataclass
+class TrainingState:
+    epoch: int = 0
+    step_in_epoch: int = 0
+    total_steps: int = 0
+    model: Optional[BaseADModel] = None
+    loss: Optional[float] = None
+    val_metrics: dict = field(default_factory=dict)
+
+
+@dataclass
 class BaseADModelComponents:
     pass
 
@@ -70,7 +81,8 @@ class BaseADModelComponents:
         return self
 
 
-BaseADModelComponentsType = TypeVar("BaseADModelComponentsType", bound=BaseADModelComponents)
+BaseADModelComponentsType = TypeVar(
+    "BaseADModelComponentsType", bound=BaseADModelComponents)
 
 
 class BaseADModel(Generic[BaseADModelComponentsType], ABC):
@@ -81,8 +93,15 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
     @property
     def components(self) -> BaseADModelComponentsType:
         if self._components is None:
-            raise RuntimeError("Model is not initialized. Call `setup(data)` first.")
+            raise RuntimeError(
+                "Model is not initialized. Call `setup(data)` first.")
         return self._components
+
+    def set_training_mode(self, is_training: bool):
+        for field in fields(self.components):
+            attr = getattr(self.components, field.name)
+            if isinstance(attr, torch.nn.Module):
+                attr.train() if is_training else attr.eval()
 
     def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[torch.Tensor, torch.Tensor]:
         all_scores = []
@@ -102,14 +121,43 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
     def setup(self, data: TemporalGraph, **kwargs) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def train(
         self,
         epochs: int,
         train_loader: TemporalGraphSnapshotLoader,
         val_loader: Optional[TemporalGraphSnapshotLoader] = None,
-        report_callback: Optional[Callable] = None,
-    ) -> None:
+        callbacks: Optional[list[ExperimentCallback]] = None
+    ):
+        handler = ExperimentCallbackHandler(callbacks)
+        state = TrainingState(model=self)
+        handler.on_train_begin(state)
+
+        for epoch in tqdm(range(epochs)):
+            self.set_training_mode(True)
+            state.epoch = epoch
+            handler.on_train_epoch_begin(state)
+
+            for i, train_snapshot in enumerate(train_loader):
+                state.step_in_epoch = i
+                state.total_steps += 1
+                handler.on_train_step_begin(state)
+                state.loss = self._train_step(train_snapshot)
+                handler.on_train_step_end(state)
+
+            if val_loader:
+                self.set_training_mode(False)
+                val_labels, val_probs = self.run_inference(val_loader)
+                val_auc = roc_auc_score(
+                    val_labels.cpu().numpy(), val_probs.cpu().numpy())
+                state.val_metrics = {'val_auc': val_auc}
+                print(val_auc)
+
+            handler.on_train_epoch_end(state)
+
+        handler.on_train_end(state)
+
+    @abstractmethod
+    def _train_step(self, snapshot: TemporalGraphSnapshot) -> float:
         raise NotImplementedError
 
     @abstractmethod

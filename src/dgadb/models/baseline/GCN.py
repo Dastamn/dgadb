@@ -3,15 +3,12 @@ from __future__ import annotations
 import os
 import json
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
 from torch_geometric.nn import GCN
 from torch_geometric.nn import InnerProductDecoder
 from torch_geometric.utils import negative_sampling
-from sklearn.metrics import roc_auc_score
 
 from ..base import BaseADModel, BaseADModelComponents
 from src.dgadb.storage import TemporalGraphSnapshotLoader
@@ -76,69 +73,57 @@ class GCNAD(BaseADModel[GCNADComponents]):
             optimizer=optimizer
         ).to(device)
 
-    def train(self, epochs: int, train_loader: TemporalGraphSnapshotLoader, val_loader: TemporalGraphSnapshotLoader | None = None, report_callback: Optional[Callable] = None) -> None:
+    def _train_step(self, snapshot: TemporalGraphSnapshot) -> float:
         device = self.device
         encoder = self.components.encoder
         decoder = self.components.decoder
         optimizer = self.components.optimizer
 
-        encoder.train()
-        for epoch in tqdm(range(epochs)):
-            for train_snapshot in train_loader:
-                current_graph = train_snapshot.current
-                cumulative_graph = train_snapshot.cumulative
-                if cumulative_graph is None:
-                    raise RuntimeError(
-                        "Cumulative graph not found in snapshot, set `TemporalSnapshotLoader(..., include_cumulative=True)`.")
+        current_graph = snapshot.current
+        cumulative_graph = snapshot.cumulative
+        if cumulative_graph is None:
+            raise RuntimeError(
+                "Cumulative graph not found in snapshot, set `TemporalSnapshotLoader(..., include_cumulative=True)`.")
 
-                current_edge_index = current_graph.edge_index.to(device)
-                cumulative_msg = cumulative_graph.msg.to(device)
-                cumulative_edge_index = cumulative_graph.edge_index.to(device)
+        current_edge_index = current_graph.edge_index.to(device)
+        cumulative_msg = cumulative_graph.msg.to(device)
+        cumulative_edge_index = cumulative_graph.edge_index.to(device)
 
-                optimizer.zero_grad()
+        optimizer.zero_grad()
 
-                node_embeddings = encoder(
-                    self.initial_features,
-                    edge_index=cumulative_edge_index,
-                    edge_attr=cumulative_msg
-                )
+        node_embeddings = encoder(
+            self.initial_features,
+            edge_index=cumulative_edge_index,
+            edge_attr=cumulative_msg
+        )
 
-                neg_edge_index = negative_sampling(
-                    edge_index=cumulative_edge_index,
-                    num_nodes=cumulative_graph.num_nodes,
-                    num_neg_samples=current_edge_index.shape[1]
-                ).to(device)
+        neg_edge_index = negative_sampling(
+            edge_index=cumulative_edge_index,
+            num_nodes=cumulative_graph.num_nodes,
+            num_neg_samples=current_edge_index.shape[1]
+        ).to(device)
 
-                pos_probs = decoder(
-                    node_embeddings, current_edge_index, sigmoid=True)
-                neg_probs = decoder(
-                    node_embeddings, neg_edge_index, sigmoid=True)
-                predictions = torch.cat([pos_probs, neg_probs])
+        pos_probs = decoder(
+            node_embeddings, current_edge_index, sigmoid=True)
+        neg_probs = decoder(
+            node_embeddings, neg_edge_index, sigmoid=True)
+        predictions = torch.cat([pos_probs, neg_probs])
 
-                pos_labels = torch.ones_like(pos_probs, device=device)
-                neg_labels = torch.zeros_like(neg_probs, device=device)
+        pos_labels = torch.ones_like(pos_probs, device=device)
+        neg_labels = torch.zeros_like(neg_probs, device=device)
+        labels = torch.cat([pos_labels, neg_labels])
 
-                labels = torch.cat([pos_labels, neg_labels])
+        loss = F.binary_cross_entropy(predictions, labels)
+        loss.backward()
+        optimizer.step()
 
-                loss = F.binary_cross_entropy(predictions, labels)
-
-                loss.backward()
-                optimizer.step()
-
-            if val_loader is not None:
-                labels, probs = self.run_inference(val_loader)
-                val_auc = roc_auc_score(
-                    labels.cpu().numpy(), probs.cpu().numpy())
-                print(
-                    f"Epoch {epoch+1}/{epochs} | Validation AUC: {val_auc:.4f}")
-
-                if report_callback is not None:
-                    pass
+        return loss.item()
 
     def predict(self, snapshot: TemporalGraphSnapshot) -> torch.Tensor:
         device = self.device
         encoder = self.components.encoder.to(device)
-        encoder.eval()
+
+        self.set_training_mode(False)
         with torch.no_grad():
             cumulative_graph = snapshot.cumulative
             if cumulative_graph is None:
@@ -155,7 +140,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
             )
 
             current_graph = snapshot.current
-            current_edge_index = current_graph.edge_index.to(self.device)
+            current_edge_index = current_graph.edge_index.to(device)
 
             scores = self.components.decoder(
                 node_embeddings, current_edge_index, sigmoid=True)
