@@ -117,9 +117,9 @@ class ResourceMonitor(ExperimentCallback):
         if "gpu_mem_mb" in df.columns and df["gpu_mem_mb"].sum() > 0:
             plt.figure(figsize=(10, 6))
             plt.plot(df["time_elapsed_sec"], df["gpu_mem_mb"],
-                     label="Reserved", color="orange", linestyle="-")
+                     label="Reserved", color="red", linestyle="--")
             plt.plot(df["time_elapsed_sec"], df["gpu_mem_allocated_mb"],
-                     label="Allocated", color="red", linestyle="--")
+                     label="Allocated", color="blue", linestyle="-")
             plt.title("GPU Memory Usage Over Time")
             plt.xlabel("Time Elapsed (seconds)")
             plt.ylabel("GPU Memory (MB)")
