@@ -149,7 +149,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
                 val_labels, val_probs = self.run_inference(val_loader)
                 val_auc = roc_auc_score(
                     val_labels.cpu().numpy(), val_probs.cpu().numpy())
-                state.val_metrics = {'val_auc': val_auc}
+                state.val_metrics = {'roc_auc': val_auc}
                 print(val_auc)
 
             handler.on_train_epoch_end(state)
