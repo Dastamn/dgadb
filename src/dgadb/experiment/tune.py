@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 import os
 import time
@@ -106,6 +107,15 @@ class Tuner:
                 f"Loading '{self.method_name}' from checkpoint '{checkpoint_dir}'")
             return model_class.load(checkpoint_dir, self.device)
 
+    def _save_snapshot_config(self, snapshot_config: dict, save_dir: str) -> None:
+        os.makedirs(save_dir, exist_ok=True)
+        with open(os.path.join(save_dir, "snapshot_config.json"), "w") as f:
+            return json.dump(snapshot_config, f, indent=4)
+
+    def _load_snapshot_config(self, load_dir: str) -> dict:
+        with open(os.path.join(load_dir, "snapshot_config.json"), "r") as f:
+            return json.load(f)
+
     def trainable_function(self, params: dict, model_class: Type[BaseADModel], data: TemporalGraph, epochs: int, snapshot_config: dict, device: torch.device | str = "cpu"):
         snapshot_config = deepcopy(snapshot_config)
         window_size = params.pop("snapshot_config.window_size", None)
@@ -113,11 +123,13 @@ class Tuner:
             snapshot_config["window_size"] = window_size
 
         trial_dir = tune.get_context().get_trial_dir()
+        self._save_snapshot_config(snapshot_config, save_dir=trial_dir)
+
         checkpoint = tune.get_checkpoint()
         model = (
             self._load_checkpoint(checkpoint, model_class, device)
             if checkpoint
-            else model_class(**params, device=self.device)
+            else model_class(**params, device=device)
         )
 
         runner = ExperimentRunner(
@@ -168,17 +180,27 @@ class Tuner:
         )
 
         results = tuner.fit()
+        print(results)
         best_result = results.get_best_result(metric, mode, scope="last")
-        if (checkpoint := best_result.checkpoint) is not None:
-            self.evaluate_checkpoint(checkpoint)
+        self.evaluate_result(best_result)
 
-    def evaluate_checkpoint(self, checkpoint: tune.Checkpoint):
+    def evaluate_result(self, result: tune.Result):
+        checkpoint = result.checkpoint
+        if checkpoint is None:
+            self.logger.error("No checkpoint found for evaluation.")
+            return
+
+        snapshot_config = self._load_snapshot_config(result.path)
+
         model = self._load_checkpoint(
             checkpoint, self.model_class, self.device)
+        model.setup(self.data)
+
         save_dir = os.path.join(self.output_dir, self.experiment_name)
         runner = ExperimentRunner(
             model, self.data, self.dataset_name, save_dir)
-        runner.evaluate()
+
+        runner.evaluate(snapshot_config)
 
 
 if __name__ == "__main__":

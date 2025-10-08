@@ -41,11 +41,11 @@ class ExperimentRunner:
         self.model.train(epochs, train_loader, val_loader, callbacks)
 
         if evaluate:
-            self.evaluate()
+            self.evaluate(snapshot_config)
 
         self.logger.info("--- Experiment Finished ---")
 
-    def evaluate(self):
+    def evaluate(self, snapshot_config: dict):
         self.logger.info("--- Running Inference on Test Set ---")
         test_loader = TemporalGraphSnapshotLoader(
             self.data, split="test", **snapshot_config)
