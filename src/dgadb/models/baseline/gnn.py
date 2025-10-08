@@ -3,29 +3,41 @@ from __future__ import annotations
 import os
 import json
 from dataclasses import dataclass
+from typing import Literal, Type
 
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCN
+from torch_geometric.nn import GCN, GAT, GraphSAGE
 from torch_geometric.nn import InnerProductDecoder
 from torch_geometric.utils import negative_sampling
 
 from ..base import BaseADModel, BaseADModelComponents
-from src.dgadb.storage import TemporalGraphSnapshotLoader
 from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
+
+
+_ModelTypeAlias = Type[GCN | GAT | GraphSAGE]
+_VALID_MODELS = [GCN, GAT, GraphSAGE]
 
 
 @dataclass
-class GCNADComponents(BaseADModelComponents):
-    encoder: GCN
+class GNNADComponents(BaseADModelComponents):
+    encoder: GCN | GAT | GraphSAGE
     decoder: InnerProductDecoder
     optimizer: torch.optim.Optimizer
 
 
-class GCNAD(BaseADModel[GCNADComponents]):
+def _get_model_class(model_type: Literal["GCN", "GAT", "GraphSAGE"]) -> _ModelTypeAlias:
+    for t in _VALID_MODELS:
+        if t.__name__.lower() == model_type.lower():
+            return t
+    raise ValueError(f"Unknown model type: '{model_type}'.")
+
+
+class GNNAD(BaseADModel[GNNADComponents]):
     def __init__(
         self,
+        model_type: Literal["GCN", "GAT", "GraphSAGE"],
         hidden_channels: int = 128,
         num_layers: int = 2,
         act: str = "relu",
@@ -37,10 +49,11 @@ class GCNAD(BaseADModel[GCNADComponents]):
         self.num_layers = num_layers
         self.act = act
         self.learning_rate = learning_rate
+        self.model_class = _get_model_class(model_type)
 
     @property
     def initial_features(self):
-        if self._initial_features is None:
+        if not hasattr(self, "_initial_features") or self._initial_features is None:
             raise RuntimeError(
                 "Model is not initialized. Call `setup(data)` first.")
         return self._initial_features
@@ -56,7 +69,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
         if self._components is not None:
             return
 
-        encoder = GCN(
+        encoder = self.model_class(
             in_channels=-1,
             hidden_channels=self.hidden_channels,
             num_layers=self.num_layers,
@@ -67,7 +80,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
             params=encoder.parameters(), lr=self.learning_rate
         )
 
-        self._components = GCNADComponents(
+        self._components = GNNADComponents(
             encoder=encoder,
             decoder=decoder,
             optimizer=optimizer
@@ -169,7 +182,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
             json.dump(config, f, indent=4)
 
     @classmethod
-    def load(cls, load_dir: str, device: torch.device | str = "cpu"):
+    def load(cls, load_dir: str, device: torch.device | str = "cpu", **kwargs):
         config_path = os.path.join(load_dir, "config.json")
         if not os.path.exists(config_path):
             raise FileNotFoundError(
@@ -177,14 +190,21 @@ class GCNAD(BaseADModel[GCNADComponents]):
         with open(config_path, 'r') as f:
             config = json.load(f)
 
-        instance = cls(device=device, **config)
+        model_type = kwargs.get("model_type", None)
+        if model_type is None:
+            raise ValueError(
+                f"`model_type` not specified, expected any of {[m.__name__ for m in _VALID_MODELS]}")
+        model_class = _get_model_class(model_type)
+
+        instance = cls(device=device, **config, model_type=model_type)
 
         model_path = os.path.join(load_dir, "model.pt")
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at '{model_path}'")
 
         checkpoint = torch.load(model_path, map_location=device)
-        encoder = GCN(
+
+        encoder = model_class(
             in_channels=-1,
             hidden_channels=instance.hidden_channels,
             num_layers=instance.num_layers,
@@ -197,23 +217,7 @@ class GCNAD(BaseADModel[GCNADComponents]):
         encoder.load_state_dict(checkpoint['encoder_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        instance._components = GCNADComponents(
+        instance._components = GNNADComponents(
             encoder=encoder, decoder=decoder, optimizer=optimizer).to(device)
 
         return instance
-
-
-if __name__ == "__main__":
-    from src.dgadb.storage import TemporalGraphLoader
-    model = GCNAD()
-    loader = TemporalGraphLoader()
-    tg = loader.load("bitcoin-alpha", anom_type="structural", anom_train_ratio=.0,
-                     anom_test_ratio=.1, anom_val_ratio=.1)
-    train_loader = TemporalGraphSnapshotLoader(
-        tg, split="train", window_size=1000, include_cumulative=True)
-
-    val_loader = TemporalGraphSnapshotLoader(
-        tg, split="val", window_size=1000, include_cumulative=True)
-
-    model.setup(tg)
-    model.train(50, train_loader, val_loader)

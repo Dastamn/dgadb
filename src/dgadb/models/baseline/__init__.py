@@ -1,4 +1,4 @@
 from .GNNBaseline import *
-from .GCN import GCNAD
+from .gnn import GNNAD
 
-__all__ = ["GNNBaseline", "GNN_BASELINES_DICT", "GCNAD"]
+__all__ = ["GNNBaseline", "GNN_BASELINES_DICT", "GNNAD"]

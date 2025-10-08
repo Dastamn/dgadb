@@ -63,7 +63,7 @@ class ExperimentRunner:
 
 
 if __name__ == "__main__":
-    from src.dgadb.models.baseline.GCN import GCNAD
+    from src.dgadb.models.baseline.gnn import GNNAD
     anom_config = {
         "anom_type": "structural",
         "anom_test_ratio": 0.1,
@@ -75,7 +75,7 @@ if __name__ == "__main__":
         "include_cumulative": True
     }
 
-    model = GCNAD()
+    model = GNNAD(model_type="GCN")
 
     loader = TemporalGraphLoader()
     data = loader.load(

@@ -33,12 +33,34 @@ datasets:
 
 methods:
   GCN:
-    model_name: GCNAD
-    params:
-      type: GCN
+    model_name: GNNAD
+    model_params:
+      model_type: GCN
 
     anomalies:
       anom_train_ratio: 0.0 # negative sampling
+
+    snapshot_config:
+      include_cumulative: True
+
+  GAT:
+    model_name: GNNAD
+    model_params:
+      model_type: GAT
+
+    anomalies:
+      anom_train_ratio: 0.0
+
+    snapshot_config:
+      include_cumulative: True
+
+  GraphSAGE:
+    model_name: GNNAD
+    model_params:
+      model_type: GraphSAGE
+
+    anomalies:
+      anom_train_ratio: 0.0
 
     snapshot_config:
       include_cumulative: True
