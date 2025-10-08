@@ -1,0 +1,46 @@
+global:
+  epochs: 50
+  time_budget: 259200 # 3 days
+  num_samples: 1
+
+  val_metric:
+    name: roc_auc
+    mode: max
+
+  anomalies:
+    anom_type: structural
+    anom_train_ratio: 0.5
+    anom_val_ratio: 0.1
+    anom_test_ratio: 0.1
+
+  snapshot_config:
+    window_size: [2000, 6000, 12000, 20000, 40000]
+    strategy: window
+
+  hyperparameters: {}
+
+
+datasets:
+  bitcoin-alpha:
+    snapshot_config:
+      window_size: 1000
+  bitcoin-otc:
+    snapshot_config:
+      window_size: 1000
+  uc-social:
+    snapshot_config:
+      window_size: 2000
+
+methods:
+  GCN:
+    model_name: GCNAD
+    params:
+      type: GCN
+
+    anomalies:
+      anom_train_ratio: 0.0 # negative sampling
+
+    snapshot_config:
+      include_cumulative: True
+
+    hyperparameters: {}
