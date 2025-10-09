@@ -7,6 +7,8 @@ from typing import Literal, Type
 
 import torch
 import torch.nn.functional as F
+from torch_geometric.data import Data
+from torch_geometric.loader import LinkNeighborLoader
 from torch_geometric.nn import GCN, GAT, GraphSAGE
 from torch_geometric.nn import InnerProductDecoder
 from torch_geometric.utils import negative_sampling
@@ -25,6 +27,7 @@ class GNNADComponents(BaseADModelComponents):
     encoder: GCN | GAT | GraphSAGE
     decoder: InnerProductDecoder
     optimizer: torch.optim.Optimizer
+    embedding: torch.nn.Embedding | None = None
 
 
 def _get_model_class(model_type: Literal["GCN", "GAT", "GraphSAGE"]) -> _ModelTypeAlias:
@@ -38,7 +41,7 @@ class GNNAD(BaseADModel[GNNADComponents]):
     def __init__(
         self,
         model_type: Literal["GCN", "GAT", "GraphSAGE"],
-        hidden_channels: int = 128,
+        hidden_channels: int = 256,
         num_layers: int = 2,
         act: str = "relu",
         learning_rate: float = 1e-3,
@@ -50,24 +53,42 @@ class GNNAD(BaseADModel[GNNADComponents]):
         self.act = act
         self.learning_rate = learning_rate
         self.model_class = _get_model_class(model_type)
+        self._initial_features = None
 
     @property
     def initial_features(self):
-        if not hasattr(self, "_initial_features") or self._initial_features is None:
+        if self._initial_features is None:
             raise RuntimeError(
                 "Model is not initialized. Call `setup(data)` first.")
         return self._initial_features
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
         device = self.device
-        self._initial_features = (
-            data.node_attr.clone()
-            if data.node_attr is not None
-            else torch.eye(data.num_nodes, dtype=torch.float32, device=device)
-        ).to(device)
+        if self._components is not None and self._components.embedding is not None:
+            # Loaded model with embeddings
+            num_nodes = self._components.embedding.num_embeddings
+            if data.num_nodes > num_nodes:
+                raise ValueError(
+                    f"Data has {data.num_nodes} nodes, but the loaded embedding layer only supports {num_nodes}.")
+
+            self._initial_features = torch.arange(num_nodes, device=device)
+
+        elif data.node_attr is not None:
+            # Provided data has features
+            self._initial_features = data.node_attr.clone().to(device)
+
+        else:
+            # New model and no data features
+            self._initial_features = torch.arange(
+                data.num_nodes, device=device)
 
         if self._components is not None:
             return
+
+        embedding = None
+        if data.node_attr is None:
+            embedding = torch.nn.Embedding(
+                data.num_nodes, self.hidden_channels)
 
         encoder = self.model_class(
             in_channels=-1,
@@ -75,16 +96,22 @@ class GNNAD(BaseADModel[GNNADComponents]):
             num_layers=self.num_layers,
             act=self.act
         )
+
         decoder = InnerProductDecoder()
+
+        params_to_optimize = list(encoder.parameters())
+        if embedding is not None:
+            params_to_optimize.extend(embedding.parameters())
+
         optimizer = torch.optim.Adam(
-            params=encoder.parameters(), lr=self.learning_rate
-        )
+            params=params_to_optimize, lr=self.learning_rate)
 
         self._components = GNNADComponents(
             encoder=encoder,
             decoder=decoder,
-            optimizer=optimizer
-        ).to(device)
+            optimizer=optimizer,
+            embedding=embedding
+        ).to(self.device)
 
     def _train_step(self, snapshot: TemporalGraphSnapshot) -> float:
         device = self.device
@@ -102,10 +129,33 @@ class GNNAD(BaseADModel[GNNADComponents]):
         cumulative_msg = cumulative_graph.msg.to(device)
         cumulative_edge_index = cumulative_graph.edge_index.to(device)
 
+        # data = Data(
+        #     x=self.initial_features,
+        #     edge_index=cumulative_edge_index,
+        #     edge_label_index=current_edge_index
+        # )
+
+        # neighbor_loader = LinkNeighborLoader(
+        #     data,
+        #     num_neighbors=[-1] * self.num_layers,
+        #     batch_size=512,
+        #     edge_label_index=data.edge_label_index,
+        #     neg_sampling_ratio=1.0,
+        #     shuffle=False,
+        # )
+
+        # for batch in neighbor_loader:
+        #     batch = batch.to(device)
+        #     return 0
+
         optimizer.zero_grad()
 
+        x = self.initial_features
+        if self.components.embedding is not None:
+            x = self.components.embedding(x)
+
         node_embeddings = encoder(
-            self.initial_features,
+            x,
             edge_index=cumulative_edge_index,
             edge_attr=cumulative_msg
         )
@@ -134,7 +184,7 @@ class GNNAD(BaseADModel[GNNADComponents]):
 
     def predict(self, snapshot: TemporalGraphSnapshot) -> torch.Tensor:
         device = self.device
-        encoder = self.components.encoder.to(device)
+        encoder = self.components.encoder
 
         self.set_training_mode(False)
         with torch.no_grad():
@@ -146,8 +196,12 @@ class GNNAD(BaseADModel[GNNADComponents]):
             cumulative_edge_index = cumulative_graph.edge_index.to(device)
             cumulative_msg = cumulative_graph.msg.to(device)
 
+            x = self.initial_features
+            if self.components.embedding is not None:
+                x = self.components.embedding(x)
+
             node_embeddings = encoder(
-                self.initial_features,
+                x,
                 edge_index=cumulative_edge_index,
                 edge_attr=cumulative_msg
             )
@@ -165,19 +219,27 @@ class GNNAD(BaseADModel[GNNADComponents]):
         c = self.components
         os.makedirs(save_dir, exist_ok=True)
 
-        model_path = os.path.join(save_dir, "model.pt")
-        torch.save({
+        checkpoint = {
             'encoder_state_dict': c.encoder.state_dict(),
-            'optimizer_state_dict': c.optimizer.state_dict()
-        }, model_path)
+            'optimizer_state_dict': c.optimizer.state_dict(),
+        }
 
         config_path = os.path.join(save_dir, "config.json")
         config = {
-            'hidden_channels': self.hidden_channels,
-            'num_layers': self.num_layers,
-            'act': self.act,
-            'learning_rate': self.learning_rate,
+            "hidden_channels": self.hidden_channels,
+            "num_layers": self.num_layers,
+            "act": self.act,
+            "learning_rate": self.learning_rate,
         }
+
+        if c.embedding is not None:
+            checkpoint['embedding_state_dict'] = c.embedding.state_dict()
+            config["uses_embedding"] = True
+            config["num_nodes"] = c.embedding.num_embeddings
+
+        model_path = os.path.join(save_dir, "model.pt")
+        torch.save(checkpoint, model_path)
+
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=4)
 
@@ -187,6 +249,7 @@ class GNNAD(BaseADModel[GNNADComponents]):
         if not os.path.exists(config_path):
             raise FileNotFoundError(
                 f"Config file not found at '{config_path}'")
+
         with open(config_path, 'r') as f:
             config = json.load(f)
 
@@ -196,7 +259,10 @@ class GNNAD(BaseADModel[GNNADComponents]):
                 f"`model_type` not specified, expected any of {[m.__name__ for m in _VALID_MODELS]}")
         model_class = _get_model_class(model_type)
 
-        instance = cls(device=device, **config, model_type=model_type)
+        uses_embedding = config.pop("uses_embedding", False)
+        num_nodes = config.pop("num_nodes", None)
+
+        instance = cls(model_type=model_type, device=device, **config)
 
         model_path = os.path.join(load_dir, "model.pt")
         if not os.path.exists(model_path):
@@ -204,20 +270,35 @@ class GNNAD(BaseADModel[GNNADComponents]):
 
         checkpoint = torch.load(model_path, map_location=device)
 
+        embedding = None
+        if uses_embedding:
+            if num_nodes is None:
+                raise ValueError(
+                    "'num_nodes' should not be None when using embeddings.")
+
+            embedding_dim = instance.hidden_channels
+            embedding = torch.nn.Embedding(num_nodes, embedding_dim)
+            embedding.load_state_dict(checkpoint['embedding_state_dict'])
+
         encoder = model_class(
             in_channels=-1,
             hidden_channels=instance.hidden_channels,
             num_layers=instance.num_layers,
             act=instance.act
         )
-        decoder = InnerProductDecoder()
-        optimizer = torch.optim.Adam(
-            encoder.parameters(), lr=instance.learning_rate)
-
         encoder.load_state_dict(checkpoint['encoder_state_dict'])
+
+        decoder = InnerProductDecoder()
+
+        params_to_optimize = list(encoder.parameters())
+        if embedding is not None:
+            params_to_optimize.extend(embedding.parameters())
+
+        optimizer = torch.optim.Adam(
+            params_to_optimize, lr=instance.learning_rate)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
         instance._components = GNNADComponents(
-            encoder=encoder, decoder=decoder, optimizer=optimizer).to(device)
+            encoder=encoder, decoder=decoder, optimizer=optimizer, embedding=embedding).to(device)
 
         return instance

@@ -132,12 +132,12 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
         state = TrainingState(model=self)
         handler.on_train_begin(state)
 
-        for epoch in tqdm(range(epochs)):
+        for epoch in range(epochs):
             self.set_training_mode(True)
             state.epoch = epoch
             handler.on_train_epoch_begin(state)
 
-            for i, train_snapshot in enumerate(train_loader):
+            for i, train_snapshot in tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch+1}/{epochs}"):
                 state.step_in_epoch = i
                 state.total_steps += 1
                 handler.on_train_step_begin(state)
@@ -170,5 +170,5 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
 
     @classmethod
     @abstractmethod
-    def load(cls, load_dir: str, device: torch.device | str = "cpu") -> Self:
+    def load(cls, load_dir: str, device: torch.device | str = "cpu", **kwargs) -> Self:
         raise NotImplementedError
