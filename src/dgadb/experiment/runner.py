@@ -2,7 +2,7 @@ import os
 import logging
 
 from .callbacks import ExperimentCallback, ResourceMonitor
-from src.dgadb.evaluation import Evaluator
+from src.dgadb.evaluation import ADEvaluator
 from src.dgadb.storage import TemporalGraph, TemporalGraphLoader, TemporalGraphSnapshotLoader, generate_temporal_graph_filename
 from src.dgadb.models.base import BaseADModel, BaseADModelComponentsType
 
@@ -52,14 +52,9 @@ class ExperimentRunner:
         all_labels, all_scores = self.model.run_inference(test_loader)
 
         self.logger.info("Evaluating Results...")
-        evaluator = Evaluator(
-            method_name=self.model.__class__.__name__,
-            dataset_name=self.dataset_name
-        )
-        evaluator.eval_preds(all_labels, all_scores)
-        evaluator.log_roc()
+        evaluator = ADEvaluator(self.output_dir)
+        evaluator.evaluate(all_labels, all_scores)
         evaluator.save_results()
-        print(evaluator.results)
 
 
 if __name__ == "__main__":
@@ -83,4 +78,4 @@ if __name__ == "__main__":
 
     runner = ExperimentRunner(model, data)
     resource_monitor = ResourceMonitor(runner.output_dir, step_interval=10)
-    runner.run(50, snapshot_config, [resource_monitor])
+    runner.run(10, snapshot_config, [resource_monitor])

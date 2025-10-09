@@ -158,9 +158,8 @@ class Tuner:
             checkpoint, self.model_class, self.model_params, self.device)
         model.setup(self.data)
 
-        save_dir = os.path.join(self.output_dir, self.experiment_name)
         runner = ExperimentRunner(
-            model, self.data, self.dataset_name, save_dir)
+            model, self.data, self.dataset_name, result.path)
 
         runner.evaluate(snapshot_config)
 

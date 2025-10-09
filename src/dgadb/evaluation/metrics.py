@@ -1,5 +1,19 @@
 import torch
+import numpy as np
 from .utils import check_matching_shapes
+
+from sklearn.metrics import precision_recall_curve
+
+
+def max_f1_score(y_true: torch.Tensor, y_scores: torch.Tensor) -> tuple[float, float, float, float]:
+    precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
+    numerator = 2 * recall * precision
+    denom = recall + precision
+    f1_scores = np.divide(
+        numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
+    max_f1_score_index = np.argmax(f1_scores)
+    return (f1_scores[max_f1_score_index], thresholds[max_f1_score_index],
+            precision[max_f1_score_index], recall[max_f1_score_index])
 
 
 @check_matching_shapes

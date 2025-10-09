@@ -7,7 +7,7 @@ from typing import Optional
 
 import torch
 import polars as pl
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, balanced_accuracy_score
 
 from . import metrics
 from .utils import check_matching_device
@@ -25,6 +25,72 @@ VALID_METRICS = [
     "precision",
     "recall"
 ]
+
+
+def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor) -> dict:
+    y_true = y_true.cpu()
+    y_scores = y_scores.cpu()
+
+    max_f1, best_threshold, max_precision, max_recall = metrics.max_f1_score(
+        y_true, y_scores)
+    y_pred = (y_scores >= best_threshold).to(y_true.dtype)
+
+    return {
+        "max_f1": max_f1,
+        "best_threshold": best_threshold,
+        "roc_auc": roc_auc_score(y_true, y_scores),
+        "average_precision": average_precision_score(y_true, y_scores),
+        "accuracy": accuracy_score(y_true, y_pred),
+        "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
+        "max_precision": max_precision,
+        "max_recall": max_recall
+    }
+
+
+class ADEvaluator:
+    def __init__(self, output_dir: str, round_digits: int | None = 2) -> None:
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.output_dir = output_dir
+        self.round_digits = round_digits
+        self.results: list[dict[str, float]] = []
+
+    def _get_summary(self, statistics: list[str] = ["mean", "std", "min", "max"]) -> dict:
+        if not self.results:
+            self.logger.warning("No evaluation results to summarize.")
+            return {}
+
+        df = pl.DataFrame(self.results)
+        summary_df = df.describe()
+
+        filtered_stats = summary_df.filter(
+            pl.col("statistic").is_in(statistics))
+        long_format = filtered_stats.unpivot(
+            index="statistic", variable_name="metric")
+
+        summary_dict = {}
+        for (metric, *_), group_df in long_format.group_by("metric"):
+            statistic_dict = dict(
+                zip(group_df['statistic'], group_df['value']))
+            summary_dict[metric] = {k: (round(v, self.round_digits) if v is not None else v)
+                                    for k, v in statistic_dict.items()}
+
+        return summary_dict
+
+    def evaluate(self, y_true: torch.Tensor, y_scores: torch.Tensor) -> dict[str, float]:
+        metrics = compute_metrics(y_true, y_scores)
+        self.results.append(metrics)
+        return metrics
+
+    def save_results(self) -> None:
+        results = {
+            "results": self.results,
+            "summary": self._get_summary()
+        }
+        save_path = os.path.join(self.output_dir, "evaluation.json")
+        with open(save_path, "w") as f:
+            json.dump(results, f, indent=4, default=lambda x: float(x))
+
+        self.logger.info(f"Saved evaluation to: {save_path}")
 
 
 @check_matching_device
@@ -77,6 +143,12 @@ class Evaluator:
         self.anomaly_as_0 = anomaly_as_0
         self.time = datetime.now().strftime("%Y%m%d_%H%M%S/")
         self.output_dir = output_dir
+
+    def evaluate(self, y_true: torch.Tensor, y_scores: torch.Tensor) -> None:
+        self.results = evaluate(y_true, y_scores)
+
+    def save(self, save_dir: str, as_dataframe: bool = False) -> None:
+        pass
 
     def eval_preds(self, y_true: torch.Tensor, y_scores: torch.Tensor):
         self.results = evaluate(y_true, y_scores, self.anomaly_as_0)
