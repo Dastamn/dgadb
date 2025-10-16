@@ -30,6 +30,15 @@ datasets:
   uc-social:
     snapshot_config:
       window_size: 2000
+  as-topology:
+    snapshot_config:
+      window_size: 6000
+  reddit:
+    snapshot_config:
+      window_size: 6000
+  digg-homo:
+    snapshot_config:
+      window_size: 6000
 
 methods:
   GCN:
