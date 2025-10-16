@@ -15,6 +15,21 @@ class ExperimentRunner:
             dataset_name: str | None = None,
             output_dir: str = "experiment-results"
     ) -> None:
+        """Orchestrates a single training and evaluation experiment.
+
+        This class handles the end-to-end process of training a specific anomaly
+        detection model on a temporal graph dataset. It manages data loading
+        (splitting into train/val/test snapshots), model initialization,
+        the training loop with callbacks, and final evaluation on the test set.
+
+        Args:
+            model: An instance of a model inheriting from `BaseADModel`.
+            data: The `TemporalGraph` object containing the dataset.
+            dataset_name: An optional name for the dataset. If None, a name is
+                generated based on the graph's properties.
+            output_dir: The directory where logs, plots, and evaluation results
+                will be saved.
+        """
         self.logger = logging.getLogger(self.__class__.__name__)
         self.model = model
         self.model_name = self.model.__class__.__name__

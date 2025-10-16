@@ -30,6 +30,11 @@ def trainable_function(
     dataset_name: str | None = None,
     device: torch.device | str = "cpu"
 ):
+    """The callable function executed by Ray Tune for each trial.
+
+    Sets up the specific hyperparameter configuration, initializes or loads
+    the model, and starts an ExperimentRunner.
+    """
     snapshot_config = deepcopy(snapshot_config)
     window_size = hyperparameters.pop("snapshot_config.window_size", None)
     if window_size is not None:
@@ -64,6 +69,25 @@ class Tuner:
             loader_base_dir: str = "processed",
             device: torch.device | str = "cpu"
     ) -> None:
+        """Manages hyperparameter optimization using Ray Tune.
+
+        This class reads a configuration file to set up the search space,
+        resources, and stopping criteria for hyperparameter tuning. It loads
+        the specified dataset, launches the Ray Tune experiment, and automatically
+        evaluates the best-performing model on the test set after tuning completes.
+
+        Args:
+            config_path: Path to the YAML configuration file defining search spaces
+                and experiment settings.
+            method_name: The name of the method (model) to tune, as defined in
+                the configuration file.
+            dataset_name: The name of the dataset to use.
+            num_cpu_per_trial: Number of CPU cores allocated to each Tune trial.
+            num_gpu_per_trial: Number of GPUs allocated to each Tune trial.
+            output_dir: Base directory to store Ray Tune results within `_BASE_PATH`.
+            loader_base_dir: Directory where processed datasets are stored.
+            device: The device ('cpu' or 'cuda') to use for computation.
+        """
         self.logger = logging.getLogger(self.__class__.__name__)
         self.num_cpu_per_trial = num_cpu_per_trial
         self.num_gpu_per_trial = num_gpu_per_trial
