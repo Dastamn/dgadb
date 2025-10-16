@@ -48,6 +48,23 @@ def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor) -> dict:
 
 
 class ADEvaluator:
+    """Evaluates anomaly detection models and summarizes results.
+
+    This class provides a framework for running multiple evaluations,
+    accumulating the results, computing summary statistics (min, max, mean, std) 
+    across runs, and saving the results to a JSON file.
+
+    Args:
+        output_dir: The directory where the final evaluation report
+            ("evaluation.json") will be saved.
+        round_digits: The number of decimal places to round the summary
+            statistics to. If None, no rounding is performed.
+
+    Attributes:
+        results: A list of dictionaries, where each dictionary holds the
+            computed metrics from a single call to `evaluate`.
+    """
+
     def __init__(self, output_dir: str, round_digits: int | None = 2) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
@@ -55,6 +72,19 @@ class ADEvaluator:
         self.results: list[dict[str, float]] = []
 
     def _get_summary(self, statistics: list[str] = ["mean", "std", "min", "max"]) -> dict:
+        """Calculates descriptive statistics over all collected results.
+
+        Args:
+            statistics: A list of statistics to compute. Defaults to
+                ["mean", "std", "min", "max"]. Common options from polars'
+                `describe` method can be used.
+
+        Returns:
+            A nested dictionary summarizing the results. For example:
+            {
+                "roc_auc": {"mean": 0.95, "std": 0.02}
+            }
+        """
         if not self.results:
             self.logger.warning("No evaluation results to summarize.")
             return {}
@@ -77,11 +107,27 @@ class ADEvaluator:
         return summary_dict
 
     def evaluate(self, y_true: torch.Tensor, y_scores: torch.Tensor) -> dict[str, float]:
+        """Computes metrics for a single set of predictions and stores them.
+
+        Args:
+            y_true: A tensor of ground truth binary labels (0 or 1).
+            y_scores: A tensor of predicted anomaly scores, where higher
+                values indicate a higher likelihood of being an anomaly.
+
+        Returns:
+            A dictionary containing the computed metrics for this evaluation run.
+        """
         metrics = compute_metrics(y_true, y_scores)
         self.results.append(metrics)
         return metrics
 
     def save_results(self) -> None:
+        """Saves all results and a summary to a JSON file.
+
+        This method compiles all individual evaluation results and the summary
+        statistics into a single dictionary and saves it as a formatted JSON
+        file named "evaluation.json" in the specified `output_dir`.
+        """
         results = {
             "results": self.results,
             "summary": self._get_summary()

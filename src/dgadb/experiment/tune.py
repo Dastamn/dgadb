@@ -1,8 +1,10 @@
+import argparse
 import os
 import time
 import logging
 from copy import deepcopy
 from typing import Type
+from itertools import product
 
 import torch
 from ray import tune
@@ -165,9 +167,35 @@ class Tuner:
 
 
 if __name__ == "__main__":
-    tuner = Tuner("configs/experiments/tune.yaml", "GAT", "bitcoin-alpha")
+    parser = argparse.ArgumentParser(
+        description="Hyperparameter Tuner")
+    parser.add_argument(
+        "--method",
+        nargs="+",
+        required=True,
+        help="List of methods names as specified in the tune yaml configuration e.g. --method GCN GAT"
+    )
+    parser.add_argument(
+        "--dataset",
+        nargs="+",
+        required=True,
+        help="List of dataset names as specified in the tune yaml configuration e.g. --dataset bitcoin-alpha uc-social"
+    )
+    parser.add_argument(
+        "--config_path",
+        type=str,
+        help="Path to tune yaml configuration",
+        default="configs/experiments/tune.yaml"
+    )
 
-    stopper = TrialPlateauStopper(
-        tuner.metric, mode=tuner.metric_mode, grace_period=10)
+    args = parser.parse_args()
 
-    tuner.run(stopper)
+    if not os.path.exists(args.config_path):
+        raise FileNotFoundError(
+            f"Tune config not found at: {args.config_path}")
+
+    for method, dataset in product(args.method, args.dataset):
+        tuner = Tuner(args.config_path, method, dataset)
+        stopper = TrialPlateauStopper(
+            tuner.metric, mode=tuner.metric_mode, grace_period=10)
+        tuner.run(stopper)

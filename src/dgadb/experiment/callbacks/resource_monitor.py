@@ -18,6 +18,23 @@ if TYPE_CHECKING:
 
 
 class ResourceMonitor(ExperimentCallback):
+    """A callback to monitor and log system resource usage during training.
+
+    This callback tracks CPU usage, RAM usage, and (if available) GPU memory
+    usage at specified intervals (both step-wise and epoch-wise). The collected
+    data is saved to CSV files and visualized in plots, which are stored in a
+    specified output directory.
+
+    Args:
+        output_dir: The directory where logs and plots will be saved.
+        epoch_interval: The frequency (in epochs) for logging and plotting
+            epoch-level resource usage.
+        step_interval: The frequency (in steps) for logging and plotting
+            step-level resource usage.
+        enable_memory_history: If True and a GPU is used, enables PyTorch's
+            detailed CUDA memory history recording for debugging memory issues.
+    """
+
     def __init__(self, output_dir: str, epoch_interval: int = 1, step_interval: int = 10, enable_memory_history: bool = False) -> None:
         super().__init__()
         self.output_dir = output_dir

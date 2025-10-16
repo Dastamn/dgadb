@@ -56,6 +56,22 @@ class BaseModel(ABC):
 
 @dataclass
 class TrainingState:
+    """Holds the current state of the training loop.
+
+    This dataclass is used to pass information about the training progress
+    to callbacks, allowing them to inspect and react to the state of the model
+    and the training process at various points.
+
+    Attributes:
+        epoch: The current epoch number, starting from 0.
+        step_in_epoch: The current step number within the current epoch.
+        total_steps: The total number of training steps completed so far.
+        model: A reference to the model instance being trained.
+        loss: The loss value computed in the most recent training step.
+        val_metrics: A dictionary of metrics computed during the last
+            validation run.
+    """
+
     epoch: int = 0
     step_in_epoch: int = 0
     total_steps: int = 0
@@ -66,7 +82,21 @@ class TrainingState:
 
 @dataclass
 class BaseADModelComponents:
-    pass
+    """Base class for a dataclass holding model components.
+
+    This class serves as a container for all trainable or device-dependent
+    parts of a model, such as `torch.nn.Module` instances, optimizers, and
+    tensors. Inheriting from this class and defining components as fields
+    allows for easy management, particularly for moving all components to a
+    specific device using the `to` method.
+
+    Example:
+        @dataclass
+        class MyModelComponents(BaseADModelComponents):
+            encoder: torch.nn.Module
+            decoder: torch.nn.Module
+            optimizer: torch.optim.Optimizer
+    """
 
     def to(self, device: torch.device | str):
         for field in fields(self):
@@ -86,12 +116,32 @@ BaseADModelComponentsType = TypeVar(
 
 
 class BaseADModel(Generic[BaseADModelComponentsType], ABC):
+    """Abstract base class for anomaly detection models.
+
+    This class provides a standardized framework for setting up, training,
+    and evaluating anomaly detection models on temporal graphs. It manages the
+    training loop and integrates with a callback system for extensibility.
+
+    To create a new model, inherit from this class and implement the abstract
+    methods: `setup`, `_train_step`, `_predict`, `save`, and `load`.
+
+    Arguments:
+        device: The torch device ('cpu' or 'cuda') on which the model runs.
+    """
+
     def __init__(self, device: torch.device | str = "cpu") -> None:
         self.device = device
         self._components: Optional[BaseADModelComponentsType] = None
 
     @property
     def components(self) -> BaseADModelComponentsType:
+        """Provides access to the model's components.
+        Should be used instead of calling `self._components`to ensure
+        model initialization.
+
+        Raises:
+            RuntimeError: If the model has not been initialized via `setup()`.
+        """
         if self._components is None:
             raise RuntimeError(
                 "Model is not initialized. Call `setup(data)` first.")
@@ -108,7 +158,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
         all_labels = []
         for snapshot in loader:
             current_graph = snapshot.current
-            edge_scores = self.predict(snapshot)
+            edge_scores = self._predict(snapshot)
             edge_labels = current_graph.edge_labels
             all_scores.append(edge_scores)
             all_labels.append(edge_labels)
@@ -119,6 +169,17 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
         return all_labels, all_scores
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
+        """Initializes the model and its components.
+
+        This method should be implemented by subclasses to prepare the model for
+        training based on the structure of the input temporal graph data. This
+        typically involves instantiating neural network layers with correct
+        dimensions and setting up the optimizer.
+
+        Args:
+            data: The temporal graph dataset used for initialization.
+            **kwargs: Additional arguments for setup.
+        """
         raise NotImplementedError
 
     def train(
@@ -157,11 +218,11 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
         handler.on_train_end(state)
 
     @abstractmethod
-    def _train_step(self, snapshot: TemporalGraphSnapshot) -> float:
+    def _train_step(self, snapshot: TemporalGraphSnapshot, **kwargs) -> float:
         raise NotImplementedError
 
     @abstractmethod
-    def predict(self, snapshot: TemporalGraphSnapshot) -> torch.Tensor:
+    def _predict(self, snapshot: TemporalGraphSnapshot, **kwargs) -> torch.Tensor:
         raise NotImplementedError
 
     @abstractmethod

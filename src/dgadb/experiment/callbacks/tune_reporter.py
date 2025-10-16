@@ -13,6 +13,17 @@ if TYPE_CHECKING:
 
 
 class TuneReporter(ExperimentCallback):
+    """A callback to report metrics and checkpoints to Ray Tune.
+
+    This callback integrates the training loop with Ray Tune for hyperparameter
+    optimization. At the end of each epoch, it reports validation metrics to
+    Tune. It can also periodically save model checkpoints.
+
+    Args:
+        checkpoint_epoch_interval: The frequency (in epochs) at which to save
+            a model checkpoint and report it to Ray Tune.
+    """
+
     def __init__(self, checkpoint_epoch_interval: int = 5) -> None:
         super().__init__()
         self.checkpoint_epoch_interval = checkpoint_epoch_interval
