@@ -52,8 +52,12 @@ class TemporalGraph:
         return self.src.size(0)
 
     @property
+    def edges(self):
+        return torch.stack([self.src, self.tgt], dim=1)
+
+    @property
     def edge_index(self) -> torch.Tensor:
-        return torch.stack([self.src, self.tgt], dim=1).T
+        return self.edges.T
 
     @property
     def adj_matrix_coo(self) -> torch.Tensor:
@@ -318,7 +322,7 @@ class TemporalGraphLoader:
 
                 anom_injector = AnomalyInjector(temmporal_graph)
                 anomalous_temporal_graph = anom_injector.generate_anomalous_samples(
-                    anom_type, anom_train_ratio or 0, anom_val_ratio or 0, anom_test_ratio or 0, **kwargs)
+                    anom_type, anom_train_ratio or 0, anom_val_ratio or 0, anom_test_ratio or 0, **kwargs, reset_labels=True)
 
                 return anomalous_temporal_graph
 

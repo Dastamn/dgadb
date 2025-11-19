@@ -13,6 +13,9 @@ class TemporalGraphSnapshot:
     current: TemporalGraph | TemporalGraphView
     cumulative: Optional[TemporalGraph | TemporalGraphView]
 
+    def __len__(self) -> int:
+        return self.current.src.shape[0]
+
 
 class TemporalGraphSnapshotLoader:
     def __init__(
@@ -55,6 +58,10 @@ class TemporalGraphSnapshotLoader:
 
         self._snapshot_global_indices = self._compute_snapshot_indices()
         self.reset()
+
+    @property
+    def total_num_nodes(self):
+        return self.data.num_nodes
 
     def _slice_data(self, indices: torch.Tensor | slice) -> TemporalGraph:
         sliced_attrs = {

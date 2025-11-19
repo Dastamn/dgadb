@@ -113,7 +113,7 @@ class GNNAD(BaseADModel[GNNADComponents]):
             embedding=embedding
         ).to(self.device)
 
-    def _train_step(self, snapshot: TemporalGraphSnapshot) -> float:
+    def _train_step(self, snapshot: TemporalGraphSnapshot, **kwargs) -> float:
         device = self.device
         encoder = self.components.encoder
         decoder = self.components.decoder
@@ -182,7 +182,7 @@ class GNNAD(BaseADModel[GNNADComponents]):
 
         return loss.item()
 
-    def predict(self, snapshot: TemporalGraphSnapshot) -> torch.Tensor:
+    def _predict(self, snapshot: TemporalGraphSnapshot, **kwargs) -> torch.Tensor:
         device = self.device
         encoder = self.components.encoder
 
