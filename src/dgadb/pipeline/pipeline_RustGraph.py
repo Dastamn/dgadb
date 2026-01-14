@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     pipeline = Pipeline.from_config(config_name, force_rerun=False)
     evaluator = Evaluator(dataset_name="bitcoin-alpha",
-                          method_name="RustGraph", output_dir="eval-data")
+                          method_name="RustGraph", save_dir="eval-data")
 
     g = pipeline.run()
     g.describe()

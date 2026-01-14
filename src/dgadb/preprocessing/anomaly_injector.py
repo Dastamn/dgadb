@@ -645,7 +645,7 @@ class AnomalyInjector:
         anom_train_ratio: float = 0.0,
         anom_val_ratio: float = 0.0,
         anom_test_ratio: float = 0.05,
-        reset_labels: bool = False,
+        # reset_labels: bool = False,
         max_stagnation_attempts: int = 10,
         use_fallbacks: bool = False,
         **kwargs,
@@ -679,28 +679,31 @@ class AnomalyInjector:
             self.temporal_graph.test_mask,
         )
 
-        if (self.temporal_graph.edge_labels == 1).any():
-            if reset_labels:
-                self.logger.info(
-                    "reset_labels=True, resetting anomaly labels.")
-                is_normal_mask = edge_labels == 0
-                src, tgt, t, msg, edge_labels, train_mask, val_mask, test_mask = (
-                    src[is_normal_mask],
-                    tgt[is_normal_mask],
-                    t[is_normal_mask],
-                    msg[is_normal_mask],
-                    edge_labels[is_normal_mask],
-                    train_mask[is_normal_mask],
-                    val_mask[is_normal_mask],
-                    test_mask[is_normal_mask],
-                )
-                # Removing edges might make node IDs non-contiguos
-                src, tgt, _ = reindex_nodes(src, tgt)
-                self.max_node_id = src.numel() - 1
+        if edge_labels is not None and (edge_labels == 1).any():
+            # if reset_labels:
+            #     self.logger.info(
+            #         "reset_labels=True, resetting anomaly labels.")
+            #     is_normal_mask = edge_labels == 0
+            #     src, tgt, t, msg, edge_labels, train_mask, val_mask, test_mask = (
+            #         src[is_normal_mask],
+            #         tgt[is_normal_mask],
+            #         t[is_normal_mask],
+            #         msg[is_normal_mask],
+            #         edge_labels[is_normal_mask],
+            #         train_mask[is_normal_mask],
+            #         val_mask[is_normal_mask],
+            #         test_mask[is_normal_mask],
+            #     )
+            #     # Removing edges might make node IDs non-contiguos
+            #     src, tgt, _ = reindex_nodes(src, tgt)
+            #     self.max_node_id = src.numel() - 1
 
-            else:
-                raise RuntimeError(
-                    f"'{dataset_name}' already contains labels, set 'reset_labels=True' to overwrite.")
+            # else:
+            #     raise RuntimeError(
+            #         f"'{dataset_name}' already contains labels, set 'reset_labels=True' to overwrite.")
+
+            raise RuntimeError(
+                f"'{dataset_name}' already contains labels.")
 
         gen_anom: dict[str, tuple[torch.Tensor, ...]] = {}
 
@@ -951,7 +954,7 @@ class AnomalyInjector:
         anom_test_mask = torch.cat(test_mask_list)
 
         # Combine everything
-        normal_labels = torch.zeros_like(edge_labels)
+        normal_labels = torch.zeros_like(src)
         anom_labels = torch.ones(all_anom_src.numel(),
                                  dtype=torch.long, device=self.device)
 

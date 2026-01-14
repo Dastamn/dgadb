@@ -27,20 +27,12 @@ if __name__ == "__main__":
     device = torch.device("cpu")
 
     loader = TemporalGraphLoader()
-    tg = loader.load(
-        dataset_name,
-        anom_type="s",
-        anom_test_ratio=0.1,
-        anom_val_ratio=0.1,
-        create_if_not_found=True
-    )
+    tg = loader.load(dataset_name, anom_type="s", anom_test_ratio=0.1,
+                     anom_val_ratio=0.1, create_if_not_found=True)
 
-    hyperparams = {
-        "num_epoch": args.epochs,
-        "snap_size": args.snap_size,
-        "model": args.model
-    }
+    hyperparams = {"num_epoch": args.epochs,
+                   "snap_size": args.snap_size, "model": args.model}
 
     model = GNNBaseline(device, {}, hyperparams, roc_auc_score)
-    # model.setup(tg)
+    model.setup(tg)
     model.train()

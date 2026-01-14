@@ -19,17 +19,18 @@ class GraphDataContainer:
     edges: pl.DataFrame
     nodes: Optional[pl.DataFrame]
 
-    e_src_col: str
-    e_tgt_col: str
-    e_time_col: str
-    e_id_col: str
+    e_src_col: str = "src"
+    e_tgt_col: str = "tgt"
+    e_time_col: str = "timestamps"
+    e_label_col: str = "label"
+    e_id_col: str = "edge_id"
 
-    n_time_col: str
-    n_id_col: str
+    n_time_col: str = "node_timestamps"
+    n_id_col: str = "node_id"
 
-    feat_id_col: str
-    feat_val_col: str
-    feat_col_prefix: str
+    feat_id_col: str = "feat_id"
+    feat_val_col: str = "feat_val"
+    feat_col_prefix: str = "feat_"
 
     metadata: dict = field(default_factory=dict)
 
@@ -176,15 +177,21 @@ class GraphDataContainer:
             logger.info(f"Using original edge labels from dataframe.")
         else:
             # Fallback to all-zeros if no label column exists
-            edge_labels = torch.zeros(len(edges_df), dtype=torch.long)
+            edge_labels = None
             logger.warning(
-                "No 'label' column found in edges. Defaulting to all-zero labels.")
+                "No 'label' column found in edges. Defaulting to None.")
+            # edge_labels = torch.zeros(len(edges_df), dtype=torch.long)
+            # logger.warning(
+            #     "No 'label' column found in edges. Defaulting to all-zero labels.")
 
         node_labels = torch.zeros(num_nodes, dtype=torch.long)
 
         excluded_metadata = {"is_split", "split_col", "node_mapping"}
         metadata = {k: v for k, v in self.metadata.items()
                     if k not in excluded_metadata and v is not None}
+
+        # import numpy as np
+        # assert np.all(t.numpy()[:-1] <= t.numpy()[1:])
 
         return TemporalGraph(
             src=src,

@@ -37,15 +37,16 @@ class SADModel:
         self.base_path = os.environ["BASE_PATH"]
 
         # meta
-        self.dataset_name: str = meta_dict["dataset_name"]
-        self.train_ratio: float = float(meta_dict["train_ratio"])
-        self.val_ratio: float = float(meta_dict["val_ratio"])
-        self.anom_train_ratio: float = float(meta_dict["anom_train_ratio"])
-        self.anom_val_ratio: float = float(meta_dict["anom_val_ratio"])
-        self.anom_test_ratio: float = float(meta_dict["anom_test_ratio"])
+        # self.dataset_name: str = meta_dict["dataset_name"]
+        # self.train_ratio: float = float(meta_dict["train_ratio"])
+        # self.val_ratio: float = float(meta_dict["val_ratio"])
+        # self.anom_train_ratio: float = float(meta_dict["anom_train_ratio"])
+        # self.anom_val_ratio: float = float(meta_dict["anom_val_ratio"])
+        # self.anom_test_ratio: float = float(meta_dict["anom_test_ratio"])
 
-        self.has_val: bool = self.val_ratio > 0.0
-        self.dataset_name: str = meta_dict["dataset_name"]
+        # self.has_val: bool = self.val_ratio > 0.0
+        # self.dataset_name: str = meta_dict["dataset_name"]
+        self.has_val: bool = True
 
         self.print_freq: int = int(hyperparams.get("print_freq", 1))
 
@@ -90,9 +91,12 @@ class SADModel:
 
     @time_func
     def setup(self, graph: TemporalGraph) -> None:
-        dataset_train = ds.DygDataset(graph, "train", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
-        dataset_val = ds.DygDataset(graph, "val", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
-        dataset_test = ds.DygDataset(graph, "test", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
+        dataset_train = ds.DygDataset(
+            graph, "train", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
+        dataset_val = ds.DygDataset(
+            graph, "val", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
+        dataset_test = ds.DygDataset(
+            graph, "test", self.n_layer, self.n_neighbors, self.mask_label, self.mask_ratio)
 
         collate_fn = ds.Collate(dataset_test.node_features)
         print(dataset_test.node_features.shape)
@@ -111,7 +115,8 @@ class SADModel:
 
         backbone = TGAT(arg_dict, self.device)
         self.model = backbone.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.learning_rate)
 
         self.loader_train = torch.utils.data.DataLoader(
             dataset=dataset_train,
@@ -150,7 +155,8 @@ class SADModel:
         labels = labels[labels > -1]
         logits = prediction_dict["logits"]
 
-        loss_classify = F.binary_cross_entropy_with_logits(logits, labels.float(), reduction="none")
+        loss_classify = F.binary_cross_entropy_with_logits(
+            logits, labels.float(), reduction="none")
         loss_classify = torch.mean(loss_classify)
 
         loss = loss_classify.clone()
@@ -188,7 +194,8 @@ class SADModel:
                 )
                 y = batch_sample["labels"].to(self.device)
                 dev_score = x["dev"].cpu().numpy().flatten()
-                m_loss = np.concatenate((m_loss, self._criterion(x, y)[1].cpu().numpy().flatten()))
+                m_loss = np.concatenate(
+                    (m_loss, self._criterion(x, y)[1].cpu().numpy().flatten()))
 
                 pred_score = x["logits"].sigmoid().cpu().numpy().flatten()
                 y = y.cpu().numpy().flatten()
@@ -227,9 +234,11 @@ class SADModel:
                     )
                     y = batch_sample["labels"].to(self.device)
                     dev_score = x["dev"]
-                    loss, loss_classify, loss_anomaly, loss_supc = self._criterion(x, y)
+                    loss, loss_classify, loss_anomaly, loss_supc = self._criterion(
+                        x, y)
                     loss.backward()
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1, norm_type=2)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), max_norm=1, norm_type=2)
                     self.optimizer.step()
 
                     # get training results
@@ -238,18 +247,25 @@ class SADModel:
                         m_loss.append(loss.item())
                         pred_score = x["logits"].sigmoid()
 
-                        dev_score_list = np.concatenate((dev_score_list, dev_score.cpu().numpy().flatten()))
+                        dev_score_list = np.concatenate(
+                            (dev_score_list, dev_score.cpu().numpy().flatten()))
                         dev_label_list = np.concatenate(
-                            (dev_label_list, batch_sample["labels"].cpu().numpy().flatten())
+                            (dev_label_list,
+                             batch_sample["labels"].cpu().numpy().flatten())
                         )
 
-                    loss_class_list.append(loss_classify.detach().clone().cpu().numpy().flatten())
+                    loss_class_list.append(
+                        loss_classify.detach().clone().cpu().numpy().flatten())
                     if self.mode == "gdn":
-                        loss_anomaly_list.append(loss_anomaly.detach().clone().cpu().numpy().flatten())
-                        t.set_postfix(loss=np.mean(loss_class_list), loss_anomaly=np.mean(loss_anomaly_list))
+                        loss_anomaly_list.append(
+                            loss_anomaly.detach().clone().cpu().numpy().flatten())
+                        t.set_postfix(loss=np.mean(loss_class_list),
+                                      loss_anomaly=np.mean(loss_anomaly_list))
                     elif self.mode == "sad":
-                        loss_anomaly_list.append(loss_anomaly.detach().clone().cpu().numpy().flatten())
-                        loss_supc_list.append(loss_supc.detach().clone().cpu().numpy().flatten())
+                        loss_anomaly_list.append(
+                            loss_anomaly.detach().clone().cpu().numpy().flatten())
+                        loss_supc_list.append(
+                            loss_supc.detach().clone().cpu().numpy().flatten())
                         t.set_postfix(
                             loss=np.mean(loss_class_list),
                             loss_anomaly=np.mean(loss_anomaly_list),
@@ -269,7 +285,8 @@ class SADModel:
 
     @time_func
     def inference(self, split="test"):
-        split_dataset_map = {"train": self.loader_train, "val": self.loader_val, "test": self.loader_test}
+        split_dataset_map = {"train": self.loader_train,
+                             "val": self.loader_val, "test": self.loader_test}
         m_loss, m_pred, m_label = [], [], []
         m_dev = []
         with torch.no_grad():
@@ -286,7 +303,8 @@ class SADModel:
                 )
                 y = batch_sample["labels"].to(self.device)
                 dev_score = x["dev"].cpu().numpy().flatten()
-                m_loss = np.concatenate((m_loss, self._criterion(x, y)[1].cpu().numpy().flatten()))
+                m_loss = np.concatenate(
+                    (m_loss, self._criterion(x, y)[1].cpu().numpy().flatten()))
 
                 pred_score = x["logits"].sigmoid().cpu().numpy().flatten()
                 y = y.cpu().numpy().flatten()

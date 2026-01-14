@@ -53,7 +53,7 @@ class RustGraphModel:
         self.print_freq: int = int(hyperparams.get("print_freq", 10))
 
         # hyperparameters
-        self.device: str = str(hyperparams.get("device", "cpu"))
+        # self.device: str = str(hyperparams.get("device", "cpu"))
 
         # dataset parameters
         self.snap_size: int = int(hyperparams.get("snap_size", 500))

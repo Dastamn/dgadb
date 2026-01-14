@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 datasets = [
     "bitcoin-alpha",
     "bitcoin-otc",
-    "uc-social",
+    "uc-social",  # node14
     "digg-homo",
     "as-topology",
     "email-dnc",
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         temporal_graph, anom_train_ratio=0.0, anom_val_ratio=0.0, anom_test_ratio=0.1, noise_ratio=0.0)
 
     evaluator = Evaluator(dataset_name=dataset_name,
-                          method_name="TADDY", output_dir="eval-data")
+                          method_name="TADDY", save_dir="eval-data")
 
     anomalous_temporal_graph.flip_edge_labels()
 

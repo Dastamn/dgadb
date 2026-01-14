@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 dataset = "bitcoin-alpha"
 
 config = load_config(dataset)
-snapshot_size = config["snapshot_size"]
-train_ratio = config["train_ratio"]
+snapshot_size = config.get("snapshot_size", 1000)
+train_ratio = config.get("train_ratio", 0.5)
 val_ratio = config.get("val_ratio", 0.0)
 anomaly_ratio = config.get("anomaly_ratio", 0.01)
 
@@ -42,16 +42,17 @@ meta_dict = {
 }
 
 data = load_df(dataset)
-data["edges"] = generate_data_splits(data["edges"], train_ratio, val_ratio)
-edge_features=None
-if dataset=="bitcoin-alpha" or dataset=="bitcoin-otc":
+data["edges"] = generate_data_splits(data["edges"], train_ratio)
+edge_features = None
+if dataset == "bitcoin-alpha" or dataset == "bitcoin-otc":
     edge_features = data["edges"].select(["ff0_num"]).to_numpy()
-    data["edges"] = data["edges"].drop("label")
+    # data["edges"] = data["edges"].drop("label")
 
 data["edges"] = normalize_timestamps(data["edges"])
 
 ag = AnomalyGenerator(data["edges"], edge_features=edge_features)
-data["edges"], edge_features = ag._generate_anomalous_samples(anomaly_ratio, "temporal")
+data["edges"], edge_features = ag._generate_anomalous_samples(
+    anomaly_ratio, "temporal")
 
 data = make_undirected(data)
 data = remove_self_loops(data)
@@ -66,11 +67,12 @@ data = assign_snapshots(data, snapshot_size=snapshot_size)
 device = "mps"
 hyperparams = {}
 
-model = TADDYModel(device, meta_dict, hyperparams, epoch_evaluation_metric=roc_auc_score)
+model = TADDYModel(device, meta_dict, hyperparams,
+                   epoch_evaluation_metric=roc_auc_score)
 
 model.setup(data["edges"])
-model.train()
+# model.train()
 
-preds, labels, inf_time = model.inference("test")
-auc_full = roc_auc_score(labels, preds)
-logger.info(f"Total auc on test: {auc_full:.4f}")
+# preds, labels, inf_time = model.inference("test")
+# auc_full = roc_auc_score(labels, preds)
+# logger.info(f"Total auc on test: {auc_full:.4f}")

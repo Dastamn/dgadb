@@ -12,7 +12,8 @@ import torch
 import torch.utils.data as tud
 import torch.nn.functional as F
 import time
-from src.dgadb.models.GeneralDYG.generate_datasets import BatchGraphSample
+# from src.dgadb.models.GeneralDYG.generate_datasets import BatchGraphSample
+from src.dgadb.models.GeneralDYG.generate_datasets_new import BatchGraphSample
 from src.dgadb.models.GeneralDYG.model.Combine import CombinedModel
 from src.dgadb.models.GeneralDYG.model.CensNet import CensNet
 from src.dgadb.models.GeneralDYG.model.Transformer import TransformerBinaryClassifier
@@ -289,7 +290,7 @@ class GeneralDYGModel:
         self.batch_size: int = int(hyperparams.get("batch_size", 32))
         self.learning_rate: float = float(
             hyperparams.get("learning_rate", 1e-3))
-        self.n_epochs: int = int(hyperparams.get("n_epochs", 30))
+        self.n_epochs: int = int(hyperparams.get("epochs", 30))
 
         # model architecture
         self.input_dim: int = int(hyperparams.get("input_dim", 64))
@@ -330,7 +331,9 @@ class GeneralDYGModel:
         av_str = _fmt_ratio(self.anomaly_ratio_val)
         ate_str = _fmt_ratio(self.anomaly_ratio_test)
         pkl_name = f"{self.dataset_name}_t{t_str}_v{v_str}_atr{atr_str}_av{av_str}_ate{ate_str}.pkl"
+        print("pickle name", pkl_name)
         self.pkl_path = os.path.join(self.dir_data, pkl_name)
+        print("pickle path", self.pkl_path)
 
         if not os.path.exists(self.pkl_path):
             logger.info("Building GeneralDYG pickle since it was not found.")
@@ -488,7 +491,8 @@ class GeneralDYGModel:
                 logger.info(
                     f"[Eval @ epoch {epoch + 1:03d}] {split} AUC = {auc:.4f}")
                 if runnable is not None:
-                    runnable(auc, self, epoch)
+                    # runnable(auc, self, epoch)
+                    runnable(auc, None, epoch)
 
     def inference(self, split: str = "test") -> tuple[np.ndarray, np.ndarray]:
         if self.model is None:

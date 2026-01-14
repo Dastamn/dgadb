@@ -156,7 +156,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
     def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[torch.Tensor, torch.Tensor]:
         all_scores = []
         all_labels = []
-        for snapshot in loader:
+        for snapshot in tqdm(loader, desc="TEST"):
             current_graph = snapshot.current
             edge_scores = self._predict(snapshot)
             edge_labels = current_graph.edge_labels
@@ -198,7 +198,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
             state.epoch = epoch
             handler.on_train_epoch_begin(state)
 
-            for i, train_snapshot in tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch+1}/{epochs}"):
+            for i, train_snapshot in tqdm(enumerate(train_loader), total=len(train_loader), desc=f"TRAIN - Epoch {epoch+1}/{epochs}"):
                 state.step_in_epoch = i
                 state.total_steps += 1
                 handler.on_train_step_begin(state)

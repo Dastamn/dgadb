@@ -19,13 +19,13 @@ class TemporalGraph:
     tgt: torch.Tensor                   # Shape: [num_edges]
     t: torch.Tensor                     # Shape: [num_edges], timestamps
     msg: torch.Tensor                   # Shape: [num_edges, num_edge_features]
-    edge_labels: torch.Tensor           # Shape: [num_edges]
+    edge_labels: Optional[torch.Tensor]  # Shape: [num_edges]
 
     train_mask: torch.Tensor            # Shape: [num_edges], boolean
-    val_mask: torch.Tensor              # Shape: [num_edges], boolean
     test_mask: torch.Tensor             # Shape: [num_edges], boolean
+    val_mask: Optional[torch.Tensor]    # Shape: [num_edges], boolean
 
-    # Shape: [num_edges], edge weights
+    # Shape: [num_edges]
     w: Optional[torch.Tensor] = None
     # Shape: [num_nodes, num_node_features]
     node_attr: Optional[torch.Tensor] = None
@@ -34,10 +34,10 @@ class TemporalGraph:
 
     metadata: dict = field(default_factory=dict)
 
-    def __post_init__(self) -> None:
-        self.check_device()
-        if getattr(self, "total_num_nodes"):
-            self.metadata["total_num_nodes"] = self.num_nodes
+    # def __post_init__(self) -> None:
+    #     self.check_device()
+    #     if getattr(self, "total_num_nodes"):
+    #         self.metadata["total_num_nodes"] = self.num_nodes
 
     @property
     def device(self) -> torch.device:
@@ -322,7 +322,7 @@ class TemporalGraphLoader:
 
                 anom_injector = AnomalyInjector(temmporal_graph)
                 anomalous_temporal_graph = anom_injector.generate_anomalous_samples(
-                    anom_type, anom_train_ratio or 0, anom_val_ratio or 0, anom_test_ratio or 0, **kwargs, reset_labels=True)
+                    anom_type, anom_train_ratio or 0, anom_val_ratio or 0, anom_test_ratio or 0, **kwargs)
 
                 return anomalous_temporal_graph
 

@@ -180,6 +180,13 @@ def inject_anomalies_addgraph_style(
         "total_anomalies": int((new_lab == 0).sum().item()),
     }
 
+    new_t_id = torch.argsort(new_t)
+    new_t = new_t[new_t_id]
+    new_src = new_src[new_t_id]
+    new_tgt = new_tgt[new_t_id]
+    new_msg = new_msg[new_t_id]
+    new_lab = new_lab[new_t_id]
+
     return TemporalGraph(
         src=new_src,
         tgt=new_tgt,

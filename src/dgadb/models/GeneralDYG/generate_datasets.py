@@ -74,7 +74,8 @@ class BatchGraphSample:
                 new_nodes.update(neighbors - visited)
             visited.update(new_nodes)
             nodes.update(new_nodes)
-        nodes = self.remove_random_nodes(nodes, max_mask_len, src_node, dest_node)
+        nodes = self.remove_random_nodes(
+            nodes, max_mask_len, src_node, dest_node)
         return nodes
 
         # 根据权重和时间戳重新排序节点
@@ -88,7 +89,8 @@ class BatchGraphSample:
             else:
                 node_weights[node] = float("inf")
         sorted_nodes = sorted(node_weights.items(), key=lambda x: x[1])
-        node_mapping = {old_id: new_id for new_id, (old_id, _) in enumerate(sorted_nodes)}
+        node_mapping = {old_id: new_id for new_id,
+                        (old_id, _) in enumerate(sorted_nodes)}
         return node_mapping
 
         # 替换子图中的节点和边
@@ -110,7 +112,8 @@ class BatchGraphSample:
             new_source = node_mapping[edge[0]]
             new_target = node_mapping[edge[1]]
             new_subgraph.add_edge(new_source, new_target, weight=1)
-            new_edge_features[(new_source, new_target)] = int(edge[2]["weight"])
+            new_edge_features[(new_source, new_target)
+                              ] = int(edge[2]["weight"])
 
         return new_subgraph, new_node_features, new_edge_features, mask
 
@@ -125,14 +128,16 @@ class BatchGraphSample:
         col_index = np.repeat([i for i in range(num_edge)], 2)
 
         data = np.ones(num_edge * 2)
-        T = sp.csr_matrix((data, (row_index, col_index)), shape=(vertex_adj.shape[0], num_edge))
+        T = sp.csr_matrix((data, (row_index, col_index)),
+                          shape=(vertex_adj.shape[0], num_edge))
 
         return T
 
     def sparse_mx_to_torch_sparse_tensor(self, sparse_mx):
         """Convert a scipy sparse matrix to a torch sparse tensor."""
         sparse_mx = sparse_mx.tocoo().astype(np.float32)
-        indices = torch.from_numpy(np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+        indices = torch.from_numpy(
+            np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
         values = torch.from_numpy(sparse_mx.data)
         shape = torch.Size(sparse_mx.shape)
         return torch.sparse_coo_tensor(indices, values, shape)
@@ -207,8 +212,10 @@ class BatchGraphSample:
         edges = self.graph_df[self.graph_df["id"].isin(idx_batch)]
         # for index, edge in edges.iterrows():
         for index, edge in tqdm(edges.iterrows(), total=len(edges)):
-            src_nodes = self.extract_k_hop_subgraph(copy.deepcopy(self.G), edge["u"], edge["i"], k, self.max_mask_len)
-            dest_nodes = self.extract_k_hop_subgraph(copy.deepcopy(self.G), edge["i"], edge["u"], k, self.max_mask_len)
+            src_nodes = self.extract_k_hop_subgraph(copy.deepcopy(
+                self.G), edge["u"], edge["i"], k, self.max_mask_len)
+            dest_nodes = self.extract_k_hop_subgraph(copy.deepcopy(
+                self.G), edge["i"], edge["u"], k, self.max_mask_len)
             subgraph_nodes = src_nodes.union(dest_nodes)
             batch_subgraph = copy.deepcopy(self.G).subgraph(subgraph_nodes)
             for u, v, data in batch_subgraph.edges(data=True):
@@ -223,9 +230,10 @@ class BatchGraphSample:
                 batch_subgraph, node_mapping
             )
             adj = nx.adjacency_matrix(new_subgraph)
-            T = self.create_transition_matrix(adj)
-            tensor_T = self.sparse_mx_to_torch_sparse_tensor(T)
-            eadj, edge_name = self.create_edge_adj(adj)
+            T, eadj = fast_generate_matrices(adj)
+            # T = self.create_transition_matrix(adj)
+            # tensor_T = self.sparse_mx_to_torch_sparse_tensor(T)
+            # eadj, edge_name = self.create_edge_adj(adj)
 
             num_edges = eadj.shape[0]  # 非零元素的数量（即边的数量）
             edge_feature_matrix = np.zeros(num_edges)
@@ -241,7 +249,8 @@ class BatchGraphSample:
                 edge_idx += 1
             eadj = self.sparse_mx_to_torch_sparse_tensor(self.normalize(eadj))
 
-            adj = self.sparse_mx_to_torch_sparse_tensor(self.normalize(adj + sp.eye(adj.shape[0])))
+            adj = self.sparse_mx_to_torch_sparse_tensor(
+                self.normalize(adj + sp.eye(adj.shape[0])))
 
             all_node_features.append(new_node_features)
             all_edge_features.append(edge_feature_matrix)

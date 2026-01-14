@@ -1,3 +1,4 @@
+import torch
 import logging
 from src.dgadb.preprocessing.pipeline import Pipeline
 from src.dgadb.preprocessing.anomaly_injector import AnomalyInjector
@@ -8,7 +9,6 @@ from sklearn.metrics import roc_auc_score
 import numpy as np
 
 logger = logging.getLogger(__name__)
-import torch
 
 
 logging.basicConfig(
@@ -21,7 +21,8 @@ if __name__ == "__main__":
     config_name = "mooc"
 
     pipeline = Pipeline.from_config(config_name, force_rerun=False)
-    evaluator = Evaluator(dataset_name="mooc", method_name="RustGraph", output_dir="eval-data")
+    evaluator = Evaluator(dataset_name="mooc",
+                          method_name="RustGraph", save_dir="eval-data")
 
     g = pipeline.run()
     g.describe()
@@ -38,7 +39,8 @@ if __name__ == "__main__":
 
     graph = build_graph_from_temporal(anomalous_temporal_graph)
     # use node2vec embs
-    graph._nodes["n_feat"] = torch.zeros((graph.num_nodes, 4), dtype=torch.float32)
+    graph._nodes["n_feat"] = torch.zeros(
+        (graph.num_nodes, 4), dtype=torch.float32)
     meta = anomalous_temporal_graph.metadata
 
     meta_dict = {

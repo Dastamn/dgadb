@@ -137,7 +137,8 @@ class TADDYModel:
             rows.append(train_curr.src)
             cols.append(train_curr.tgt)
             labs.append(train_curr.edge_labels)
-            weis.append(train_curr.w)
+            # weis.append(train_curr.w)
+            weis.append(torch.ones_like(train_curr.edge_labels))
             edges.append(torch.vstack(
                 [train_curr.src, train_curr.tgt]).T.numpy())
 
@@ -148,7 +149,8 @@ class TADDYModel:
             rows.append(val_curr.src)
             cols.append(val_curr.tgt)
             labs.append(val_curr.edge_labels)
-            weis.append(val_curr.w)
+            # weis.append(val_curr.w)
+            weis.append(torch.ones_like(val_curr.edge_labels))
             edges.append(torch.vstack([val_curr.src, val_curr.tgt]).T.numpy())
 
         test_snap_loader = TemporalGraphSnapshotLoader(
@@ -158,7 +160,8 @@ class TADDYModel:
             rows.append(test_curr.src)
             cols.append(test_curr.tgt)
             labs.append(test_curr.edge_labels)
-            weis.append(test_curr.w)
+            # weis.append(test_curr.w)
+            weis.append(torch.ones_like(test_curr.edge_labels))
             edges.append(torch.vstack(
                 [test_curr.src, test_curr.tgt]).T.numpy())
 
@@ -448,7 +451,7 @@ class TADDYModel:
             eigen_adjs = []
             eigen_adjs_sparse = []
 
-        for i in range(len(rows)):
+        for i in tqdm(range(len(rows)), desc="_get_adjs"):
             adj = sp.csr_matrix((weights[i], (rows[i], cols[i])), shape=(
                 nb_nodes, nb_nodes), dtype=np.float32)
             adjs.append(self._preprocess_adj(adj))

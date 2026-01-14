@@ -174,6 +174,10 @@ class NetWalkBaseline:
 
         # train on initial walks
         x0 = self._walks_to_onehot(self._prev_walks)
+        print("num_walk", self.walks_per_node)
+        print("walk_len", self.walk_len)
+        print("total", self.walks_per_node*self.walk_len)
+        print("x0 shape", x0.shape)
         self._fit_autoencoder(x0)
 
         # Iterate train snapshots
@@ -197,6 +201,8 @@ class NetWalkBaseline:
 
             # train on combined walks
             x = self._walks_to_onehot(combined_walks)
+            print(x.shape)
+            return
             self._fit_autoencoder(x)
 
             if (snap_i % 10) == 0:
@@ -475,9 +481,13 @@ class NetWalkBaseline:
         if not walks:
             return torch.zeros((self.num_nodes, 0), dtype=torch.float32, device=self.device)
 
+        print("in one hot")
+        print("len walks", len(walks))
         cols = len(walks) * self.walk_len
+        print("cols", cols)
         X = torch.zeros((self.num_nodes, cols),
                         dtype=torch.float32, device=self.device)
+        print("X shape", X.shape)
         c = 0
         for w in walks:
             for node in w:
@@ -503,6 +513,8 @@ class NetWalkBaseline:
 
                 # Forward pass
                 recon, codes = self.ae(xb, corrupt_prob=self.corrupt_prob)
+                print("recon shape", recon.shape)
+                print("codes shape", codes.shape)
 
                 # Autoencoder reconstruction loss
                 ae_loss = (self.gamma / 2.0) * torch.mean((recon - xb) ** 2)
@@ -543,10 +555,16 @@ class NetWalkBaseline:
 
         # Reshape codes into walk groups
         num_walks = total_cols // self.walk_len
+        print("clique loss")
+        print(num_walks)
+        print("codes shape", codes.shape)
+        print("batch size walks", self.batch_size_walks)
+        print("hidden size", self.hidden)
         if num_walks == 0:
             return torch.tensor(0.0, device=codes.device)
 
         usable_cols = num_walks * self.walk_len
+        print("usable cols", usable_cols)
         codes_reshaped = codes[:, :usable_cols].T.view(
             num_walks, self.walk_len, H)
 

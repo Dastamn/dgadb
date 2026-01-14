@@ -18,18 +18,18 @@ logging.basicConfig(
 )
 
 datasets = [
-    "bitcoin-alpha",
-    "bitcoin-otc",
-    "uc-social",
-    "digg-homo",
-    "as-topology",
-    "email-dnc",
-    "enron",
-    "epinions",
-    "mooc",
-    "reddit",
-    "dgraph",
-    "wiki"
+    "bitcoin-alpha",  # node1
+    "bitcoin-otc",  # node1
+    "uc-social",  # node2
+    "digg-homo",  # node3
+    "as-topology",  # node3
+    "email-dnc",  # node4
+    "enron",  # node5
+    "epinions",  # node6
+    "mooc",  # node1
+    "reddit",  # node2
+    "dgraph",  # node9
+    "wiki"  # node3
 ]
 
 if __name__ == "__main__":
@@ -38,6 +38,7 @@ if __name__ == "__main__":
         description="RustGraph pipeline all datasets")
     parser.add_argument("--dataset", type=str,
                         default=None, help="Dataset name")
+    parser.add_argument("--epochs", type=int, default=250)
 
     args = parser.parse_args()
 
@@ -50,7 +51,7 @@ if __name__ == "__main__":
 
     pipeline = Pipeline.from_config(config_name, force_rerun=False)
     evaluator = Evaluator(dataset_name=dataset_name,
-                          method_name="RustGraph", output_dir="eval-data")
+                          method_name="RustGraph", save_dir="eval-data")
 
     g = pipeline.run()
     g.describe()

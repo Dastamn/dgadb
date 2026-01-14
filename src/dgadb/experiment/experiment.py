@@ -25,6 +25,7 @@ from src.dgadb.models.baseline.Node2Vec import n2vModel
 from src.dgadb.models.baseline.NetwalkBaseline import NetWalkBaseline
 from src.dgadb.models.baseline.GNNBaseline import GNNBaseline
 from src.dgadb.models.SAD.main_SAD import SADModel
+from src.dgadb.models.SLADE.SLADE_main import SLADEModel
 
 import argparse
 
@@ -41,6 +42,7 @@ _MODELS = {
     "Node2Vec": n2vModel,
     "NetWalk": NetWalkBaseline,
     "GNNBaseline": GNNBaseline,
+    "SLADE": SLADEModel,
 }
 
 
@@ -145,6 +147,9 @@ class Experiment():
             anom_test_ratio=self.meta_dict.get("anom_test_ratio", 0.0),
             noise_ratio=0.0)
 
+        # import numpy as np
+        # assert np.all(tg.t.numpy()[:-1] <= tg.t.numpy()[1:])
+
         if not self.anomaly_as_0:
             tg.flip_edge_labels()
         self.tg = tg
@@ -190,7 +195,7 @@ class Experiment():
                 top=max(2, self.num_samples),
                 patience=5,
             ),
-            MaximumIterationStopper(1)
+            MaximumIterationStopper(20)
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
