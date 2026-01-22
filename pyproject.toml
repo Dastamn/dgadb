@@ -1,13 +1,19 @@
 [project]
-authors = [{name = "glachaud", email = "guillaume.lachaud@polytechnique.edu"}, {name = "Nazim Mezhoudi"}]
-dependencies = ["ray[all]>=2.51.1,<3", "torch-geometric>=2.7.0,<3"]
-name = "Dynamic-Graph-Allocation-Framework"
-requires-python = ">= 3.11"
+name = "dgadb"
 version = "0.1.0"
+requires-python = ">= 3.11"
+authors = [
+  { name = "glachaud", email = "guillaume.lachaud@polytechnique.edu" },
+  { name = "Nazim Mezhoudi" },
+]
+dependencies = ["ray[all]>=2.51.1,<3", "torch-geometric>=2.7.0,<3"]
 
 [build-system]
-build-backend = "hatchling.build"
 requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dgadb"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -30,6 +36,7 @@ torch-scatter = ">=2.1.1,<3"
 pytorch = ">=2.7.1,<3"
 typer = ">=0.20.0,<0.21"
 transformers = ">=4.57.1,<5"
+gensim = ">=4.3.2,<5"
 
 [tool.pixi.feature.dev.dependencies]
 ty = "*"
@@ -38,4 +45,3 @@ loguru = ">=0.7.3,<0.8"
 
 [tool.pixi.environments]
 dev = ["dev"]
-
