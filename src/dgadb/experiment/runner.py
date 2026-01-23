@@ -5,6 +5,40 @@ from .callbacks import ExperimentCallback, ResourceMonitor
 from src.dgadb.evaluation import ADEvaluator
 from src.dgadb.storage import TemporalGraph, TemporalGraphLoader, TemporalGraphSnapshotLoader, generate_temporal_graph_filename
 from src.dgadb.models.base import BaseADModel, BaseADModelComponentsType
+import torch
+import numpy as np
+
+
+def remove_duplicates(tg: TemporalGraph) -> TemporalGraph:
+    """
+    Removes duplicate edges from a TemporalGraph.
+    This is temporary because anomaly injection can add duplicates, will be fixed soon.
+    """
+    if tg.num_edges == 0:
+        return tg
+
+    edge_keys = torch.stack([tg.src, tg.tgt, tg.t], dim=1).cpu().numpy()
+
+    _, indices = np.unique(edge_keys, axis=0, return_index=True)
+
+    indices = np.sort(indices)
+    indices_torch = torch.from_numpy(indices).to(tg.device)
+
+    tg.src = tg.src[indices_torch]
+    tg.tgt = tg.tgt[indices_torch]
+    tg.t = tg.t[indices_torch]
+    tg.msg = tg.msg[indices_torch]
+    tg.train_mask = tg.train_mask[indices_torch]
+    tg.test_mask = tg.test_mask[indices_torch]
+
+    if tg.edge_labels is not None:
+        tg.edge_labels = tg.edge_labels[indices_torch]
+    if tg.val_mask is not None:
+        tg.val_mask = tg.val_mask[indices_torch]
+    if tg.w is not None:
+        tg.w = tg.w[indices_torch]
+
+    return tg
 
 
 class ExperimentRunner:
@@ -80,6 +114,7 @@ if __name__ == "__main__":
     from src.dgadb.models.slade_new.slade import SLADEAD
     from src.dgadb.models.taddy_new.taddy import TADDYAD
     from src.dgadb.models.sad_new.sad import SADAD
+    from src.dgadb.models.StrGNN.strgnn import StrGNNAD
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -90,35 +125,50 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # anom_config = {
-    #     "anom_type": "structural",
-    #     "anom_test_ratio": 0.1,
-    #     "anom_val_ratio": 0.1,
-    # }
+    anom_config = {
+        "anom_type": "structural",
+        "anom_test_ratio": 0.1,
+        "anom_val_ratio": 0.1,
+    }
+
     snapshot_config = {
         "strategy": "window",
-        "window_size": 1000,
+        "window_size": 2000,
         "include_cumulative": True
     }
 
-    # model = GNNAD(model_type="GCN")
     if args.method == "sad":
         model = SADAD()
     elif args.method == "taddy":
         model = TADDYAD()
     elif args.method == "slade":
         model = SLADEAD()
+    elif args.method == "strgnn":
+        model = StrGNNAD()
+    elif args.method == "gcn":
+        model = GNNAD("GCN")
+    elif args.method == "gat":
+        model = GNNAD("GAT")
+    elif args.method == "graphsage":
+        model = GNNAD("GraphSAGE")
+    else:
+        raise NotImplementedError
 
-    # loader = TemporalGraphLoader()
-    # data = loader.load(
-    #     "bitcoin-alpha", **anom_config, create_if_not_found=True)
+    loader = TemporalGraphLoader()
+    data = loader.load(
+        "bitcoin-alpha", **anom_config, create_if_not_found=True)
 
-    from src.dgadb.preprocessing.pipeline.utils import load_custom_dataset
-    from src.dgadb.preprocessing.pipeline import Pipeline, StructureNormalizer
+    data = remove_duplicates(data)
 
-    cont = load_custom_dataset(f"anom_gen/{args.dataset}_0.7_0.1")
-    pipeline = Pipeline([StructureNormalizer("canonical")])
-    data = pipeline.run(cont).to_temporal_graph()
+    # from src.dgadb.preprocessing.pipeline.utils import load_custom_dataset
+    # from src.dgadb.preprocessing.pipeline import Pipeline, StructureNormalizer
+
+    # cont = load_custom_dataset(f"anom_gen/{args.dataset}_0.7_0.1")
+    # print(f"Loaded: anom_gen/{args.dataset}_0.7_0.1")
+    # pipeline = Pipeline([StructureNormalizer("canonical")])
+    # data = pipeline.run(cont).to_temporal_graph()
+
+    # data.val_mask = data.test_mask.clone()
 
     runner = ExperimentRunner(
         model, data, output_dir=f"latest-results/{args.method}/{args.dataset}")
