@@ -37,7 +37,6 @@ From: condaforge/miniforge3:latest
 
     # Clean up to reduce image size
     /opt/pixi/bin/pixi clean cache -y || true
-    rm -rf /tmp/* /var/tmp/*
 
 %runscript
     exec python -m dgadb.experiment.runner "$@"
