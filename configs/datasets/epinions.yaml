@@ -14,7 +14,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/epinions
+        dataset_dir: data/epinions
     - name: StructureNormalizer
       params:
         directionality: canonical

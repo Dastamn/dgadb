@@ -14,7 +14,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/enron
+        dataset_dir: data/enron
     - name: StructureNormalizer
       params:
         directionality: canonical

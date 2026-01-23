@@ -15,7 +15,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/wiki
+        dataset_dir: data/wiki
     - name: StructureNormalizer
       params:
         directionality: canonical

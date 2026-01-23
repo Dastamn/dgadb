@@ -20,7 +20,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/mooc
+        dataset_dir: data/mooc
     - name: StructureNormalizer
       params:
         directionality: canonical

@@ -3,10 +3,10 @@
 # anomaly_ratio: 0.01
 
 dataset:
-  name: bitcoin-alpha
+  name: uc-social
   paths:
     raw: null
-    structured: data/bitcoin-alpha
+    structured: data/uc-social
     processed: null
 
 anomalies:
@@ -15,22 +15,21 @@ anomalies:
   anom_test_ratio: 0.1
 
 pipeline:
-  cache_dir: pipeline_cache/bitcoin-alpha
+  cache_dir: pipeline_cache/uc-social
   steps:
     - name: DataLoader
       params:
-        dataset_dir: data/bitcoin-alpha
+        dataset_dir: data/uc-social
     - name: StructureNormalizer
       params:
         directionality: canonical
         reindex_nodes: True
         remove_self_loops: False
         remove_duplicates: False
-        
+
     - name: TimestampNormalizer
 
     - name: TemporalSplitter
       params:
-        train_ratio: 0.5
-        val_ratio: 0.25
-
+        train_ratio: 0.7
+        val_ratio: 0.1
