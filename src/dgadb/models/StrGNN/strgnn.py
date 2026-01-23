@@ -8,16 +8,16 @@ from dataclasses import dataclass
 from typing import Optional, Any, List
 
 # Original StrGNN imports
-from src.dgadb.models.StrGNN.pytorch_DGCNN.main import Classifier, loop_dataset
-from src.dgadb.models.StrGNN.detection.util_functions import (
+from dgadb.models.StrGNN.pytorch_DGCNN.main import Classifier, loop_dataset
+from dgadb.models.StrGNN.detection.util_functions import (
     generate_node2vec_embeddings,
     dyn_links2subgraphs
 )
-from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
+from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
 
 from ..base import BaseADModel, BaseADModelComponents, TrainingState
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 import math
 from sklearn.metrics import roc_auc_score
 

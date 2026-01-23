@@ -2,19 +2,19 @@
 # does not use snapshots
 # OG implementation uses zeros as node features, of size num_nodes x num_edge_features ??
 
-from src.dgadb.models.SAD.model.tgat import TGAT
+from dgadb.models.SAD.model.tgat import TGAT
 import torch
 import torch.nn.functional as F
 import torch.utils.data
-import src.dgadb.models.SAD.datasets as ds
+import dgadb.models.SAD.datasets as ds
 import torch
 import logging
 import os
 from tqdm import tqdm
 import numpy as np
-from src.dgadb.models.utils import time_func
+from dgadb.models.utils import time_func
 import os
-from src.dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_graph import TemporalGraph
 
 logging.basicConfig(
     level=logging.INFO,

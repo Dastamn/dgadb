@@ -9,13 +9,13 @@ import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score
 
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
+from dgadb.models.base import BaseADModel, BaseADModelComponents
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
 
-from src.dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
-from src.dgadb.models.SLADE.utils.data_processing import SLADEData
-from src.dgadb.models.SLADE.utils.utils import NeighborFinder, get_neighbor_finder
+from dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
+from dgadb.models.SLADE.utils.data_processing import SLADEData
+from dgadb.models.SLADE.utils.utils import NeighborFinder, get_neighbor_finder
 
 
 @dataclass
@@ -250,7 +250,7 @@ class SLADE(BaseADModel[SLADEComponents]):
 
 
 if __name__ == "__main__":
-    from src.dgadb.storage import TemporalGraphLoader
+    from dgadb.storage import TemporalGraphLoader
 
     loader = TemporalGraphLoader()
     tg = loader.load("bitcoin-alpha", create_if_not_found=True)
@@ -260,9 +260,9 @@ if __name__ == "__main__":
 
 
 if __name__ == "__main__":
-    from src.dgadb.storage import TemporalGraphLoader
-    from src.dgadb.experiment.runner import ExperimentRunner
-    from src.dgadb.experiment.callbacks import ResourceMonitor
+    from dgadb.storage import TemporalGraphLoader
+    from dgadb.experiment.runner import ExperimentRunner
+    from dgadb.experiment.callbacks import ResourceMonitor
 
     anom_config = {
         "anom_type": "structural",
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     # tg = loader.load(
     #     "digg-homo", create_if_not_found=True)
 
-    # from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
+    # from dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
 
     # tg = inject_anomalies_addgraph_style(
     #     tg,

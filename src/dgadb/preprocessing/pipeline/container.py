@@ -3,7 +3,7 @@ import torch
 import polars as pl
 from typing import Optional, Literal, Any
 from dataclasses import dataclass, field
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 
 logger = logging.getLogger(__name__)
 

@@ -3,10 +3,10 @@ import numpy as np
 from ray import train, tune
 from ray.tune.schedulers import ASHAScheduler
 
-from src.dgadb.preprocessing import Pipeline
-from src.dgadb.models.RustGraph.main_RustGraph import RustGraphModel
-from src.dgadb.storage import convert_temporal_graph_to_legacy_graph, Graph
-from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
+from dgadb.preprocessing import Pipeline
+from dgadb.models.RustGraph.main_RustGraph import RustGraphModel
+from dgadb.storage import convert_temporal_graph_to_legacy_graph, Graph
+from dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
 
 from sklearn.metrics import roc_auc_score
 

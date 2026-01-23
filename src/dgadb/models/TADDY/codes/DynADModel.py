@@ -3,13 +3,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
-from src.dgadb.models.TADDY.codes.BaseModel import BaseModel
+from dgadb.models.TADDY.codes.BaseModel import BaseModel
 
 import time
 import numpy as np
 
 from sklearn import metrics
-from src.dgadb.models.TADDY.codes.utils import dicts_to_embeddings, compute_batch_hop, compute_zero_WL
+from dgadb.models.TADDY.codes.utils import dicts_to_embeddings, compute_batch_hop, compute_zero_WL
 
 
 class DynADModel(BertPreTrainedModel):

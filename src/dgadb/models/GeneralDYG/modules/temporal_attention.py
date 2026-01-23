@@ -2,7 +2,7 @@ import torch
 import torch_scatter as scatter
 from torch import nn
 
-from src.dgadb.models.GeneralDYG.modules.utils import MergeLayer
+from dgadb.models.GeneralDYG.modules.utils import MergeLayer
 
 
 class TemporalAttentionLayer2(torch.nn.Module):

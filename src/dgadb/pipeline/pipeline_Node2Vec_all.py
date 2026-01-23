@@ -1,10 +1,10 @@
-from src.dgadb.models.baseline.Node2Vec import n2vModel
+from dgadb.models.baseline.Node2Vec import n2vModel
 
 import argparse
 import logging
 import torch
 from sklearn.metrics import roc_auc_score
-from src.dgadb.storage import TemporalGraphLoader, TemporalGraph
+from dgadb.storage import TemporalGraphLoader, TemporalGraph
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",

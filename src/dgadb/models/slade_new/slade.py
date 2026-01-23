@@ -9,14 +9,14 @@ import torch
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
-from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
+from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
 
-from src.dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
-from src.dgadb.models.SLADE.utils.utils import get_neighbor_finder, NeighborFinder
-from src.dgadb.models.SLADE.utils.data_processing import SLADEData
+from dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
+from dgadb.models.SLADE.utils.utils import get_neighbor_finder, NeighborFinder
+from dgadb.models.SLADE.utils.data_processing import SLADEData
 
 
 @dataclass

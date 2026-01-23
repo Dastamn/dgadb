@@ -368,10 +368,10 @@ Models are integrated into the DGADB pipeline through standardized pipeline scri
 # src/dgadb/pipeline/pipeline_ModelName.py
 import logging
 from sklearn.metrics import roc_auc_score
-from src.dgadb.data.dataset import load_df
-from src.dgadb.models.ModelName.ModelName_main import ModelNameModel
-from src.dgadb.preprocessing.splitting import generate_data_splits
-from src.dgadb.utils import load_config
+from dgadb.data.dataset import load_df
+from dgadb.models.ModelName.ModelName_main import ModelNameModel
+from dgadb.preprocessing.splitting import generate_data_splits
+from dgadb.utils import load_config
 
 # Configuration
 dataset = "dataset_name"
@@ -398,7 +398,7 @@ logger.info(f"Test ROC-AUC Score: {auc_score:.4f}")
 
 ### Integration Requirements
 
-1. **Import Path**: Models must be importable as `from src.dgadb.models.ModelName.ModelName_main import ModelNameModel`
+1. **Import Path**: Models must be importable as `from dgadb.models.ModelName.ModelName_main import ModelNameModel`
 2. **Configuration**: Support loading hyperparameters from config files
 3. **Evaluation**: Use sklearn.metrics.roc_auc_score as the standard evaluation metric
 4. **Logging**: Use Python logging for progress and results reporting
@@ -515,10 +515,10 @@ Create `src/dgadb/pipeline/pipeline_YourModel.py`:
 import logging
 import torch
 from sklearn.metrics import roc_auc_score
-from src.dgadb.data.dataset import load_df
-from src.dgadb.models.YourModel.YourModel_main import YourModelModel
-from src.dgadb.preprocessing.splitting import generate_data_splits
-from src.dgadb.utils import load_config
+from dgadb.data.dataset import load_df
+from dgadb.models.YourModel.YourModel_main import YourModelModel
+from dgadb.preprocessing.splitting import generate_data_splits
+from dgadb.utils import load_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -561,7 +561,7 @@ Ensure your model supports configuration files in `configs/` directory with hype
 
 Test your model with:
 ```bash
-python -m src.dgadb.pipeline.pipeline_YourModel
+python -m dgadb.pipeline.pipeline_YourModel
 ```
 
 ## Best Practices

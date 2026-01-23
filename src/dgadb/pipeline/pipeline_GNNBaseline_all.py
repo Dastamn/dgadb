@@ -3,8 +3,8 @@ import argparse
 import torch
 from sklearn.metrics import roc_auc_score
 
-from src.dgadb.models.baseline import GNNBaseline, GNN_BASELINES_DICT
-from src.dgadb.storage import TemporalGraphLoader, TemporalGraph
+from dgadb.models.baseline import GNNBaseline, GNN_BASELINES_DICT
+from dgadb.storage import TemporalGraphLoader, TemporalGraph
 
 
 datasets = ["bitcoin-alpha"]

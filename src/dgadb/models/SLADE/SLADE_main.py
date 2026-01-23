@@ -1,4 +1,4 @@
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 import logging
 import math
 import time
@@ -10,10 +10,10 @@ import torch
 from tqdm import tqdm
 from typing import Any
 
-from src.dgadb.models.SLADE.evaluation.evaluation import eval_anomaly_node_detection
-from src.dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
-from src.dgadb.models.SLADE.utils.data_processing import SLADEData
-from src.dgadb.models.SLADE.utils.utils import NeighborFinder, get_neighbor_finder
+from dgadb.models.SLADE.evaluation.evaluation import eval_anomaly_node_detection
+from dgadb.models.SLADE.SLADE_TGN import SLADE_TGN
+from dgadb.models.SLADE.utils.data_processing import SLADEData
+from dgadb.models.SLADE.utils.utils import NeighborFinder, get_neighbor_finder
 
 logger = logging.getLogger(__name__)
 
@@ -537,7 +537,7 @@ class SLADEModel:
 
 
 if __name__ == "__main__":
-    from src.dgadb.storage import TemporalGraphLoader
+    from dgadb.storage import TemporalGraphLoader
 
     loader = TemporalGraphLoader()
     tg = loader.load("bitcoin-alpha", create_if_not_found=True)

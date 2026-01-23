@@ -3,7 +3,7 @@ from torch import nn
 import numpy as np
 import math
 import pdb
-from src.dgadb.models.SLADE.temporal_attention_SLADE import TemporalAttentionLayer_recovery
+from dgadb.models.SLADE.temporal_attention_SLADE import TemporalAttentionLayer_recovery
 
 
 class EmbeddingModule(nn.Module):

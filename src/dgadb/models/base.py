@@ -11,8 +11,8 @@ from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from torch_geometric.loader import LinkLoader, NodeLoader
 
-from src.dgadb.storage import TemporalGraph, TemporalGraphSnapshot, TemporalGraphSnapshotLoader
-from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
+from dgadb.storage import TemporalGraph, TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
 
 
 class BaseModel(ABC):

@@ -1,10 +1,10 @@
 from tqdm import tqdm
 import numpy as np
 import torch
-from src.dgadb.experiment.callbacks import ExperimentCallback
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallback
+from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 from typing import Any
 from dataclasses import dataclass
 from .utils.utils import NeighborFinder, get_neighbor_finder
@@ -12,7 +12,7 @@ from .SLADE_TGN import SLADE_TGN
 from .utils.data_processing import SLADEData
 
 import math
-from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
+from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
 from sklearn.metrics import roc_auc_score
 
 

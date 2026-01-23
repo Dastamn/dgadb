@@ -3,10 +3,10 @@ import logging
 import torch
 from sklearn.metrics import roc_auc_score
 
-from src.dgadb.data.dataset import load_df
-from src.dgadb.models.SLADE.SLADE_main import SLADEModel
-from src.dgadb.preprocessing.splitting import generate_data_splits
-from src.dgadb.utils import load_config
+from dgadb.data.dataset import load_df
+from dgadb.models.SLADE.SLADE_main import SLADEModel
+from dgadb.preprocessing.splitting import generate_data_splits
+from dgadb.utils import load_config
 
 logging.basicConfig(
     level=logging.INFO,

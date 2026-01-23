@@ -14,9 +14,9 @@ import time
 import torch
 from sklearn.metrics import roc_auc_score
 
-from src.dgadb.models.Node2Vec.Node2Vec_main import Node2VecModel
-from src.dgadb.preprocessing.pipeline.pipeline import Pipeline
-from src.dgadb.data.builder import build_graph_from_temporal
+from dgadb.models.Node2Vec.Node2Vec_main import Node2VecModel
+from dgadb.preprocessing.pipeline.pipeline import Pipeline
+from dgadb.data.builder import build_graph_from_temporal
 
 # Configure logging
 logging.basicConfig(

@@ -14,8 +14,8 @@ from gensim.models import Word2Vec
 import warnings
 
 warnings.simplefilter("ignore", ssp.SparseEfficiencyWarning)
-from src.dgadb.models.StrGNN.pytorch_DGCNN.util import GNNGraph
-from src.dgadb.models.StrGNN.detection import node2vec
+from dgadb.models.StrGNN.pytorch_DGCNN.util import GNNGraph
+from dgadb.models.StrGNN.detection import node2vec
 
 
 def sample_dyn(net, test_ratio, window_size):

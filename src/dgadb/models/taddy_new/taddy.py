@@ -16,9 +16,9 @@ from sklearn.metrics import roc_auc_score
 from ..base import BaseADModel, BaseADModelComponents, TrainingState
 from ..TADDY.codes.Component import MyConfig
 from ..TADDY.codes.DynADModel import DynADModel
-from src.dgadb.experiment.callbacks import ExperimentCallbackHandler
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallbackHandler
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 
 
 logger = logging.getLogger(__name__)

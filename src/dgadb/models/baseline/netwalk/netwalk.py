@@ -13,14 +13,14 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import roc_auc_score
 from scipy.spatial.distance import cdist
 
-from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
 
 from .walk_update import WalkUpdate
 from .autoencoder import Autoencoder
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
-from src.dgadb.storage import TemporalGraphSnapshot, TemporalGraphLoader
+from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.storage import TemporalGraphSnapshot, TemporalGraphLoader
 
 
 @dataclass
@@ -292,8 +292,8 @@ class Netwalk(BaseADModel[NetwalkComponents]):
 
 
 if __name__ == "__main__":
-    from src.dgadb.models.baseline.gnn import GNNAD
-    from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
+    from dgadb.models.baseline.gnn import GNNAD
+    from dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
     anom_config = {
         "anom_type": "structural",
         "anom_test_ratio": 0.1,

@@ -5,18 +5,18 @@ import os
 import pickle
 import numpy as np
 import pandas as pd
-from src.dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_graph import TemporalGraph
 from typing import Optional
 import logging
 import torch
 import torch.utils.data as tud
 import torch.nn.functional as F
 import time
-# from src.dgadb.models.GeneralDYG.generate_datasets import BatchGraphSample
-from src.dgadb.models.GeneralDYG.generate_datasets_new import BatchGraphSample
-from src.dgadb.models.GeneralDYG.model.Combine import CombinedModel
-from src.dgadb.models.GeneralDYG.model.CensNet import CensNet
-from src.dgadb.models.GeneralDYG.model.Transformer import TransformerBinaryClassifier
+# from dgadb.models.GeneralDYG.generate_datasets import BatchGraphSample
+from dgadb.models.GeneralDYG.generate_datasets_new import BatchGraphSample
+from dgadb.models.GeneralDYG.model.Combine import CombinedModel
+from dgadb.models.GeneralDYG.model.CensNet import CensNet
+from dgadb.models.GeneralDYG.model.Transformer import TransformerBinaryClassifier
 
 logging.basicConfig(
     level=logging.INFO,

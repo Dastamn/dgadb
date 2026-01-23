@@ -2,13 +2,13 @@ import logging
 import polars as pl
 from sklearn.metrics import roc_auc_score
 
-from src.dgadb.data.builder import build_graph
-from src.dgadb.data.dataset import load_df
-from src.dgadb.models.TADDY.TADDY_main import TADDYModel
-from src.dgadb.preprocessing.snapshotting import assign_snapshots
-from src.dgadb.utils import load_config
-from src.dgadb.preprocessing.temporal import generate_data_splits
-from src.dgadb.preprocessing.structural import (
+from dgadb.data.builder import build_graph
+from dgadb.data.dataset import load_df
+from dgadb.models.TADDY.TADDY_main import TADDYModel
+from dgadb.preprocessing.snapshotting import assign_snapshots
+from dgadb.utils import load_config
+from dgadb.preprocessing.temporal import generate_data_splits
+from dgadb.preprocessing.structural import (
     make_undirected,
     remove_self_loops,
     remove_duplicates,
@@ -17,8 +17,8 @@ from src.dgadb.preprocessing.structural import (
     remove_self_loops_train,
     make_undirected_train,
 )
-from src.dgadb.preprocessing.anomaly_generation import AnomalyGenerator
-from src.dgadb.preprocessing.temporal import normalize_timestamps
+from dgadb.preprocessing.anomaly_generation import AnomalyGenerator
+from dgadb.preprocessing.temporal import normalize_timestamps
 
 logging.basicConfig(
     level=logging.INFO,

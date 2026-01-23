@@ -1,4 +1,4 @@
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 import numpy as np
 import torch
 import torch.nn as nn

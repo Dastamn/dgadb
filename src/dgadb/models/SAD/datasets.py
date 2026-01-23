@@ -4,7 +4,7 @@ import os
 import numpy as np
 import random
 import pandas as pd
-from src.dgadb.models.SAD.utils import get_neighbor_finder
+from dgadb.models.SAD.utils import get_neighbor_finder
 from operator import itemgetter
 
 

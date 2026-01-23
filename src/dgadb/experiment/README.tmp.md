@@ -25,7 +25,7 @@ config/dataset
 
 Example command to run from the root of the dgadb project (i.e., in the directory that contains the `src` folder):
 ```bash
-BASE_PATH=$PWD python -m src.dgadb.experiment.runner --method sad --dataset bitcoin-alpha
+BASE_PATH=$PWD python -m dgadb.experiment.runner --method sad --dataset bitcoin-alpha
 ```
 ---
 

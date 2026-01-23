@@ -12,11 +12,11 @@ import torch.nn.functional as fun
 from numpy.linalg import inv
 from tqdm import tqdm
 
-from src.dgadb.models.TADDY.codes.Component import MyConfig
-from src.dgadb.models.TADDY.codes.DynADModel import DynADModel
+from dgadb.models.TADDY.codes.Component import MyConfig
+from dgadb.models.TADDY.codes.DynADModel import DynADModel
 
-from src.dgadb.storage import TemporalGraph
-from src.dgadb.storage import TemporalGraphSnapshotLoader
+from dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraphSnapshotLoader
 
 logger = logging.getLogger(__name__)
 

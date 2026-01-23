@@ -1,16 +1,16 @@
 import json
-from src.dgadb.evaluation import Evaluator
-from src.dgadb.storage.temporal_graph import TemporalGraphLoader
+from dgadb.evaluation import Evaluator
+from dgadb.storage.temporal_graph import TemporalGraphLoader
 import torch
 import logging
-from src.dgadb.preprocessing.pipeline import Pipeline
-from src.dgadb.preprocessing.anomaly_injector import AnomalyInjector
-from src.dgadb.storage import TemporalGraphLoader, TemporalGraphSnapshotLoader
+from dgadb.preprocessing.pipeline import Pipeline
+from dgadb.preprocessing.anomaly_injector import AnomalyInjector
+from dgadb.storage import TemporalGraphLoader, TemporalGraphSnapshotLoader
 
-from src.dgadb.storage import convert_temporal_graph_to_legacy_graph
+from dgadb.storage import convert_temporal_graph_to_legacy_graph
 
-from src.dgadb.data.dataset import load_df
-from src.dgadb.models.RustGraph.main_RustGraph import RustGraphModel
+from dgadb.data.dataset import load_df
+from dgadb.models.RustGraph.main_RustGraph import RustGraphModel
 import torch
 
 logging.basicConfig(

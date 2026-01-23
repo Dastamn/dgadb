@@ -15,8 +15,8 @@ from torch_geometric.utils import (
     is_undirected,
 )
 from scipy.sparse.linalg import eigs, eigsh
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
 
 
 class GConv(nn.Module):

@@ -14,8 +14,8 @@ from torch_geometric.nn import InnerProductDecoder
 from torch_geometric.utils import negative_sampling
 
 from ..base import BaseADModel, BaseADModelComponents
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
 
 
 _ModelTypeAlias = Type[GCN | GAT | GraphSAGE]

@@ -9,7 +9,7 @@ import torch.optim as optim
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from sklearn.metrics import roc_auc_score
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 
 logger = logging.getLogger(__name__)
 

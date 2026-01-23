@@ -2,9 +2,9 @@ import os
 import logging
 
 from .callbacks import ExperimentCallback, ResourceMonitor
-from src.dgadb.evaluation import ADEvaluator
-from src.dgadb.storage import TemporalGraph, TemporalGraphLoader, TemporalGraphSnapshotLoader, generate_temporal_graph_filename
-from src.dgadb.models.base import BaseADModel, BaseADModelComponentsType
+from dgadb.evaluation import ADEvaluator
+from dgadb.storage import TemporalGraph, TemporalGraphLoader, TemporalGraphSnapshotLoader, generate_temporal_graph_filename
+from dgadb.models.base import BaseADModel, BaseADModelComponentsType
 import torch
 import numpy as np
 

@@ -1,7 +1,7 @@
 import pytest
 import torch
 import polars as pl
-from src.dgadb.storage import Graph
+from dgadb.storage import Graph
 
 
 def make_example_graph():
