@@ -15,7 +15,7 @@ from dgadb.storage import (
     generate_temporal_graph_filename,
 )
 
-from .callbacks import ExperimentCallback, ResourceMonitor
+from .callbacks import AimCallback, ExperimentCallback, ResourceMonitor
 
 
 class Method(str, Enum):
@@ -113,6 +113,7 @@ class ExperimentRunner:
             f"Starting Experiment: {self.model.__class__.__name__}/{self.dataset_name}"
         )
         self.logger.info(f"Results will be saved to: {self.output_dir}")
+        self.callbacks = callbacks or []
 
         train_loader = TemporalGraphSnapshotLoader(
             self.data, split="train", **snapshot_config
@@ -145,11 +146,17 @@ class ExperimentRunner:
         )
         evaluator.save_results()
 
+        # Log evaluation metrics to AimCallback if present
+        for callback in getattr(self, "callbacks", []):
+            if isinstance(callback, AimCallback):
+                callback.log_evaluation_metrics(metrics, context="test")
+
 
 @app.command()
 def run_experiment(
     method: Annotated[Method, typer.Option(help="Method name")],
     dataset: Annotated[str, typer.Option(help="Dataset name")] = "bitcoin-alpha",
+    experiment_name: Annotated[str, typer.Option(help="Aim experiment name")] = "dgadb",
 ):
     """Run an anomaly detection experiment with the specified method and dataset."""
 
@@ -203,11 +210,27 @@ def run_experiment(
     data = loader.load(dataset, **anom_config, create_if_not_found=True)
     data = remove_duplicates(data)
 
-    runner = ExperimentRunner(
-        model, data, output_dir=f"latest-results/{method.value}/{dataset}"
+    output_dir = f"latest-results/{method.value}/{dataset}"
+
+    # Configure Aim tracking with comprehensive logging
+    aim_callback = AimCallback(
+        experiment_name=experiment_name,
+        run_name=f"{method.value}_{dataset}",
+        hparams={
+            "method": method.value,
+            "dataset": dataset,
+            "epochs": 10,
+            **snapshot_config,
+        },
+        tags=[method.value, dataset, anom_config["anom_type"]],
     )
-    resource_monitor = ResourceMonitor(runner.output_dir, step_interval=10)
-    runner.run(10, snapshot_config, [resource_monitor])
+    aim_callback.log_config(anom_config, name="anom_config")
+    aim_callback.log_config(snapshot_config, name="snapshot_config")
+
+    resource_monitor = ResourceMonitor(output_dir, step_interval=10)
+
+    runner = ExperimentRunner(model, data, output_dir=output_dir)
+    runner.run(10, snapshot_config, [aim_callback, resource_monitor])
 
 
 if __name__ == "__main__":
