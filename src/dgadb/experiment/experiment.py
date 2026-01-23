@@ -1,11 +1,11 @@
 from pathlib import Path
 import json
 import logging
-from src.dgadb.preprocessing.pipeline.pipeline import Pipeline
-from src.dgadb.models.RustGraph.main_RustGraph import RustGraphModel
-from src.dgadb.storage import convert_temporal_graph_to_legacy_graph, TemporalGraph
-from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
-from src.dgadb.evaluation.evaluator import Evaluator
+from dgadb.preprocessing.pipeline.pipeline import Pipeline
+from dgadb.models.RustGraph.main_RustGraph import RustGraphModel
+from dgadb.storage import convert_temporal_graph_to_legacy_graph, TemporalGraph
+from dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
+from dgadb.evaluation.evaluator import Evaluator
 import os
 import yaml
 from sklearn.metrics import roc_auc_score
@@ -17,15 +17,15 @@ from typing import Type
 import multiprocessing
 import tempfile
 
-from src.dgadb.models.TADDY.TADDY_main import TADDYModel
-from src.dgadb.models.StrGNN.StrGNN_main import STRGNNModel
-from src.dgadb.models.GeneralDYG.GeneralDYG_main import GeneralDYGModel
+from dgadb.models.TADDY.TADDY_main import TADDYModel
+from dgadb.models.StrGNN.StrGNN_main import STRGNNModel
+from dgadb.models.GeneralDYG.GeneralDYG_main import GeneralDYGModel
 
-from src.dgadb.models.baseline.Node2Vec import n2vModel
-from src.dgadb.models.baseline.NetwalkBaseline import NetWalkBaseline
-from src.dgadb.models.baseline.GNNBaseline import GNNBaseline
-from src.dgadb.models.SAD.main_SAD import SADModel
-from src.dgadb.models.SLADE.SLADE_main import SLADEModel
+from dgadb.models.baseline.Node2Vec import n2vModel
+from dgadb.models.baseline.NetwalkBaseline import NetWalkBaseline
+from dgadb.models.baseline.GNNBaseline import GNNBaseline
+from dgadb.models.SAD.main_SAD import SADModel
+from dgadb.models.SLADE.SLADE_main import SLADEModel
 
 import argparse
 

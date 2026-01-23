@@ -1,13 +1,13 @@
 import argparse
 from time import time
 import logging
-from src.dgadb.preprocessing.pipeline import Pipeline
-from src.dgadb.preprocessing.anomaly_injector import AnomalyInjector
-from src.dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
-from src.dgadb.data.builder import build_graph_from_temporal
-from src.dgadb.models.GeneralDYG.GeneralDYG_main import GeneralDYGModel
-from src.dgadb.evaluation.evaluator import Evaluator
-from src.dgadb.storage import generate_temporal_graph_filename
+from dgadb.preprocessing.pipeline import Pipeline
+from dgadb.preprocessing.anomaly_injector import AnomalyInjector
+from dgadb.preprocessing.add_graph_temporary import inject_anomalies_addgraph_style
+from dgadb.data.builder import build_graph_from_temporal
+from dgadb.models.GeneralDYG.GeneralDYG_main import GeneralDYGModel
+from dgadb.evaluation.evaluator import Evaluator
+from dgadb.storage import generate_temporal_graph_filename
 from sklearn.metrics import roc_auc_score
 import numpy as np
 logger = logging.getLogger(__name__)

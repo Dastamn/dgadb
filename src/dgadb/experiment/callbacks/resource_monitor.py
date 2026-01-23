@@ -14,7 +14,7 @@ matplotlib.use('Agg')
 
 
 if TYPE_CHECKING:
-    from src.dgadb.models.base import TrainingState
+    from dgadb.models.base import TrainingState
 
 
 class ResourceMonitor(ExperimentCallback):

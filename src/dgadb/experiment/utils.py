@@ -8,7 +8,7 @@ import torch
 from ray import tune
 from ray.tune.experiment.trial import Trial
 
-from src.dgadb.models import *
+from dgadb.models import *
 
 
 def deep_update(input_dict: dict, update_dict: dict):

@@ -7,8 +7,8 @@ from torch_geometric.nn import Node2Vec
 import torch
 from torch.nn.functional import sigmoid
 
-from src.dgadb.storage import TemporalGraph
-from src.dgadb.storage import TemporalGraphSnapshotLoader
+from dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraphSnapshotLoader
 from sklearn.metrics import roc_auc_score
 logger = logging.getLogger(__name__)
 

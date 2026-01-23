@@ -12,12 +12,12 @@ import numpy as np
 from tqdm import tqdm
 from scipy.sparse import csgraph
 
-from src.dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
 
 from ..base import BaseADModel, BaseADModelComponents, TrainingState
-from src.dgadb.storage import TemporalGraphSnapshot, TemporalGraphLoader
+from dgadb.storage import TemporalGraphSnapshot, TemporalGraphLoader
 
 
 class Reservoir:

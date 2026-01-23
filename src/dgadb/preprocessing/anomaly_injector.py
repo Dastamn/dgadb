@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 from .utils import (
     cartesian_sample,
     compute_unique_inverse_count_probabilities,

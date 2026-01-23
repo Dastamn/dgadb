@@ -1,10 +1,10 @@
 import torch
 import logging
-from src.dgadb.preprocessing.pipeline import Pipeline
-from src.dgadb.preprocessing.anomaly_injector import AnomalyInjector
-from src.dgadb.data.builder import build_graph_from_temporal
-from src.dgadb.models.SAD.main_SAD import SADModel
-from src.dgadb.evaluation.evaluator import Evaluator
+from dgadb.preprocessing.pipeline import Pipeline
+from dgadb.preprocessing.anomaly_injector import AnomalyInjector
+from dgadb.data.builder import build_graph_from_temporal
+from dgadb.models.SAD.main_SAD import SADModel
+from dgadb.evaluation.evaluator import Evaluator
 from sklearn.metrics import roc_auc_score
 import numpy as np
 

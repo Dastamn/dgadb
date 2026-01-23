@@ -17,8 +17,8 @@ from torch_geometric.nn import GAT
 from torch_geometric.utils import negative_sampling
 from tqdm import tqdm
 
-from src.dgadb.storage.graph import Graph
-from src.dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
+from dgadb.storage.graph import Graph
+from dgadb.models.common import EdgeDecoder, train_edge_decoder, inference_with_decoder
 
 logger = logging.getLogger(__name__)
 

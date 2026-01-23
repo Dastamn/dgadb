@@ -1,7 +1,7 @@
 import os
 import torch
 from torch_geometric.data import InMemoryDataset, download_url, extract_tar, extract_gz, extract_zip
-from src.dgadb.models.RustGraph.data import *
+from dgadb.models.RustGraph.data import *
 import warnings
 
 warnings.filterwarnings(

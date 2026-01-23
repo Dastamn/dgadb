@@ -58,8 +58,8 @@ if __name__ == "__main__":
     conf = load_config("configs/tune/tune.yaml")
     run_conf = get_run_config(conf, "strgnn", "as-topology")
     print(run_conf)
-    # from src.dgadb.preprocessing import Pipeline
-    # from src.dgadb.preprocessing.pipeline.steps import TemporalSplitter
+    # from dgadb.preprocessing import Pipeline
+    # from dgadb.preprocessing.pipeline.steps import TemporalSplitter
     # pipeline = Pipeline.from_config("bitcoin-alpha")
     # step = TemporalSplitter()
     # pipeline.add_step(step)

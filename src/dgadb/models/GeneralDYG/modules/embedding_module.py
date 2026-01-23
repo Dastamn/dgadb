@@ -3,8 +3,8 @@ from torch import nn
 import numpy as np
 import math
 
-from src.dgadb.models.GeneralDYG.modules.temporal_attention import TemporalAttentionLayer2
-from src.dgadb.models.GeneralDYG.modules.temporal_sum import TemporalSumLayer
+from dgadb.models.GeneralDYG.modules.temporal_attention import TemporalAttentionLayer2
+from dgadb.models.GeneralDYG.modules.temporal_sum import TemporalSumLayer
 
 
 class EmbeddingModule(nn.Module):

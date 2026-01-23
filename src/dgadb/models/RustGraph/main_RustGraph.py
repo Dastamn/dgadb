@@ -8,17 +8,17 @@
 
 
 # in the original code they do node2vec embeddings on the entire edgeset which is data leakage between train and test
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
-from src.dgadb.models.RustGraph.model import Model
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
+from dgadb.models.RustGraph.model import Model
 import torch
 import logging
 import os
 from tqdm import tqdm
 import numpy as np
 import time
-from src.dgadb.models.RustGraph.data import n2v_train
-from src.dgadb.models.utils import time_func
+from dgadb.models.RustGraph.data import n2v_train
+from dgadb.models.utils import time_func
 from ray.tune import Checkpoint
 import tempfile
 from ray import tune, train

@@ -15,7 +15,7 @@ from torch_geometric.loader import DataLoader, LinkNeighborLoader, NeighborLoade
 from torch_geometric.data import Data
 
 from ..base import BaseModel
-from src.dgadb.storage import TemporalGraph, TemporalGraphSnapshotLoader
+from dgadb.storage import TemporalGraph, TemporalGraphSnapshotLoader
 
 
 GNN_TYPE = Type[GCN] | Type[GAT] | Type[GraphSAGE]

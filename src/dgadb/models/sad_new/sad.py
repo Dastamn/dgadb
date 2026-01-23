@@ -17,9 +17,9 @@ from ..base import BaseADModel, BaseADModelComponents, TrainingState
 from ..SAD.model.tgat import TGAT
 from ..SAD import datasets as ds
 from ..SAD.utils import get_neighbor_finder
-from src.dgadb.experiment.callbacks import ExperimentCallbackHandler
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallbackHandler
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 
 
 logger = logging.getLogger(__name__)

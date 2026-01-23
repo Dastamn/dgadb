@@ -9,7 +9,7 @@ from ray.tune import Checkpoint
 from .base import ExperimentCallback
 
 if TYPE_CHECKING:
-    from src.dgadb.models.base import TrainingState
+    from dgadb.models.base import TrainingState
 
 
 class TuneReporter(ExperimentCallback):

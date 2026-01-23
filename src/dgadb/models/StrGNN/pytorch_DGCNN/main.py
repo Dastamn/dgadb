@@ -11,10 +11,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import math
 import pdb
-from src.dgadb.models.StrGNN.pytorch_DGCNN.DGCNN_embedding import DGCNN
-from src.dgadb.models.StrGNN.pytorch_DGCNN.mlp_dropout import MLPClassifier, MLPRegression
+from dgadb.models.StrGNN.pytorch_DGCNN.DGCNN_embedding import DGCNN
+from dgadb.models.StrGNN.pytorch_DGCNN.mlp_dropout import MLPClassifier, MLPRegression
 from sklearn import metrics
-from src.dgadb.models.StrGNN.pytorch_DGCNN.util import cmd_args, load_data
+from dgadb.models.StrGNN.pytorch_DGCNN.util import cmd_args, load_data
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import precision_recall_curve
 

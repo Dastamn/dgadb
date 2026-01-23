@@ -1,5 +1,5 @@
 import numpy as np
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 from typing import Literal
 import torch
 from time import perf_counter
@@ -91,7 +91,7 @@ class NeighborSampler:
 
 
 if __name__ == "__main__":
-    from src.dgadb.storage import TemporalGraphLoader
+    from dgadb.storage import TemporalGraphLoader
     loader = TemporalGraphLoader()
     tg = loader.load("bitcoin-alpha", create_if_not_found=True)
     sampler = NeighborSampler(tg, split="train")

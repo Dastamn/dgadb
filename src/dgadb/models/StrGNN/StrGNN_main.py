@@ -1,12 +1,12 @@
 import torch
 import numpy as np
-from src.dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_graph import TemporalGraph
 import pickle as pickle
 import scipy.io as sio
 import scipy.sparse as ssp
 import pickle
-from src.dgadb.models.StrGNN.pytorch_DGCNN.main import *
-from src.dgadb.models.StrGNN.detection.util_functions import *
+from dgadb.models.StrGNN.pytorch_DGCNN.main import *
+from dgadb.models.StrGNN.detection.util_functions import *
 from os import path
 import logging
 

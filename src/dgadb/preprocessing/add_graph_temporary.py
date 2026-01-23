@@ -1,8 +1,8 @@
 import copy
 import torch
 from typing import Optional
-from src.dgadb.storage import TemporalGraph
-from src.dgadb.preprocessing.utils import to_canonical
+from dgadb.storage import TemporalGraph
+from dgadb.preprocessing.utils import to_canonical
 
 
 @torch.no_grad()

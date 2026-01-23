@@ -13,8 +13,8 @@ from ray.tune.stopper import Stopper, TrialPlateauStopper
 from . import utils
 from .runner import ExperimentRunner
 from .callbacks import ResourceMonitor, TuneReporter
-from src.dgadb.models import BaseADModel
-from src.dgadb.storage import TemporalGraph, TemporalGraphLoader, generate_temporal_graph_filename
+from dgadb.models import BaseADModel
+from dgadb.storage import TemporalGraph, TemporalGraphLoader, generate_temporal_graph_filename
 
 
 _BASE_PATH = os.environ["BASE_PATH"]

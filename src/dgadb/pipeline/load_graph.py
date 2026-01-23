@@ -1,10 +1,10 @@
-from src.dgadb.data.dataset import load_df
-from src.dgadb.storage import Graph
-from src.dgadb.preprocessing.snapshotting import assign_snapshots
-from src.dgadb.preprocessing.temporal import normalize_timestamps, generate_data_splits
-from src.dgadb.preprocessing.normalization import get_normalized_feature_matrices
-from src.dgadb.data.builder import build_graph
-from src.dgadb.utils import load_config
+from dgadb.data.dataset import load_df
+from dgadb.storage import Graph
+from dgadb.preprocessing.snapshotting import assign_snapshots
+from dgadb.preprocessing.temporal import normalize_timestamps, generate_data_splits
+from dgadb.preprocessing.normalization import get_normalized_feature_matrices
+from dgadb.data.builder import build_graph
+from dgadb.utils import load_config
 
 
 def load_graph(name: str) -> Graph:

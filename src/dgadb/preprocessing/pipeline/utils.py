@@ -1,8 +1,8 @@
-from src.dgadb.preprocessing.pipeline import StructureNormalizer, Pipeline
+from dgadb.preprocessing.pipeline import StructureNormalizer, Pipeline
 from .container import GraphDataContainer
 from pathlib import Path
 import polars as pl
-from src.dgadb.models.baseline.gnn import GNNAD
+from dgadb.models.baseline.gnn import GNNAD
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +51,7 @@ def load_custom_dataset(data_dir: str, src_col: str = "src", tgt_col: str = "tgt
 
 
 if __name__ == "__main__":
-    from src.dgadb.experiment.runner import ExperimentRunner
+    from dgadb.experiment.runner import ExperimentRunner
 
     cont = load_custom_dataset("anom_gen/as-topology_0.5_0.1")
     cont.describe()

@@ -255,7 +255,7 @@ class TemporalGraphLoader:
                 raise ValueError(
                     "Cannot specify generation parameters (kwargs) when 'anom_type' is None.")
         else:
-            from src.dgadb.preprocessing import get_canonical_anomaly_type
+            from dgadb.preprocessing import get_canonical_anomaly_type
 
             anom_type = get_canonical_anomaly_type(anom_type)
 
@@ -308,7 +308,7 @@ class TemporalGraphLoader:
                 self.logger.info(
                     "Could not find a matching graph for the specified criteria. Loading from raw data.")
 
-                from src.dgadb.preprocessing import Pipeline
+                from dgadb.preprocessing import Pipeline
 
                 pipeline = Pipeline.from_config(dataset_name)
                 temmporal_graph = pipeline.run().to_temporal_graph()
@@ -318,7 +318,7 @@ class TemporalGraphLoader:
                 if anom_type is None:
                     return temmporal_graph
 
-                from src.dgadb.preprocessing import AnomalyInjector
+                from dgadb.preprocessing import AnomalyInjector
 
                 anom_injector = AnomalyInjector(temmporal_graph)
                 anomalous_temporal_graph = anom_injector.generate_anomalous_samples(

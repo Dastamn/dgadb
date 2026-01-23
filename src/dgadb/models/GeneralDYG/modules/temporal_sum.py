@@ -3,7 +3,7 @@ import torch_scatter as scatter
 from torch import nn
 import torch.nn.functional as F
 
-from src.dgadb.models.GeneralDYG.modules.utils import MergeLayer
+from dgadb.models.GeneralDYG.modules.utils import MergeLayer
 
 
 class TemporalSumLayer(torch.nn.Module):

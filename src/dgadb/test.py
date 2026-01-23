@@ -1,7 +1,7 @@
-from src.dgadb.storage import TemporalGraphLoader
-from src.dgadb.preprocessing.pipeline import DataLoader, Pipeline, TemporalSplitter, TimestampNormalizer, StructureNormalizer
+from dgadb.storage import TemporalGraphLoader
+from dgadb.preprocessing.pipeline import DataLoader, Pipeline, TemporalSplitter, TimestampNormalizer, StructureNormalizer
 import torch
-from src.dgadb.preprocessing import AnomalyInjector
+from dgadb.preprocessing import AnomalyInjector
 import pandas as pd
 import os
 

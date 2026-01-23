@@ -1,6 +1,6 @@
 import torch
 from transformers.models.bert.modeling_bert import BertPreTrainedModel, BertPooler
-from src.dgadb.models.TADDY.codes.Component import EdgeEncoding, TransformerEncoder
+from dgadb.models.TADDY.codes.Component import EdgeEncoding, TransformerEncoder
 
 
 BertLayerNorm = torch.nn.LayerNorm

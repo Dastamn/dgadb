@@ -1,0 +1,46 @@
+[project]
+name = "dgadb"
+version = "0.1.0"
+requires-python = ">= 3.11"
+authors = [
+  { name = "glachaud", email = "guillaume.lachaud@polytechnique.edu" },
+  { name = "Nazim Mezhoudi" },
+]
+dependencies = ["ray[all]>=2.51.1", "torch-geometric>=2.7.0", "gensim>=4.4.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dgadb"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+dgadb = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+ipython = ">=9.7.0"
+python = "3.12.*"
+tqdm = ">=4.67.1"
+scikit-learn = ">=1.7.2"
+polars = ">=1.35.1"
+matplotlib = ">=3.10.7"
+uv = ">=0.9.9"
+torch-scatter = ">=2.1.1"
+pytorch = ">=2.7.1"
+typer = ">=0.20.0"
+transformers = ">=4.57.1"
+
+[tool.pixi.feature.dev.dependencies]
+ty = "*"
+ruff = ">=0.14.13,<0.15"
+loguru = ">=0.7.3"
+
+[tool.pixi.environments]
+dev = ["dev"]

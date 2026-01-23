@@ -1,5 +1,5 @@
 import numpy as np
-from src.dgadb.preprocessing import GraphDataContainer
+from dgadb.preprocessing import GraphDataContainer
 import logging
 
 
