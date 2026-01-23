@@ -1,12 +1,36 @@
-import os
 import logging
+import os
+from enum import Enum
+from typing import Annotated
+
+import numpy as np
+import torch
+import typer
+from dgadb.evaluation import ADEvaluator
+from dgadb.models.base import BaseADModel, BaseADModelComponentsType
+from dgadb.storage import (
+    TemporalGraph,
+    TemporalGraphLoader,
+    TemporalGraphSnapshotLoader,
+    generate_temporal_graph_filename,
+)
 
 from .callbacks import ExperimentCallback, ResourceMonitor
-from dgadb.evaluation import ADEvaluator
-from dgadb.storage import TemporalGraph, TemporalGraphLoader, TemporalGraphSnapshotLoader, generate_temporal_graph_filename
-from dgadb.models.base import BaseADModel, BaseADModelComponentsType
-import torch
-import numpy as np
+
+
+class Method(str, Enum):
+    """Available anomaly detection methods."""
+
+    sad = "sad"
+    taddy = "taddy"
+    slade = "slade"
+    strgnn = "strgnn"
+    gcn = "gcn"
+    gat = "gat"
+    graphsage = "graphsage"
+
+
+app = typer.Typer()
 
 
 def remove_duplicates(tg: TemporalGraph) -> TemporalGraph:
@@ -43,11 +67,11 @@ def remove_duplicates(tg: TemporalGraph) -> TemporalGraph:
 
 class ExperimentRunner:
     def __init__(
-            self,
-            model: BaseADModel[BaseADModelComponentsType],
-            data: TemporalGraph,
-            dataset_name: str | None = None,
-            output_dir: str = "experiment-results"
+        self,
+        model: BaseADModel[BaseADModelComponentsType],
+        data: TemporalGraph,
+        dataset_name: str | None = None,
+        output_dir: str = "experiment-results",
     ) -> None:
         """Orchestrates a single training and evaluation experiment.
 
@@ -77,15 +101,24 @@ class ExperimentRunner:
         os.makedirs(self.output_dir, exist_ok=True)
 
     # TODO: change snapshot_config to args
-    def run(self, epochs: int, snapshot_config: dict, callbacks: list[ExperimentCallback] | None = None, evaluate: bool = True):
+    def run(
+        self,
+        epochs: int,
+        snapshot_config: dict,
+        callbacks: list[ExperimentCallback] | None = None,
+        evaluate: bool = True,
+    ):
         self.logger.info(
-            f"Starting Experiment: {self.model.__class__.__name__}/{self.dataset_name}")
+            f"Starting Experiment: {self.model.__class__.__name__}/{self.dataset_name}"
+        )
         self.logger.info(f"Results will be saved to: {self.output_dir}")
 
         train_loader = TemporalGraphSnapshotLoader(
-            self.data, split="train", **snapshot_config)
+            self.data, split="train", **snapshot_config
+        )
         val_loader = TemporalGraphSnapshotLoader(
-            self.data, split="val", **snapshot_config)
+            self.data, split="val", **snapshot_config
+        )
 
         self.model.setup(self.data)
         self.model.train(epochs, train_loader, val_loader, callbacks)
@@ -97,33 +130,27 @@ class ExperimentRunner:
 
     def evaluate(self, snapshot_config: dict):
         test_loader = TemporalGraphSnapshotLoader(
-            self.data, split="test", **snapshot_config)
+            self.data, split="test", **snapshot_config
+        )
         all_labels, all_scores = self.model.run_inference(test_loader)
 
         evaluator = ADEvaluator(self.output_dir)
         metrics = evaluator.evaluate(all_labels, all_scores)
         self.logger.info(
-            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}")
+            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}"
+        )
         print(
-            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}")
+            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}"
+        )
         evaluator.save_results()
 
 
-if __name__ == "__main__":
-    from src.dgadb.models.baseline.gnn import GNNAD
-    from src.dgadb.models.slade_new.slade import SLADEAD
-    from src.dgadb.models.taddy_new.taddy import TADDYAD
-    from src.dgadb.models.sad_new.sad import SADAD
-    from src.dgadb.models.StrGNN.strgnn import StrGNNAD
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--method", type=str,
-                        default=None, help="Method name")
-    parser.add_argument("--dataset", type=str,
-                        default=None, help="Dataset name")
-
-    args = parser.parse_args()
+@app.command()
+def run_experiment(
+    method: Annotated[Method, typer.Option(help="Method name")],
+    dataset: Annotated[str, typer.Option(help="Dataset name")] = "bitcoin-alpha",
+):
+    """Run an anomaly detection experiment with the specified method and dataset."""
 
     anom_config = {
         "anom_type": "structural",
@@ -134,43 +161,49 @@ if __name__ == "__main__":
     snapshot_config = {
         "strategy": "window",
         "window_size": 2000,
-        "include_cumulative": True
+        "include_cumulative": True,
     }
 
-    if args.method == "sad":
-        model = SADAD()
-    elif args.method == "taddy":
-        model = TADDYAD()
-    elif args.method == "slade":
-        model = SLADEAD()
-    elif args.method == "strgnn":
-        model = StrGNNAD()
-    elif args.method == "gcn":
-        model = GNNAD("GCN")
-    elif args.method == "gat":
-        model = GNNAD("GAT")
-    elif args.method == "graphsage":
-        model = GNNAD("GraphSAGE")
-    else:
-        raise NotImplementedError
+    match method:
+        case Method.sad:
+            from dgadb.models.sad_new.sad import SADAD
+
+            model = SADAD()
+        case Method.taddy:
+            from dgadb.models.taddy_new.taddy import TADDYAD
+
+            model = TADDYAD()
+        case Method.slade:
+            from dgadb.models.slade_new.slade import SLADEAD
+
+            model = SLADEAD()
+        case Method.strgnn:
+            from dgadb.models.StrGNN.strgnn import StrGNNAD
+
+            model = StrGNNAD()
+        case Method.gcn:
+            from dgadb.models.baseline.gnn import GNNAD
+
+            model = GNNAD("GCN")
+        case Method.gat:
+            from dgadb.models.baseline.gnn import GNNAD
+
+            model = GNNAD("GAT")
+        case Method.graphsage:
+            from dgadb.models.baseline.gnn import GNNAD
+
+            model = GNNAD("GraphSAGE")
 
     loader = TemporalGraphLoader()
-    data = loader.load(
-        "bitcoin-alpha", **anom_config, create_if_not_found=True)
-
+    data = loader.load(dataset, **anom_config, create_if_not_found=True)
     data = remove_duplicates(data)
 
-    # from src.dgadb.preprocessing.pipeline.utils import load_custom_dataset
-    # from src.dgadb.preprocessing.pipeline import Pipeline, StructureNormalizer
-
-    # cont = load_custom_dataset(f"anom_gen/{args.dataset}_0.7_0.1")
-    # print(f"Loaded: anom_gen/{args.dataset}_0.7_0.1")
-    # pipeline = Pipeline([StructureNormalizer("canonical")])
-    # data = pipeline.run(cont).to_temporal_graph()
-
-    # data.val_mask = data.test_mask.clone()
-
     runner = ExperimentRunner(
-        model, data, output_dir=f"latest-results/{args.method}/{args.dataset}")
+        model, data, output_dir=f"latest-results/{method.value}/{dataset}"
+    )
     resource_monitor = ResourceMonitor(runner.output_dir, step_interval=10)
     runner.run(10, snapshot_config, [resource_monitor])
+
+
+if __name__ == "__main__":
+    app()
