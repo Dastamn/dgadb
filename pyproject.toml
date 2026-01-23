@@ -39,7 +39,7 @@ transformers = ">=4.57.1"
 
 [tool.pixi.feature.dev.dependencies]
 ty = "*"
-ruff = ">=0.14.5"
+ruff = ">=0.14.13,<0.15"
 loguru = ">=0.7.3"
 
 [tool.pixi.environments]

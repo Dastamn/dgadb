@@ -2550,7 +2550,7 @@ packages:
 - pypi: ./
   name: dgadb
   version: 0.1.0
-  sha256: 0f02a9f62e8dd62d2993f7cdbe22d8874ab83226d170ac2a01b6cda9548e9028
+  sha256: 6a9b99e872b136fa5a73fc604efb0b56e6392e2137545f3c89788dea26bd0d8f
   requires_dist:
   - ray[all]>=2.51.1
   - torch-geometric>=2.7.0
