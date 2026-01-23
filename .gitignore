@@ -11,3 +11,4 @@ venv/
 src/dgadb/models/TADDY/data
 src/dgadb/models/GeneralDYG/data
 src/dgadb/models/RustGraph/n2v_data
+.aim/
