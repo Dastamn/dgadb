@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "numpy",
+#     "polars",
+# ]
+# ///
 import numpy as np
 import polars as pl
 import os
