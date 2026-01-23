@@ -28,6 +28,7 @@ class Method(str, Enum):
     gcn = "gcn"
     gat = "gat"
     graphsage = "graphsage"
+    rustgraph = "rustgraph"
 
 
 app = typer.Typer()
@@ -181,6 +182,10 @@ def run_experiment(
             from dgadb.models.StrGNN.strgnn import StrGNNAD
 
             model = StrGNNAD()
+        case Method.rustgraph:
+            from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
+
+            model = RustGraphAD()
         case Method.gcn:
             from dgadb.models.baseline.gnn import GNNAD
 

@@ -11,14 +11,14 @@ from torch_geometric.nn import InnerProductDecoder
 from torch_geometric.utils import negative_sampling, get_laplacian, to_scipy_sparse_matrix
 from torch_geometric.nn import Node2Vec
 
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
+from dgadb.models.base import BaseADModel, BaseADModelComponents
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
 
 from .model import Generative, Contrastive, FCC
 
 from tqdm import tqdm
-
+from loguru import logger
 
 @dataclass
 class RustGraphComponents(BaseADModelComponents):
@@ -67,10 +67,11 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
 
         embedding = None
         if data.node_attr is not None:
-            self.logger.info("Using provided node attributes.")
+            logger.info("Using provided node attributes.")
             self.node_attr = data.node_attr
         else:
-            self.logger.info(
+            # We train on the full edge list to get global structural context
+            logger.info(
                 f"No node_attr found. Training Node2Vec ({x_dim}) on full graph structure (transductive)..."
             )
             # We train on the full edge list to get global structural context
@@ -291,7 +292,7 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=4)
 
-        self.logger.info(f"Model and Node2Vec features saved to {save_dir}")
+        logger.info(f"Model and Node2Vec features saved to {save_dir}")
 
     @classmethod
     def load(cls, load_dir: str, device: torch.device | str = "cpu", **kwargs) -> Self:

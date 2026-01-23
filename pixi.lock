@@ -192,6 +192,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.2.1-hd747db4_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-3.0.0-py312h8ecdadd_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/parallel-hashmap-2.0.0-h8773872_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.5-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pexpect-4.9.0-pyhd8ed1ab_1.conda
@@ -209,6 +210,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pyarrow-core-22.0.0-py312hc195796_1_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-3.0.1-pyh7a1b43c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-global-3.0.1-pyhc7ab6ef_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/pyg-lib-0.4.0-cpu_py312h46cd49a_5.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.3.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pyside6-6.10.1-py312h9da60e5_0.conda
@@ -511,6 +513,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/orc-2.2.1-h4fd0076_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-3.0.0-py312hae6be28_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/parallel-hashmap-2.0.0-h8773872_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.5-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pexpect-4.9.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pillow-12.1.0-py312h4e908a4_0.conda
@@ -526,6 +529,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyarrow-core-22.0.0-py312hae6ed00_1_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-3.0.1-pyh7a1b43c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-global-3.0.1-pyhc7ab6ef_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyg-lib-0.4.0-cpu_py312h8e1e2c6_5.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.3.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pysocks-1.7.1-pyha55dd90_7.conda
@@ -847,6 +851,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.2.1-hd747db4_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-3.0.0-py312h8ecdadd_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/parallel-hashmap-2.0.0-h8773872_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.5-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pexpect-4.9.0-pyhd8ed1ab_1.conda
@@ -864,6 +869,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pyarrow-core-22.0.0-py312hc195796_1_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-3.0.1-pyh7a1b43c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-global-3.0.1-pyhc7ab6ef_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/pyg-lib-0.4.0-cpu_py312h46cd49a_5.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.3.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pyside6-6.10.1-py312h9da60e5_0.conda
@@ -1169,6 +1175,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/orc-2.2.1-h4fd0076_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-3.0.0-py312hae6be28_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/parallel-hashmap-2.0.0-h8773872_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.5-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pexpect-4.9.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pillow-12.1.0-py312h4e908a4_0.conda
@@ -1184,6 +1191,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyarrow-core-22.0.0-py312hae6ed00_1_cpu.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-3.0.1-pyh7a1b43c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pybind11-global-3.0.1-pyhc7ab6ef_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyg-lib-0.4.0-cpu_py312h8e1e2c6_5.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pyparsing-3.3.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pysocks-1.7.1-pyha55dd90_7.conda
@@ -2550,7 +2558,7 @@ packages:
 - pypi: ./
   name: dgadb
   version: 0.1.0
-  sha256: 6a9b99e872b136fa5a73fc604efb0b56e6392e2137545f3c89788dea26bd0d8f
+  sha256: 78c9201e0c5863b7b53ec59bc1cb6dda2a70d80cf1ba041b5f46282e1f4b9ffd
   requires_dist:
   - ray[all]>=2.51.1
   - torch-geometric>=2.7.0
@@ -6326,6 +6334,14 @@ packages:
   - pkg:pypi/pandas?source=hash-mapping
   size: 13876050
   timestamp: 1769076491884
+- conda: https://conda.anaconda.org/conda-forge/noarch/parallel-hashmap-2.0.0-h8773872_0.conda
+  sha256: be14a2bd06b82d7c2d32f8f31bdced1395af0b8bdcee3581bf9926fa7bfef59a
+  md5: f3f5a7a7ad55e6cf24bbffb13591134f
+  license: Apache-2.0
+  license_family: APACHE
+  purls: []
+  size: 112658
+  timestamp: 1737488382750
 - conda: https://conda.anaconda.org/conda-forge/noarch/parso-0.8.5-pyhcf101f3_0.conda
   sha256: 30de7b4d15fbe53ffe052feccde31223a236dae0495bab54ab2479de30b2990f
   md5: a110716cdb11cf51482ff4000dc253d7
@@ -6874,6 +6890,49 @@ packages:
   requires_dist:
   - typing-extensions>=4.14.1
   requires_python: '>=3.9'
+- conda: https://conda.anaconda.org/conda-forge/linux-64/pyg-lib-0.4.0-cpu_py312h46cd49a_5.conda
+  sha256: 315a5eb3fadeaa93c417d838bf855768ca65b4ac729d4d40c1b5d8e6af876e99
+  md5: 6228e9e4ea6c93942c68715902cd89f7
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - _openmp_mutex >=4.5
+  - libgcc >=14
+  - libstdcxx >=14
+  - libtorch >=2.7.1,<2.8.0a0
+  - parallel-hashmap
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  - pytorch >=2.7.1,<2.8.0a0
+  constrains:
+  - pytorch * cpu*
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/pyg-lib?source=hash-mapping
+  size: 1199850
+  timestamp: 1756619801544
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyg-lib-0.4.0-cpu_py312h8e1e2c6_5.conda
+  sha256: ac3a3516430e50056d6bb61534647b1c6cf996c31c4fdc10a0574fbb3a529a09
+  md5: de78d991abf4e945ef81e9381c004fc2
+  depends:
+  - __osx >=11.0
+  - libcxx >=19
+  - libtorch >=2.7.1,<2.8.0a0
+  - llvm-openmp >=19.1.7
+  - llvm-openmp >=20.1.8
+  - parallel-hashmap
+  - python >=3.12,<3.13.0a0
+  - python >=3.12,<3.13.0a0 *_cpython
+  - python_abi 3.12.* *_cp312
+  - pytorch >=2.7.1,<2.8.0a0
+  constrains:
+  - pytorch * cpu*
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/pyg-lib?source=hash-mapping
+  size: 879433
+  timestamp: 1756619700503
 - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
   sha256: 5577623b9f6685ece2697c6eb7511b4c9ac5fb607c9babc2646c811b428fd46a
   md5: 6b6ece66ebcae2d5f326c77ef2c5a066
