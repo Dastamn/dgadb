@@ -1,0 +1,55 @@
+Bootstrap: docker
+From: condaforge/miniforge3:latest
+
+%labels
+    Author "DGADB Team"
+    Version "1.0.0"
+    Description "DGADB - Dynamic Graph Anomaly Detection Benchmark"
+
+%files
+    pyproject.toml /build/pyproject.toml
+    pixi.lock /build/pixi.lock
+    src/ /build/src/
+
+%environment
+    export BASE_PATH=/app
+    export PATH=/build/.pixi/envs/default/bin:$PATH
+    export PYTHONPATH=/app/src:$PYTHONPATH
+
+%post
+    # Install system dependencies
+    apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates git build-essential \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Install pixi
+    curl -fsSL https://pixi.sh/install.sh | bash
+    mkdir -p /opt/pixi/bin
+    mv $HOME/.pixi/bin/pixi /opt/pixi/bin/
+    chmod +x /opt/pixi/bin/pixi
+
+    # Create app directory structure
+    mkdir -p /app
+
+    # Install dependencies using pixi
+    cd /build
+    /opt/pixi/bin/pixi install --manifest-path /build/pyproject.toml
+
+    # Clean up to reduce image size
+    /opt/pixi/bin/pixi clean cache -y || true
+    rm -rf /tmp/* /var/tmp/*
+
+%runscript
+    exec python -m dgadb.experiment.runner "$@"
+
+%test
+    python -c "import torch; print(f'PyTorch: {torch.__version__}')"
+    python -c "import torch_geometric; print(f'PyG: {torch_geometric.__version__}')"
+
+%help
+    DGADB Container - Run experiments with:
+
+    apptainer run --bind /path/to/dgadb:/app dgadb.sif --method sad --dataset bitcoin-alpha
+
+    Interactive shell:
+    apptainer shell --bind /path/to/dgadb:/app dgadb.sif
