@@ -54,6 +54,56 @@ apptainer run \
     container/dgadb.sif --method sad --dataset bitcoin-alpha
 ```
 
+## CPU Resource Limiting
+
+When running multiple experiments on a shared server, you can limit each run to specific CPUs using `taskset`. This provides hard isolation without requiring cgroups v2 configuration.
+
+### Basic Usage
+
+```bash
+# Pin to CPUs 0-3
+taskset -c 0-3 apptainer run --bind /path/to/dgadb:/app container/dgadb.sif --method sad --dataset bitcoin-alpha
+```
+
+### Combining with Thread Limits
+
+For best results, also set thread environment variables to match:
+
+```bash
+taskset -c 0-3 apptainer run \
+    --bind /path/to/dgadb:/app \
+    --env OMP_NUM_THREADS=4 \
+    --env MKL_NUM_THREADS=4 \
+    --env OPENBLAS_NUM_THREADS=4 \
+    container/dgadb.sif --method sad --dataset bitcoin-alpha
+```
+
+### Running Multiple Isolated Experiments
+
+Example script to run multiple experiments on different CPU sets:
+
+```bash
+#!/bin/bash
+CPUS_PER_RUN=4
+RUN_ID=$1
+START_CPU=$((RUN_ID * CPUS_PER_RUN))
+END_CPU=$((START_CPU + CPUS_PER_RUN - 1))
+
+taskset -c "$START_CPU-$END_CPU" apptainer run \
+    --bind /path/to/dgadb:/app \
+    --env OMP_NUM_THREADS=$CPUS_PER_RUN \
+    --env MKL_NUM_THREADS=$CPUS_PER_RUN \
+    container/dgadb.sif "$@"
+```
+
+Usage:
+
+```bash
+./run_isolated.sh 0 --method sad --dataset bitcoin-alpha &   # CPUs 0-3
+./run_isolated.sh 1 --method taddy --dataset bitcoin-alpha & # CPUs 4-7
+./run_isolated.sh 2 --method slade --dataset bitcoin-alpha & # CPUs 8-11
+```
+
 ## Verification
 
 After building, verify the container works:
