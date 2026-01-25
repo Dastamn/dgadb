@@ -355,17 +355,16 @@ class TemporalGraphLoaderNew:
         self.base_dir = base_directory
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def _get_variant_dir(self, dataset_name: str, anom_type: str | None, tr: float, v: float, te: float, dur: str) -> str:
+    def _get_variant_name(self, anom_type: Optional[str], tr: float, v: float, te: float, dur: Optional[str]) -> Optional[str]:
         if anom_type is None:
-            return os.path.join(self.base_dir, dataset_name, "clean")
+            return None
 
-        folder_name = f"{anom_type}_tr{tr}_v{v}_te{te}_{dur}"
-        return os.path.join(self.base_dir, dataset_name, folder_name)
+        assert dur is not None
+        return f"{anom_type}_tr{tr}_v{v}_te{te}_{dur}"
 
     def _prepare_json_meta(self, obj: Any) -> Any:
         if isinstance(obj, dict):
             new_dict = {k: self._prepare_json_meta(v) for k, v in obj.items()}
-
             if "anomaly_group_ids" in obj and torch.is_tensor(obj["anomaly_group_ids"]):
                 ids = obj["anomaly_group_ids"]
                 new_dict["anomaly_summary"] = {
@@ -376,10 +375,8 @@ class TemporalGraphLoaderNew:
 
         elif isinstance(obj, list):
             return [self._prepare_json_meta(v) for v in obj]
-
         elif torch.is_tensor(obj):
             return f"<Tensor: shape={list(obj.shape)}, dtype={obj.dtype}>"
-
         elif isinstance(obj, (np.integer, int)):
             return int(obj)
         elif isinstance(obj, (np.floating, float)):
@@ -389,12 +386,9 @@ class TemporalGraphLoaderNew:
 
     def save(self, tg: TemporalGraph, variant_dir: str):
         os.makedirs(variant_dir, exist_ok=True)
-
         torch.save(tg, os.path.join(variant_dir, "data.pt"))
-
         json_meta = self._prepare_json_meta(tg.metadata)
-
-        with open(os.path.join(variant_dir, "meta.json"), "w") as f:
+        with open(os.path.join(variant_dir, "metadata.json"), "w") as f:
             json.dump(json_meta, f, indent=4)
 
         self.logger.info(f"Saved data.pt and meta.json to {variant_dir}")
@@ -410,10 +404,10 @@ class TemporalGraphLoaderNew:
         duration_type: Literal["small", "medium", "large"] = "medium",
         create_if_not_found: bool = False
     ) -> TemporalGraph:
-        variant_dir = self._get_variant_dir(
-            dataset_name, anom_type, anom_train_ratio,
-            anom_val_ratio, anom_test_ratio, duration_type
-        )
+        variant_name = self._get_variant_name(
+            anom_type, anom_train_ratio, anom_val_ratio, anom_test_ratio, duration_type)
+        variant_dir = os.path.join(
+            self.base_dir, dataset_name, variant_name or "clean")
         data_path = os.path.join(variant_dir, "data.pt")
 
         if os.path.exists(data_path):
@@ -426,7 +420,7 @@ class TemporalGraphLoaderNew:
         self.logger.info(
             f"Requested variant not found. Creating {dataset_name} ({anom_type})...")
 
-        clean_dir = self._get_variant_dir(dataset_name, None, 0, 0, 0, "")
+        clean_dir = os.path.join(self.base_dir, dataset_name, "clean")
         clean_path = os.path.join(clean_dir, "data.pt")
 
         if os.path.exists(clean_path):
@@ -450,6 +444,7 @@ class TemporalGraphLoaderNew:
                 test_ratio=anom_test_ratio,
                 duration_type=duration_type
             )
+            tg.metadata["variant_name"] = variant_name
             self.save(tg, variant_dir)
 
         return tg
