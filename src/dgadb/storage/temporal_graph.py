@@ -1,3 +1,5 @@
+import numpy as np
+from typing import Literal
 import os
 import glob
 import json
@@ -81,10 +83,10 @@ class TemporalGraph:
     def adj_matrix_dense(self) -> torch.Tensor:
         return self.adj_matrix_coo.to_dense()
 
-    def flip_edge_labels(self):
-        device = self.edge_labels.device
-        self.edge_labels = ((self.edge_labels - torch.tensor(1, device=device))
-                            * torch.tensor(-1, device=device))
+    # def flip_edge_labels(self):
+    #     device = self.edge_labels.device
+    #     self.edge_labels = ((self.edge_labels - torch.tensor(1, device=device))
+    #                         * torch.tensor(-1, device=device))
 
     def to(self, device: Any, **kwargs):
         if self.device == torch.device(device):
@@ -120,7 +122,8 @@ class TemporalGraph:
         print(f"Number of Nodes: {self.num_nodes}")
         print(f"Number of Edges: {len(self.src)}")
         print(f"  - Train Edges: {self.train_mask.sum().item()}")
-        print(f"  - Validation Edges: {self.val_mask.sum().item()}")
+        print(
+            f"  - Validation Edges: {self.val_mask.sum().item() if self.val_mask is not None else None}")
         print(f"  - Test Edges: {self.test_mask.sum().item()}")
         print("\nTensor Attributes:")
         for key, value in self.__dict__.items():
@@ -344,3 +347,104 @@ class TemporalGraphLoader:
             f"Found matching graph: {os.path.basename(path_prefix)}.pt")
 
         return torch.load(f"{path_prefix}.pt")
+
+
+class TemporalGraphLoaderNew:
+    def __init__(self, base_directory: str = "processed") -> None:
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.base_dir = base_directory
+        os.makedirs(self.base_dir, exist_ok=True)
+
+    def _get_variant_name(self, anom_type: Optional[str], tr: float, v: float, te: float, dur: Optional[str]) -> Optional[str]:
+        if anom_type is None:
+            return None
+
+        assert dur is not None
+        return f"{anom_type}_tr{tr}_v{v}_te{te}_{dur}"
+
+    def _prepare_json_meta(self, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            new_dict = {k: self._prepare_json_meta(v) for k, v in obj.items()}
+            if "anomaly_group_ids" in obj and torch.is_tensor(obj["anomaly_group_ids"]):
+                ids = obj["anomaly_group_ids"]
+                new_dict["anomaly_summary"] = {
+                    "total_anomaly_groups": int(ids.max().item()),
+                    "total_anomalous_edges": int((ids > 0).sum().item())
+                }
+            return new_dict
+
+        elif isinstance(obj, list):
+            return [self._prepare_json_meta(v) for v in obj]
+        elif torch.is_tensor(obj):
+            return f"<Tensor: shape={list(obj.shape)}, dtype={obj.dtype}>"
+        elif isinstance(obj, (np.integer, int)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, float)):
+            return float(obj)
+        else:
+            return obj
+
+    def save(self, tg: TemporalGraph, variant_dir: str):
+        os.makedirs(variant_dir, exist_ok=True)
+        torch.save(tg, os.path.join(variant_dir, "data.pt"))
+        json_meta = self._prepare_json_meta(tg.metadata)
+        with open(os.path.join(variant_dir, "metadata.json"), "w") as f:
+            json.dump(json_meta, f, indent=4)
+
+        self.logger.info(f"Saved data.pt and meta.json to {variant_dir}")
+
+    def load(
+        self,
+        dataset_name: str,
+        anom_type: Optional[Literal["random", "burst",
+                                    "clique", "path", "bridge"]] = None,
+        anom_train_ratio: float = 0.0,
+        anom_val_ratio: float = 0.0,
+        anom_test_ratio: float = 0.0,
+        duration_type: Literal["small", "medium", "large"] = "medium",
+        create_if_not_found: bool = False
+    ) -> TemporalGraph:
+        variant_name = self._get_variant_name(
+            anom_type, anom_train_ratio, anom_val_ratio, anom_test_ratio, duration_type)
+        variant_dir = os.path.join(
+            self.base_dir, dataset_name, variant_name or "clean")
+        data_path = os.path.join(variant_dir, "data.pt")
+
+        if os.path.exists(data_path):
+            self.logger.info(f"Loading existing graph from {variant_dir}")
+            return torch.load(data_path)
+
+        if not create_if_not_found:
+            raise FileNotFoundError(f"No graph found at {variant_dir}")
+
+        self.logger.info(
+            f"Requested variant not found. Creating {dataset_name} ({anom_type})...")
+
+        clean_dir = os.path.join(self.base_dir, dataset_name, "clean")
+        clean_path = os.path.join(clean_dir, "data.pt")
+
+        if os.path.exists(clean_path):
+            tg = torch.load(clean_path)
+        else:
+            from src.dgadb.preprocessing import Pipeline
+            self.logger.info(
+                f"Clean graph not found. Running pipeline for {dataset_name}...")
+            pipeline = Pipeline.from_config(dataset_name)
+            tg = pipeline.run().to_temporal_graph()
+            tg.metadata["dataset_name"] = dataset_name
+            self.save(tg, clean_dir)
+
+        if anom_type is not None:
+            from src.dgadb.preprocessing.anomaly_injection import AnomalyInjector
+            injector = AnomalyInjector(tg, cache_dir=self.base_dir)
+            tg = injector.generate_anomalous_samples(
+                anom_type=anom_type,
+                train_ratio=anom_train_ratio,
+                val_ratio=anom_val_ratio,
+                test_ratio=anom_test_ratio,
+                duration_type=duration_type
+            )
+            tg.metadata["variant_name"] = variant_name
+            self.save(tg, variant_dir)
+
+        return tg
