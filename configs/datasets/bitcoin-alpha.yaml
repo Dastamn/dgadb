@@ -1,31 +1,18 @@
-# snapshot_size: 1000
-# train_ratio: 0.70
-# anomaly_ratio: 0.01
-
 dataset:
   name: bitcoin-alpha
-  paths:
-    raw: null
-    structured: data/bitcoin-alpha
-    processed: null
-
-# anomalies:
-#   anom_train_ratio: 0.5
-#   anom_val_ratio: 0.1
-#   anom_test_ratio: 0.1
 
 pipeline:
   cache_dir: pipeline_cache/bitcoin-alpha
   steps:
     - name: DataLoader
       params:
-        dataset_dir: data/bitcoin-alpha
+        dataset_dir: /mnt/disk2/nazim/dgadb/data/bitcoin-alpha
     - name: StructureNormalizer
       params:
         directionality: canonical
         reindex_nodes: True
-        remove_self_loops: False
-        remove_duplicates: False
+        remove_self_loops: True
+        remove_duplicates: True
         
     - name: TimestampNormalizer
 
