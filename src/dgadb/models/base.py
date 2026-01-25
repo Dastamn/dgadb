@@ -130,6 +130,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
     """
 
     def __init__(self, device: torch.device | str = "cpu") -> None:
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.device = device
         self._components: Optional[BaseADModelComponentsType] = None
 
