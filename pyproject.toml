@@ -38,6 +38,7 @@ pytorch = ">=2.7.1"
 typer = ">=0.20.0"
 transformers = ">=4.57.1"
 pyg-lib = ">=0.4.0"
+safetensors = ">=0.7.0"
 
 [tool.pixi.feature.dev.dependencies]
 ty = "*"

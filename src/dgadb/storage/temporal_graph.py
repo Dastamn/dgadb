@@ -7,10 +7,11 @@ import copy
 import logging
 
 from typing import Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from collections import defaultdict
 
 import torch
+from safetensors.torch import save_file, load_file
 
 from torch.types import Device
 
@@ -384,14 +385,107 @@ class TemporalGraphLoaderNew:
         else:
             return obj
 
+    def _extract_tensors(self, tg: TemporalGraph) -> dict[str, torch.Tensor]:
+        """Extract all tensor attributes from TemporalGraph for safetensors serialization."""
+        tensors = {}
+
+        # Extract dataclass field tensors
+        for f in fields(tg):
+            value = getattr(tg, f.name)
+            if torch.is_tensor(value):
+                # safetensors requires contiguous tensors
+                tensors[f.name] = value.contiguous()
+
+        # Extract tensor values from metadata (e.g., anomaly_group_ids)
+        self._extract_metadata_tensors(tg.metadata, "metadata", tensors)
+
+        return tensors
+
+    def _extract_metadata_tensors(
+        self, obj: Any, prefix: str, tensors: dict[str, torch.Tensor]
+    ) -> None:
+        """Recursively extract tensors from metadata dict."""
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                self._extract_metadata_tensors(value, f"{prefix}.{key}", tensors)
+        elif torch.is_tensor(obj):
+            tensors[prefix] = obj.contiguous()
+
+    def _prepare_metadata_for_json(self, metadata: dict) -> dict:
+        """Prepare metadata for JSON serialization by removing tensors."""
+        result = {}
+        for key, value in metadata.items():
+            if isinstance(value, dict):
+                result[key] = self._prepare_metadata_for_json(value)
+            elif torch.is_tensor(value):
+                # Store a marker that this was a tensor (for reconstruction)
+                result[key] = {"__tensor__": True, "shape": list(value.shape), "dtype": str(value.dtype)}
+            elif isinstance(value, (np.integer, int)):
+                result[key] = int(value)
+            elif isinstance(value, (np.floating, float)):
+                result[key] = float(value)
+            else:
+                result[key] = value
+        return result
+
     def save(self, tg: TemporalGraph, variant_dir: str):
         os.makedirs(variant_dir, exist_ok=True)
-        torch.save(tg, os.path.join(variant_dir, "data.pt"))
-        json_meta = self._prepare_json_meta(tg.metadata)
+
+        # Save tensors using safetensors
+        tensors = self._extract_tensors(tg)
+        save_file(tensors, os.path.join(variant_dir, "data.safetensors"))
+
+        # Save metadata as JSON (with tensor markers for reconstruction)
+        json_meta = self._prepare_metadata_for_json(tg.metadata)
         with open(os.path.join(variant_dir, "metadata.json"), "w") as f:
             json.dump(json_meta, f, indent=4)
 
-        self.logger.info(f"Saved data.pt and meta.json to {variant_dir}")
+        self.logger.info(f"Saved data.safetensors and metadata.json to {variant_dir}")
+
+    def _reconstruct_metadata(self, json_meta: dict, tensors: dict[str, torch.Tensor], prefix: str = "metadata") -> dict:
+        """Reconstruct metadata dict, replacing tensor markers with actual tensors."""
+        result = {}
+        for key, value in json_meta.items():
+            tensor_key = f"{prefix}.{key}"
+            if isinstance(value, dict):
+                if value.get("__tensor__") is True:
+                    # This was a tensor, retrieve from tensors dict
+                    result[key] = tensors[tensor_key]
+                else:
+                    result[key] = self._reconstruct_metadata(value, tensors, tensor_key)
+            else:
+                result[key] = value
+        return result
+
+    def _load_from_safetensors(self, variant_dir: str) -> TemporalGraph:
+        """Load a TemporalGraph from safetensors format."""
+        tensors = load_file(os.path.join(variant_dir, "data.safetensors"))
+
+        with open(os.path.join(variant_dir, "metadata.json"), "r") as f:
+            json_meta = json.load(f)
+
+        # Reconstruct metadata with tensors
+        metadata = self._reconstruct_metadata(json_meta, tensors)
+
+        # Build TemporalGraph from tensors
+        return TemporalGraph(
+            src=tensors["src"],
+            tgt=tensors["tgt"],
+            t=tensors["t"],
+            msg=tensors["msg"],
+            edge_labels=tensors.get("edge_labels"),
+            train_mask=tensors["train_mask"],
+            test_mask=tensors["test_mask"],
+            val_mask=tensors.get("val_mask"),
+            w=tensors.get("w"),
+            node_attr=tensors.get("node_attr"),
+            node_labels=tensors.get("node_labels"),
+            metadata=metadata,
+        )
+
+    def _load_from_legacy(self, data_path: str) -> TemporalGraph:
+        """Load from legacy torch.save format (for backwards compatibility)."""
+        return torch.load(data_path, weights_only=False)
 
     def load(
         self,
@@ -408,11 +502,17 @@ class TemporalGraphLoaderNew:
             anom_type, anom_train_ratio, anom_val_ratio, anom_test_ratio, duration_type)
         variant_dir = os.path.join(
             self.base_dir, dataset_name, variant_name or "clean")
-        data_path = os.path.join(variant_dir, "data.pt")
 
-        if os.path.exists(data_path):
-            self.logger.info(f"Loading existing graph from {variant_dir}")
-            return torch.load(data_path, weights_only=False)
+        safetensors_path = os.path.join(variant_dir, "data.safetensors")
+        legacy_path = os.path.join(variant_dir, "data.pt")
+
+        # Try safetensors first, fall back to legacy format
+        if os.path.exists(safetensors_path):
+            self.logger.info(f"Loading existing graph from {variant_dir} (safetensors)")
+            return self._load_from_safetensors(variant_dir)
+        elif os.path.exists(legacy_path):
+            self.logger.info(f"Loading existing graph from {variant_dir} (legacy format)")
+            return self._load_from_legacy(legacy_path)
 
         if not create_if_not_found:
             raise FileNotFoundError(f"No graph found at {variant_dir}")
@@ -421,10 +521,13 @@ class TemporalGraphLoaderNew:
             f"Requested variant not found. Creating {dataset_name} ({anom_type})...")
 
         clean_dir = os.path.join(self.base_dir, dataset_name, "clean")
-        clean_path = os.path.join(clean_dir, "data.pt")
+        clean_safetensors_path = os.path.join(clean_dir, "data.safetensors")
+        clean_legacy_path = os.path.join(clean_dir, "data.pt")
 
-        if os.path.exists(clean_path):
-            tg = torch.load(clean_path, weights_only=False)
+        if os.path.exists(clean_safetensors_path):
+            tg = self._load_from_safetensors(clean_dir)
+        elif os.path.exists(clean_legacy_path):
+            tg = self._load_from_legacy(clean_legacy_path)
         else:
             from dgadb.preprocessing import Pipeline
             self.logger.info(
