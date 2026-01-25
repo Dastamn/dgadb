@@ -12,9 +12,9 @@ from .model.CensNet import CensNet
 from .model.Transformer import TransformerBinaryClassifier
 from .model.Combine import CombinedModel
 
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents
-from src.dgadb.storage.temporal_graph import TemporalGraph, TemporalGraphView
-from src.dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
+from dgadb.models.base import BaseADModel, BaseADModelComponents
+from dgadb.storage.temporal_graph import TemporalGraph, TemporalGraphView
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
 import random
 
 

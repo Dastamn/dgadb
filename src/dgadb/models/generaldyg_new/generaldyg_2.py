@@ -12,9 +12,9 @@ from .model.CensNet import CensNet
 from .model.Transformer import TransformerBinaryClassifier
 from .model.Combine import CombinedModel
 
-from src.dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
-from src.dgadb.storage.temporal_graph import TemporalGraph
-from src.dgadb.experiment.callbacks import ExperimentCallbackHandler
+from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.experiment.callbacks import ExperimentCallbackHandler
 from dataclasses import dataclass
 from sklearn.metrics import roc_auc_score
 
