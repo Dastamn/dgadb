@@ -104,6 +104,49 @@ Usage:
 ./run_isolated.sh 2 --method slade --dataset bitcoin-alpha & # CPUs 8-11
 ```
 
+## Aim UI (Experiment Tracking)
+
+Run the Aim web UI from within the container to view experiment results.
+
+### Using the Wrapper Script
+
+```bash
+./container/aim-up.sh        # Default port 43800
+./container/aim-up.sh 8080   # Custom port
+```
+
+### Using Apptainer Directly
+
+```bash
+apptainer exec --bind /path/to/dgadb:/app container/dgadb.sif aim up --host 0.0.0.0 --port 43800
+```
+
+### Remote Access via SSH Port Forwarding
+
+To access Aim running on a remote server from your local machine:
+
+```bash
+# On your local machine - create SSH tunnel
+ssh -L 43800:localhost:43800 user@server
+
+# On the server - start Aim
+./container/aim-up.sh
+```
+
+Then open `http://localhost:43800` in your local browser.
+
+### Running in Background
+
+To keep Aim running after disconnecting:
+
+```bash
+# Using nohup
+nohup ./container/aim-up.sh &
+
+# Using tmux
+tmux new -d -s aim './container/aim-up.sh'
+```
+
 ## Verification
 
 After building, verify the container works:
