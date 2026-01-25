@@ -317,7 +317,7 @@ class AnomalyInjector:
 
 if __name__ == "__main__":
     import logging
-    from src.dgadb.storage.temporal_graph import TemporalGraphLoader, TemporalGraphLoaderNew
+    from dgadb.storage.temporal_graph import TemporalGraphLoader, TemporalGraphLoaderNew
 
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')

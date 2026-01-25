@@ -426,7 +426,7 @@ class TemporalGraphLoaderNew:
         if os.path.exists(clean_path):
             tg = torch.load(clean_path)
         else:
-            from src.dgadb.preprocessing import Pipeline
+            from dgadb.preprocessing import Pipeline
             self.logger.info(
                 f"Clean graph not found. Running pipeline for {dataset_name}...")
             pipeline = Pipeline.from_config(dataset_name)
@@ -435,7 +435,7 @@ class TemporalGraphLoaderNew:
             self.save(tg, clean_dir)
 
         if anom_type is not None:
-            from src.dgadb.preprocessing.anomaly_injection import AnomalyInjector
+            from dgadb.preprocessing.anomaly_injection import AnomalyInjector
             injector = AnomalyInjector(tg, cache_dir=self.base_dir)
             tg = injector.generate_anomalous_samples(
                 anom_type=anom_type,
