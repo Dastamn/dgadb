@@ -28,8 +28,10 @@ class AnomalyInjector:
             raise ValueError(
                 "TemporalGraph metadata must contain 'dataset_name' for caching logic.")
 
-        self.cache_path = os.path.join(cache_dir, self.dataset_name, "cache")
+        self.cache_path = os.path.join(
+            cache_dir, self.dataset_name, "analysis")
         os.makedirs(self.cache_path, exist_ok=True)
+
         self.stats_file = os.path.join(self.cache_path, "graph_stats.json")
         self.comm_file = os.path.join(self.cache_path, "communities.npy")
 
@@ -333,7 +335,7 @@ if __name__ == "__main__":
     # )
 
     loader = TemporalGraphLoaderNew()
-    tg = loader.load("bitcoin-alpha", "clique",
+    tg = loader.load("bitcoin-alpha", "bridge",
                      anom_test_ratio=.1, create_if_not_found=True)
 
     from pprint import pprint
