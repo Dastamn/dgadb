@@ -27,7 +27,44 @@ VALID_METRICS = [
 ]
 
 
-def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor) -> dict:
+def compute_group_metrics(
+    y_scores: torch.Tensor,
+    group_ids: torch.Tensor,
+    threshold: float
+) -> dict:
+    mask = group_ids > 0
+    anom_scores = y_scores[mask]
+    anom_groups = group_ids[mask]
+
+    unique_groups = torch.unique(anom_groups)
+    if len(unique_groups) == 0:
+        return {}
+
+    group_coverages = []
+    group_avg_scores = []
+
+    for g_id in unique_groups:
+        g_mask = (anom_groups == g_id)
+        g_scores = anom_scores[g_mask]
+
+        detected = (g_scores >= threshold).float()
+        coverage = detected.mean().item()
+
+        group_coverages.append(coverage)
+        group_avg_scores.append(g_scores.mean().item())
+
+    coverages = np.array(group_coverages)
+
+    return {
+        "mean_group_coverage": float(np.mean(coverages)),
+        "median_group_coverage": float(np.median(coverages)),
+        "min_group_coverage": float(np.min(coverages)),
+        "max_group_coverage": float(np.max(coverages)),
+        "avg_score_within_groups": float(np.mean(group_avg_scores))
+    }
+
+
+def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor, group_ids: Optional[torch.Tensor] = None) -> dict:
     y_true = y_true.cpu()
     y_scores = y_scores.cpu()
 
@@ -35,7 +72,7 @@ def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor) -> dict:
         y_true, y_scores)
     y_pred = (y_scores >= best_threshold).to(y_true.dtype)
 
-    return {
+    results = {
         "max_f1": max_f1,
         "best_threshold": best_threshold,
         "roc_auc": roc_auc_score(y_true, y_scores),
@@ -45,6 +82,14 @@ def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor) -> dict:
         "max_precision": max_precision,
         "max_recall": max_recall
     }
+
+    if group_ids is not None:
+        group_ids = group_ids.cpu()
+        group_stats = compute_group_metrics(
+            y_scores, group_ids, best_threshold)
+        results.update(group_stats)
+
+    return results
 
 
 class ADEvaluator:
@@ -106,7 +151,7 @@ class ADEvaluator:
 
         return summary_dict
 
-    def evaluate(self, y_true: torch.Tensor, y_scores: torch.Tensor) -> dict[str, float]:
+    def evaluate(self, y_true: torch.Tensor, y_scores: torch.Tensor, group_ids: Optional[torch.Tensor] = None) -> dict[str, float]:
         """Computes metrics for a single set of predictions and stores them.
 
         Args:
@@ -117,7 +162,7 @@ class ADEvaluator:
         Returns:
             A dictionary containing the computed metrics for this evaluation run.
         """
-        metrics = compute_metrics(y_true, y_scores)
+        metrics = compute_metrics(y_true, y_scores, group_ids)
         self.results.append(metrics)
         return metrics
 
