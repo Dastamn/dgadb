@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Literal
-import os
-import glob
+from pathlib import Path
 import json
 import copy
 import logging
@@ -194,34 +193,32 @@ class TemporalGraphLoader:
         metadata_suffix: str = "_meta"
     ) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.base_directory = base_directory
+        self.base_directory = Path(base_directory)
         self.metadata_suffix = metadata_suffix
-        os.makedirs(base_directory, exist_ok=True)
+        self.base_directory.mkdir(parents=True, exist_ok=True)
         self.logger.info(
             f"TemporalGraphLoader initialized. Using base directory: {self.base_directory}")
 
-    def save(self, temporal_graph: TemporalGraph) -> str:
+    def save(self, temporal_graph: TemporalGraph) -> Path:
         dataset_name = temporal_graph.metadata.get(
             "dataset_name", "unknown-dataset")
-        dataset_dir = os.path.join(self.base_directory, dataset_name)
+        dataset_dir = self.base_directory / dataset_name
 
-        os.makedirs(dataset_dir, exist_ok=True)
+        dataset_dir.mkdir(parents=True, exist_ok=True)
 
         from .utils import generate_temporal_graph_filename
 
         prefix = generate_temporal_graph_filename(temporal_graph)
-        full_path_prefix = os.path.join(dataset_dir, prefix)
+        full_path_prefix = dataset_dir / prefix
 
-        torch_fn = f"{full_path_prefix}.pt"
-        metadata_fn = f"{full_path_prefix}{self.metadata_suffix}.json"
+        torch_path = full_path_prefix.with_suffix(".pt")
+        metadata_path = full_path_prefix.parent / f"{full_path_prefix.name}{self.metadata_suffix}.json"
 
-        torch.save(temporal_graph, torch_fn)
-        self.logger.info(f"Saved torch object: {torch_fn}")
+        torch.save(temporal_graph, torch_path)
+        self.logger.info(f"Saved torch object: {torch_path}")
 
-        with open(metadata_fn, "w") as f:
-            json.dump(temporal_graph.metadata, f, indent=4)
-
-        self.logger.info(f"Saved metadata JSON: {metadata_fn}")
+        metadata_path.write_text(json.dumps(temporal_graph.metadata, indent=4))
+        self.logger.info(f"Saved metadata JSON: {metadata_path}")
 
         self.logger.info(f"Graph saved successfully.")
 
@@ -263,14 +260,12 @@ class TemporalGraphLoader:
 
             anom_type = get_canonical_anomaly_type(anom_type)
 
-        search_pattern = os.path.join(
-            self.base_directory, dataset_name, f"{dataset_name}*{self.metadata_suffix}.json")
-        possible_files = glob.glob(search_pattern)
+        search_dir = self.base_directory / dataset_name
+        possible_files = list(search_dir.glob(f"{dataset_name}*{self.metadata_suffix}.json"))
 
         matches = []
         for meta_path in possible_files:
-            with open(meta_path, "r") as f:
-                meta = json.load(f)
+            meta = json.loads(meta_path.read_text())
 
             if meta.get("dataset_name") != dataset_name:
                 continue
@@ -341,20 +336,20 @@ class TemporalGraphLoader:
             )
 
         matched_meta_path = matches[0]
-        path_prefix = matched_meta_path.replace(
-            f"{self.metadata_suffix}.json", "")
+        # Remove the metadata suffix to get the base path
+        base_name = matched_meta_path.name.replace(f"{self.metadata_suffix}.json", "")
+        torch_path = matched_meta_path.parent / f"{base_name}.pt"
 
-        self.logger.info(
-            f"Found matching graph: {os.path.basename(path_prefix)}.pt")
+        self.logger.info(f"Found matching graph: {torch_path.name}")
 
-        return torch.load(f"{path_prefix}.pt", weights_only=False)
+        return torch.load(torch_path, weights_only=False)
 
 
 class TemporalGraphLoaderNew:
     def __init__(self, base_directory: str = "processed") -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.base_dir = base_directory
-        os.makedirs(self.base_dir, exist_ok=True)
+        self.base_dir = Path(base_directory)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_variant_name(self, anom_type: Optional[str], tr: float, v: float, te: float, dur: Optional[str]) -> Optional[str]:
         if anom_type is None:
@@ -428,17 +423,17 @@ class TemporalGraphLoaderNew:
                 result[key] = value
         return result
 
-    def save(self, tg: TemporalGraph, variant_dir: str):
-        os.makedirs(variant_dir, exist_ok=True)
+    def save(self, tg: TemporalGraph, variant_dir: Path):
+        variant_dir = Path(variant_dir)
+        variant_dir.mkdir(parents=True, exist_ok=True)
 
         # Save tensors using safetensors
         tensors = self._extract_tensors(tg)
-        save_file(tensors, os.path.join(variant_dir, "data.safetensors"))
+        save_file(tensors, variant_dir / "data.safetensors")
 
         # Save metadata as JSON (with tensor markers for reconstruction)
         json_meta = self._prepare_metadata_for_json(tg.metadata)
-        with open(os.path.join(variant_dir, "metadata.json"), "w") as f:
-            json.dump(json_meta, f, indent=4)
+        (variant_dir / "metadata.json").write_text(json.dumps(json_meta, indent=4))
 
         self.logger.info(f"Saved data.safetensors and metadata.json to {variant_dir}")
 
@@ -457,12 +452,11 @@ class TemporalGraphLoaderNew:
                 result[key] = value
         return result
 
-    def _load_from_safetensors(self, variant_dir: str) -> TemporalGraph:
+    def _load_from_safetensors(self, variant_dir: Path) -> TemporalGraph:
         """Load a TemporalGraph from safetensors format."""
-        tensors = load_file(os.path.join(variant_dir, "data.safetensors"))
-
-        with open(os.path.join(variant_dir, "metadata.json"), "r") as f:
-            json_meta = json.load(f)
+        variant_dir = Path(variant_dir)
+        tensors = load_file(variant_dir / "data.safetensors")
+        json_meta = json.loads((variant_dir / "metadata.json").read_text())
 
         # Reconstruct metadata with tensors
         metadata = self._reconstruct_metadata(json_meta, tensors)
@@ -483,7 +477,7 @@ class TemporalGraphLoaderNew:
             metadata=metadata,
         )
 
-    def _load_from_legacy(self, data_path: str) -> TemporalGraph:
+    def _load_from_legacy(self, data_path: Path) -> TemporalGraph:
         """Load from legacy torch.save format (for backwards compatibility)."""
         return torch.load(data_path, weights_only=False)
 
@@ -500,17 +494,16 @@ class TemporalGraphLoaderNew:
     ) -> TemporalGraph:
         variant_name = self._get_variant_name(
             anom_type, anom_train_ratio, anom_val_ratio, anom_test_ratio, duration_type)
-        variant_dir = os.path.join(
-            self.base_dir, dataset_name, variant_name or "clean")
+        variant_dir = self.base_dir / dataset_name / (variant_name or "clean")
 
-        safetensors_path = os.path.join(variant_dir, "data.safetensors")
-        legacy_path = os.path.join(variant_dir, "data.pt")
+        safetensors_path = variant_dir / "data.safetensors"
+        legacy_path = variant_dir / "data.pt"
 
         # Try safetensors first, fall back to legacy format
-        if os.path.exists(safetensors_path):
+        if safetensors_path.exists():
             self.logger.info(f"Loading existing graph from {variant_dir} (safetensors)")
             return self._load_from_safetensors(variant_dir)
-        elif os.path.exists(legacy_path):
+        elif legacy_path.exists():
             self.logger.info(f"Loading existing graph from {variant_dir} (legacy format)")
             return self._load_from_legacy(legacy_path)
 
@@ -520,13 +513,13 @@ class TemporalGraphLoaderNew:
         self.logger.info(
             f"Requested variant not found. Creating {dataset_name} ({anom_type})...")
 
-        clean_dir = os.path.join(self.base_dir, dataset_name, "clean")
-        clean_safetensors_path = os.path.join(clean_dir, "data.safetensors")
-        clean_legacy_path = os.path.join(clean_dir, "data.pt")
+        clean_dir = self.base_dir / dataset_name / "clean"
+        clean_safetensors_path = clean_dir / "data.safetensors"
+        clean_legacy_path = clean_dir / "data.pt"
 
-        if os.path.exists(clean_safetensors_path):
+        if clean_safetensors_path.exists():
             tg = self._load_from_safetensors(clean_dir)
-        elif os.path.exists(clean_legacy_path):
+        elif clean_legacy_path.exists():
             tg = self._load_from_legacy(clean_legacy_path)
         else:
             from dgadb.preprocessing import Pipeline
