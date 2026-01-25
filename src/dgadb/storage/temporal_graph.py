@@ -346,7 +346,7 @@ class TemporalGraphLoader:
         self.logger.info(
             f"Found matching graph: {os.path.basename(path_prefix)}.pt")
 
-        return torch.load(f"{path_prefix}.pt")
+        return torch.load(f"{path_prefix}.pt", weights_only=False)
 
 
 class TemporalGraphLoaderNew:
@@ -412,7 +412,7 @@ class TemporalGraphLoaderNew:
 
         if os.path.exists(data_path):
             self.logger.info(f"Loading existing graph from {variant_dir}")
-            return torch.load(data_path)
+            return torch.load(data_path, weights_only=False)
 
         if not create_if_not_found:
             raise FileNotFoundError(f"No graph found at {variant_dir}")
@@ -424,7 +424,7 @@ class TemporalGraphLoaderNew:
         clean_path = os.path.join(clean_dir, "data.pt")
 
         if os.path.exists(clean_path):
-            tg = torch.load(clean_path)
+            tg = torch.load(clean_path, weights_only=False)
         else:
             from dgadb.preprocessing import Pipeline
             self.logger.info(
