@@ -29,6 +29,7 @@ class Method(str, Enum):
     gat = "gat"
     graphsage = "graphsage"
     rustgraph = "rustgraph"
+    generaldyg = "generaldyg"
 
 
 app = typer.Typer()
@@ -136,8 +137,15 @@ class ExperimentRunner:
         )
         all_labels, all_scores = self.model.run_inference(test_loader)
 
+        test_group_ids = None
+        anomaly_group_ids = self.data.metadata.get("anomaly_group_ids", None)
+        anom_injection_meta = self.data.metadata.get("anomaly_injection", None)
+
+        if anomaly_group_ids is not None and anom_injection_meta is not None and anom_injection_meta["type"] not in ["random", "bridge"]:
+            test_group_ids = anomaly_group_ids[self.data.test_mask]
+
         evaluator = ADEvaluator(self.output_dir)
-        metrics = evaluator.evaluate(all_labels, all_scores)
+        metrics = evaluator.evaluate(all_labels, all_scores, test_group_ids)
         self.logger.info(
             f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}"
         )
@@ -155,20 +163,20 @@ class ExperimentRunner:
 @app.command()
 def run_experiment(
     method: Annotated[Method, typer.Option(help="Method name")],
-    dataset: Annotated[str, typer.Option(help="Dataset name")] = "bitcoin-alpha",
-    experiment_name: Annotated[str, typer.Option(help="Aim experiment name")] = "dgadb",
+    dataset: Annotated[str, typer.Option(
+        help="Dataset name")] = "bitcoin-alpha",
+    experiment_name: Annotated[str, typer.Option(
+        help="Aim experiment name")] = "dgadb",
 ):
     """Run an anomaly detection experiment with the specified method and dataset."""
 
-    anom_config = {
-        "anom_type": "structural",
-        "anom_test_ratio": 0.1,
-        "anom_val_ratio": 0.1,
-    }
+    window_size = 6000
+    if dataset in ["bitcoin-alpha", "bitcoin-otc", "uc-social"]:
+        window_size = 2000
 
     snapshot_config = {
         "strategy": "window",
-        "window_size": 2000,
+        "window_size": window_size,
         "include_cumulative": True,
     }
 
@@ -193,6 +201,10 @@ def run_experiment(
             from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
 
             model = RustGraphAD()
+        case Method.generaldyg:
+            from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
+
+            model = GeneralDyGAD()
         case Method.gcn:
             from dgadb.models.baseline.gnn import GNNAD
 
@@ -206,31 +218,59 @@ def run_experiment(
 
             model = GNNAD("GraphSAGE")
 
-    loader = TemporalGraphLoader()
-    data = loader.load(dataset, **anom_config, create_if_not_found=True)
-    data = remove_duplicates(data)
+    from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
 
-    output_dir = f"latest-results/{method.value}/{dataset}"
+    loader = TemporalGraphLoaderNew()
 
-    # Configure Aim tracking with comprehensive logging
-    aim_callback = AimCallback(
-        experiment_name=experiment_name,
-        run_name=f"{method.value}_{dataset}",
-        hparams={
-            "method": method.value,
-            "dataset": dataset,
-            "epochs": 10,
-            **snapshot_config,
-        },
-        tags=[method.value, dataset, anom_config["anom_type"]],
-    )
-    aim_callback.log_config(anom_config, name="anom_config")
-    aim_callback.log_config(snapshot_config, name="snapshot_config")
+    anomaly_types = ["random", "burst", "bridge", "clique", "path"]
+    # anomaly_ratios = [0.01, 0.05, 0.1]
+    anomaly_ratios = [0.1]
+    anom_duration_types = ["small", "medium", "large"]
 
-    resource_monitor = ResourceMonitor(output_dir, step_interval=10)
+    epochs = 10
 
-    runner = ExperimentRunner(model, data, output_dir=output_dir)
-    runner.run(10, snapshot_config, [aim_callback, resource_monitor])
+    for anom_ratio in anomaly_ratios:
+        for anom_type in anomaly_types:
+            for anom_dur_type in anom_duration_types:
+                print(
+                    f"STARTING: anom_type={anom_type}, anom_ratio={anom_ratio}, anom_duration_type={anom_dur_type}")
+                data = loader.load(dataset, anom_type, anom_val_ratio=anom_ratio,
+                                   anom_test_ratio=anom_ratio, duration_type=anom_dur_type, create_if_not_found=True)
+
+                # Configure Aim tracking with comprehensive logging
+                anom_config = {
+                    "anom_type": anom_type,
+                    "anom_ratio": anom_ratio,
+                    "anom_duration_type": anom_dur_type
+                }
+
+                aim_callback = AimCallback(
+                    experiment_name=experiment_name,
+                    run_name=f"{method.value}_{dataset}",
+                    hparams={
+                        "method": method.value,
+                        "dataset": dataset,
+                        "variant": data.variant_name,
+                        "epochs": epochs,
+                        **snapshot_config,
+                    },
+                    tags=[method.value, dataset, anom_config["anom_type"],
+                          anom_config["anom_duration_type"]],
+                )
+                aim_callback.log_config(anom_config, name="anom_config")
+                aim_callback.log_config(
+                    snapshot_config, name="snapshot_config")
+
+                output_dir = f"experiment-results/{experiment_name}/{method.value}/{data.variant_name}"
+
+                resource_monitor = ResourceMonitor(output_dir)
+
+                runner = ExperimentRunner(model, data, output_dir=output_dir)
+                runner.run(epochs, snapshot_config, [
+                           aim_callback, resource_monitor])
+
+                print("DONE.")
+                print("========================")
 
 
 if __name__ == "__main__":
