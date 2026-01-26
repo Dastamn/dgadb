@@ -15,6 +15,7 @@ From: condaforge/miniforge3:latest
     export BASE_PATH=/app
     export PATH=/build/.pixi/envs/default/bin:$PATH
     export PYTHONPATH=/app/src:$PYTHONPATH
+    export STRGNN_LIB_PATH=/build/src/dgadb/models/StrGNN/pytorch_DGCNN/lib/build/dll/libgnn.so
 
 %post
     # Install system dependencies
