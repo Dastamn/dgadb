@@ -258,6 +258,11 @@ class AnomalyInjector:
 
         num_new = len(valid_src)
         device = self.tg.device
+
+        if self.tg.w is not None:
+            new_w = torch.ones(num_new, dtype=self.tg.w.dtype, device=device)
+            self.tg.w = torch.cat([self.tg.w, new_w])
+
         default_msg = torch.zeros(self.tg.msg.size(1), device=device)
         new_msgs = torch.stack([self.node_to_last_msg.get(
             u, default_msg) for u in valid_src]).to(device)
