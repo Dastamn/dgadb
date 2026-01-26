@@ -18,7 +18,6 @@ from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
 from .model import Generative, Contrastive, FCC
 
 from tqdm import tqdm
-from loguru import logger
 
 @dataclass
 class RustGraphComponents(BaseADModelComponents):
@@ -67,11 +66,11 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
 
         embedding = None
         if data.node_attr is not None:
-            logger.info("Using provided node attributes.")
+            self.logger.info("Using provided node attributes.")
             self.node_attr = data.node_attr
         else:
             # We train on the full edge list to get global structural context
-            logger.info(
+            self.logger.info(
                 f"No node_attr found. Training Node2Vec ({x_dim}) on full graph structure (transductive)..."
             )
             # We train on the full edge list to get global structural context
@@ -292,7 +291,7 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=4)
 
-        logger.info(f"Model and Node2Vec features saved to {save_dir}")
+        self.logger.info(f"Model and Node2Vec features saved to {save_dir}")
 
     @classmethod
     def load(cls, load_dir: str, device: torch.device | str = "cpu", **kwargs) -> Self:
