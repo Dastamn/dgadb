@@ -87,14 +87,6 @@ class StructureNormalizer(PipelineStep):
         tgt_col = data.e_tgt_col
         time_col = data.e_time_col
 
-        if self.reindex_nodes:
-            self.logger.info(
-                "Re-indexing nodes to a contiguous 0-to-N-1 range...")
-            data.edges, data.nodes, self.node_mapping = self._reindex_nodes(
-                data.edges, data.nodes, src_col, tgt_col, data.n_id_col)
-            self.logger.info(
-                f"Re-indexing complete. Found {len(self.node_mapping)} unique nodes.")
-
         if self.remove_self_loops:
             n_before = len(data.edges)
             data.edges = data.edges.filter(pl.col(src_col) != pl.col(tgt_col))
@@ -139,6 +131,14 @@ class StructureNormalizer(PipelineStep):
         else:
             raise NotImplementedError(
                 f"Unknown directionality '{self.directionality}'")
+        
+        if self.reindex_nodes:
+            self.logger.info(
+                "Re-indexing nodes to a contiguous 0-to-N-1 range...")
+            data.edges, data.nodes, self.node_mapping = self._reindex_nodes(
+                data.edges, data.nodes, src_col, tgt_col, data.n_id_col)
+            self.logger.info(
+                f"Re-indexing complete. Found {len(self.node_mapping)} unique nodes.")
 
         return data
 
