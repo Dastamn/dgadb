@@ -37,8 +37,6 @@ From: condaforge/miniforge3:latest
 
     # Build StrGNN C++ library (required for strgnn method)
     cd /build/src/dgadb/models/StrGNN/pytorch_DGCNN/lib
-    # Remove existing library build (may be have been built on a different platform)
-    rm -r build/
     make clean || true
     make
 
