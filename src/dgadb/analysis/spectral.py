@@ -4,11 +4,14 @@ This module provides functions for computing spectral properties of graphs,
 including Laplacian matrices, eigenvalues, and spectral density metrics.
 """
 
+import logging
+
 import numpy as np
 import torch
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import laplacian
 from scipy.sparse.linalg import eigsh
+from scipy.stats import skew
 
 from dgadb.storage import TemporalGraph
 
@@ -186,6 +189,118 @@ def compute_spectral_density(
         "counts": counts.tolist(),
         "bin_edges": bin_edges.tolist(),
         "bin_centers": bin_centers.tolist(),
+    }
+
+
+def compute_full_eigenvalues(
+    L: csr_matrix,
+    k_per_end: int = 500,
+    k_middle: int = 300,
+    size_threshold: int = 5000,
+) -> np.ndarray:
+    """Compute eigenvalues across the full spectrum of a normalized Laplacian.
+
+    For small graphs (n < size_threshold), computes all eigenvalues via dense
+    decomposition. For larger graphs, uses a hybrid sparse approach that samples
+    eigenvalues from three spectrum regions (smallest, largest, and middle near
+    sigma=1.0), yielding ~1300 representative eigenvalues across [0, 2].
+
+    Args:
+        L: Normalized Laplacian matrix in CSR format.
+        k_per_end: Number of eigenvalues to compute from each end of the spectrum.
+        k_middle: Number of eigenvalues to compute from the middle of the spectrum.
+        size_threshold: Graphs smaller than this use dense decomposition.
+
+    Returns:
+        Sorted eigenvalues clipped to [0, 2].
+    """
+    logger = logging.getLogger("spectral.full_eigenvalues")
+    n = L.shape[0]
+
+    if n < size_threshold:
+        L_dense = L.toarray()
+        eigenvalues = np.linalg.eigvalsh(L_dense)
+    else:
+        logger.info(f"Large graph (n={n}), using hybrid sparse decomposition")
+        parts = []
+
+        # Smallest eigenvalues (near 0)
+        k_sm = min(k_per_end, n - 2)
+        if k_sm > 0:
+            try:
+                eigs_small = eigsh(L, k=k_sm, which="SM", return_eigenvectors=False)
+                parts.append(eigs_small)
+            except Exception as e:
+                logger.warning(f"eigsh SM failed: {e}")
+
+        # Largest eigenvalues (near 2)
+        k_lm = min(k_per_end, n - 2)
+        if k_lm > 0:
+            try:
+                eigs_large = eigsh(L, k=k_lm, which="LM", return_eigenvectors=False)
+                parts.append(eigs_large)
+            except Exception as e:
+                logger.warning(f"eigsh LM failed: {e}")
+
+        # Middle eigenvalues (near 1.0 via shift-invert)
+        k_mid = min(k_middle, n - 2)
+        if k_mid > 0:
+            try:
+                eigs_mid = eigsh(L, k=k_mid, sigma=1.0, return_eigenvectors=False)
+                parts.append(eigs_mid)
+            except Exception as e:
+                logger.warning(f"eigsh shift-invert failed: {e}")
+
+        if parts:
+            eigenvalues = np.concatenate(parts)
+            # Remove duplicates (eigenvalues from different regions may overlap)
+            eigenvalues = np.unique(eigenvalues)
+        else:
+            logger.error("All sparse eigenvalue computations failed")
+            eigenvalues = np.array([])
+
+    eigenvalues = np.sort(np.clip(eigenvalues, 0, 2))
+    return eigenvalues
+
+
+def compute_spectral_metrics(eigenvalues: np.ndarray) -> dict[str, float]:
+    """Compute summary statistics from an eigenvalue distribution.
+
+    Args:
+        eigenvalues: Array of eigenvalues (expected in [0, 2]).
+
+    Returns:
+        Dictionary with keys: mean, std, median, skewness, low_freq_ratio,
+        mid_freq_ratio, high_freq_ratio, spectral_gap, concentration_at_1.
+    """
+    n = len(eigenvalues)
+    if n == 0:
+        return {
+            "mean": 0.0,
+            "std": 0.0,
+            "median": 0.0,
+            "skewness": 0.0,
+            "low_freq_ratio": 0.0,
+            "mid_freq_ratio": 0.0,
+            "high_freq_ratio": 0.0,
+            "spectral_gap": 0.0,
+            "concentration_at_1": 0.0,
+        }
+
+    low_freq = eigenvalues[eigenvalues < 0.5]
+    mid_freq = eigenvalues[(eigenvalues >= 0.5) & (eigenvalues <= 1.5)]
+    high_freq = eigenvalues[eigenvalues > 1.5]
+
+    return {
+        "mean": float(np.mean(eigenvalues)),
+        "std": float(np.std(eigenvalues)),
+        "median": float(np.median(eigenvalues)),
+        "skewness": float(skew(eigenvalues)),
+        "low_freq_ratio": len(low_freq) / n,
+        "mid_freq_ratio": len(mid_freq) / n,
+        "high_freq_ratio": len(high_freq) / n,
+        "spectral_gap": float(eigenvalues[1]) if n > 1 else 0.0,
+        "concentration_at_1": float(np.sum(np.abs(eigenvalues - 1.0) < 0.1) / n),
     }
 
 

@@ -695,6 +695,330 @@ def plot_multiplicity_distribution(
     _save_figure(fig, output_path)
 
 
+def plot_eigenvalue_kde_overlay(
+    eigenvalues_by_condition: dict[str, np.ndarray],
+    output_path: str,
+    dataset: str,
+    figsize: tuple[float, float] = (10, 6),
+) -> None:
+    """Plot KDE curves for clean and all anomaly types on one plot.
+
+    Clean gets a filled area, anomaly types get colored lines.
+
+    Args:
+        eigenvalues_by_condition: Dict mapping condition name (e.g. "clean",
+            "clique") to eigenvalue array.
+        output_path: Path to save the plot.
+        dataset: Dataset name for title.
+        figsize: Figure size as (width, height).
+    """
+    from scipy.stats import gaussian_kde
+
+    _setup_style()
+    fig, ax = plt.subplots(figsize=figsize)
+
+    x_range = np.linspace(0, 2, 500)
+
+    # Plot clean first with filled area
+    if "clean" in eigenvalues_by_condition:
+        eigs_clean = eigenvalues_by_condition["clean"]
+        if len(eigs_clean) > 1:
+            kde_clean = gaussian_kde(eigs_clean, bw_method=0.05)
+            y_clean = kde_clean(x_range)
+            ax.fill_between(
+                x_range, y_clean, alpha=0.25, color=COLORS["clean"], label="Clean"
+            )
+            ax.plot(x_range, y_clean, color=COLORS["clean"], linewidth=2.5)
+
+    # Plot anomaly types as colored lines
+    anom_conditions = [k for k in eigenvalues_by_condition if k != "clean"]
+    for i, condition in enumerate(sorted(anom_conditions)):
+        eigs = eigenvalues_by_condition[condition]
+        if len(eigs) > 1:
+            kde = gaussian_kde(eigs, bw_method=0.05)
+            ax.plot(
+                x_range,
+                kde(x_range),
+                color=CATEGORICAL_COLORS[i % len(CATEGORICAL_COLORS)],
+                linewidth=1.8,
+                label=condition.capitalize(),
+                alpha=0.85,
+            )
+
+    ax.axvline(x=1.0, color="#AAAAAA", linestyle="--", linewidth=1, alpha=0.5)
+    ax.set_xlabel("Eigenvalue", fontweight="medium")
+    ax.set_ylabel("Density", fontweight="medium")
+    ax.set_title(f"Spectral Density Comparison\n{dataset.replace('-', ' ').title()}")
+    ax.set_xlim(0, 2)
+    ax.set_ylim(bottom=0)
+    ax.legend(loc="upper right", framealpha=0.95)
+
+    plt.tight_layout()
+    _save_figure(fig, output_path)
+
+
+def plot_eigenvalue_histogram_comparison(
+    clean_eigs: np.ndarray,
+    anom_eigs: np.ndarray,
+    output_path: str,
+    dataset: str,
+    anom_type: str,
+    figsize: tuple[float, float] = (8, 5),
+) -> None:
+    """Plot overlapping density histograms for clean vs one anomaly type.
+
+    Annotates delta-mean and shift direction.
+
+    Args:
+        clean_eigs: Eigenvalues for clean graph.
+        anom_eigs: Eigenvalues for anomalous graph.
+        output_path: Path to save the plot.
+        dataset: Dataset name for title.
+        anom_type: Anomaly type name.
+        figsize: Figure size as (width, height).
+    """
+    _setup_style()
+    fig, ax = plt.subplots(figsize=figsize)
+
+    bins = np.linspace(0, 2, 50)
+    ax.hist(
+        clean_eigs,
+        bins=bins,
+        alpha=0.5,
+        density=True,
+        color=COLORS["clean"],
+        edgecolor="white",
+        linewidth=0.5,
+        label="Clean",
+    )
+    ax.hist(
+        anom_eigs,
+        bins=bins,
+        alpha=0.5,
+        density=True,
+        color=COLORS["secondary"],
+        edgecolor="white",
+        linewidth=0.5,
+        label=anom_type.capitalize(),
+    )
+
+    # Mark mean lines
+    mean_clean = float(np.mean(clean_eigs))
+    mean_anom = float(np.mean(anom_eigs))
+    ax.axvline(x=mean_clean, color=COLORS["clean"], linestyle="--", linewidth=2)
+    ax.axvline(x=mean_anom, color=COLORS["secondary"], linestyle="--", linewidth=2)
+
+    # Annotate shift
+    delta = mean_anom - mean_clean
+    direction = "LEFT" if delta < 0 else "RIGHT"
+    arrow = "\u2190" if delta < 0 else "\u2192"
+
+    ax.set_xlabel("Eigenvalue", fontweight="medium")
+    ax.set_ylabel("Density", fontweight="medium")
+    ax.set_title(
+        f"{dataset.replace('-', ' ').title()}: {anom_type.capitalize()}\n"
+        f"{direction} {arrow}  \u0394mean = {delta:+.4f}"
+    )
+    ax.set_xlim(0, 2)
+    ax.set_ylim(bottom=0)
+    ax.legend(loc="upper right", framealpha=0.95)
+
+    plt.tight_layout()
+    _save_figure(fig, output_path)
+
+
+def plot_delta_mean_heatmap(
+    results: dict[str, dict[str, float]],
+    output_path: str,
+    figsize: tuple[float, float] = (9, 7),
+) -> None:
+    """Create heatmap of delta mean eigenvalue, datasets x anomaly types.
+
+    Args:
+        results: Nested dict: {dataset: {anom_type: delta_mean}}.
+        output_path: Path to save the plot.
+        figsize: Figure size as (width, height).
+    """
+    _setup_style()
+
+    datasets = sorted(results.keys())
+    anom_types = sorted({at for ds_results in results.values() for at in ds_results})
+
+    matrix = np.zeros((len(datasets), len(anom_types)))
+    for i, ds in enumerate(datasets):
+        for j, at in enumerate(anom_types):
+            matrix[i, j] = results.get(ds, {}).get(at, np.nan)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    vmax = np.nanmax(np.abs(matrix))
+    if vmax == 0:
+        vmax = 1.0
+    im = ax.imshow(matrix, cmap="RdBu_r", aspect="auto", vmin=-vmax, vmax=vmax)
+
+    ax.set_xticks(range(len(anom_types)))
+    ax.set_xticklabels([at.capitalize() for at in anom_types], rotation=45, ha="right")
+    ax.set_yticks(range(len(datasets)))
+    ax.set_yticklabels([ds.replace("-", " ").title() for ds in datasets])
+    ax.set_xlabel("Anomaly Type", fontweight="medium")
+    ax.set_ylabel("Dataset", fontweight="medium")
+    ax.set_title(
+        "Spectral Shift ($\\Delta$ Mean Eigenvalue)\n"
+        "Blue = Left Shift, Red = Right Shift"
+    )
+
+    cbar = plt.colorbar(im, ax=ax, shrink=0.8, aspect=30, pad=0.02)
+    cbar.set_label("$\\Delta$ Mean Eigenvalue", fontsize=11)
+    cbar.ax.tick_params(labelsize=9)
+
+    for i in range(len(datasets)):
+        for j in range(len(anom_types)):
+            val = matrix[i, j]
+            if not np.isnan(val):
+                text_color = "white" if abs(val) > 0.6 * vmax else "black"
+                ax.text(
+                    j,
+                    i,
+                    f"{val:+.4f}",
+                    ha="center",
+                    va="center",
+                    color=text_color,
+                    fontsize=9,
+                    fontweight="medium",
+                )
+
+    for i in range(len(datasets) + 1):
+        ax.axhline(y=i - 0.5, color="white", linewidth=1)
+    for j in range(len(anom_types) + 1):
+        ax.axvline(x=j - 0.5, color="white", linewidth=1)
+
+    plt.tight_layout()
+    _save_figure(fig, output_path)
+
+
+def plot_frequency_band_bars(
+    band_ratios: dict[str, dict[str, float]],
+    output_path: str,
+    dataset: str,
+    figsize: tuple[float, float] = (12, 6),
+) -> None:
+    """Grouped bar chart of frequency band distribution per condition.
+
+    Args:
+        band_ratios: Dict mapping condition name to dict with keys
+            "low_freq_ratio", "mid_freq_ratio", "high_freq_ratio".
+        output_path: Path to save the plot.
+        dataset: Dataset name for title.
+        figsize: Figure size as (width, height).
+    """
+    _setup_style()
+
+    conditions = ["clean"] + sorted([k for k in band_ratios if k != "clean"])
+    x = np.arange(len(conditions))
+    width = 0.25
+
+    low = [band_ratios[c]["low_freq_ratio"] for c in conditions]
+    mid = [band_ratios[c]["mid_freq_ratio"] for c in conditions]
+    high = [band_ratios[c]["high_freq_ratio"] for c in conditions]
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.bar(
+        x - width,
+        low,
+        width,
+        label="Low freq (\u03bb < 0.5)",
+        color=CATEGORICAL_COLORS[0],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+    ax.bar(
+        x,
+        mid,
+        width,
+        label="Mid freq (0.5 \u2264 \u03bb \u2264 1.5)",
+        color=CATEGORICAL_COLORS[2],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+    ax.bar(
+        x + width,
+        high,
+        width,
+        label="High freq (\u03bb > 1.5)",
+        color=CATEGORICAL_COLORS[4],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+
+    ax.set_xlabel("Condition", fontweight="medium")
+    ax.set_ylabel("Proportion of Eigenvalues", fontweight="medium")
+    ax.set_title(f"Frequency Band Distribution\n{dataset.replace('-', ' ').title()}")
+    ax.set_xticks(x)
+    ax.set_xticklabels([c.capitalize() for c in conditions], rotation=0, ha="center")
+    ax.legend(loc="upper right", framealpha=0.95)
+    ax.set_ylim(0, 1)
+
+    plt.tight_layout()
+    _save_figure(fig, output_path)
+
+
+def plot_concentration_at_one(
+    results: dict[str, dict[str, float]],
+    output_path: str,
+    figsize: tuple[float, float] = (10, 6),
+) -> None:
+    """Grouped bars: clean vs clique concentration_at_1 across all datasets.
+
+    Args:
+        results: Dict mapping dataset to dict with "clean" and "clique"
+            concentration_at_1 values.
+        output_path: Path to save the plot.
+        figsize: Figure size as (width, height).
+    """
+    _setup_style()
+
+    datasets = sorted(results.keys())
+    x = np.arange(len(datasets))
+    width = 0.35
+
+    clean_conc = [results[ds].get("clean", 0.0) for ds in datasets]
+    clique_conc = [results[ds].get("clique", 0.0) for ds in datasets]
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.bar(
+        x - width / 2,
+        clean_conc,
+        width,
+        label="Clean",
+        color=COLORS["clean"],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+    ax.bar(
+        x + width / 2,
+        clique_conc,
+        width,
+        label="With Clique",
+        color=COLORS["quaternary"],
+        edgecolor="white",
+        linewidth=0.5,
+    )
+
+    ax.set_xlabel("Dataset", fontweight="medium")
+    ax.set_ylabel("Proportion of eigenvalues in [0.9, 1.1]", fontweight="medium")
+    ax.set_title("Clique Injection Concentrates Eigenvalues Around \u03bb=1")
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        [ds.replace("-", "\n") for ds in datasets], rotation=0, ha="center"
+    )
+    ax.legend(loc="upper right", framealpha=0.95)
+
+    plt.tight_layout()
+    _save_figure(fig, output_path)
+
+
 def create_summary_table(
     spectral_results: dict[str, dict[str, Any]],
     multiplicity_results: dict[str, dict[str, Any]],
