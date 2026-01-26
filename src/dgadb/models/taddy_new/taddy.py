@@ -102,7 +102,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         logger.info("Setting up TADDY model...")
 
         # Extract metadata for file paths
-        dataset_name = kwargs.get("dataset_name")
+        dataset_name = f"{data.metadata['dataset_name']}_{data.metadata['variant_name']}"
         if dataset_name is None:
             dataset_name = data.metadata.get("dataset_name", "default")
 
@@ -116,17 +116,17 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             train_ratio = data.train_mask.sum().item() / num_edges
             val_ratio = data.val_mask.sum().item() / num_edges
             # For anomaly ratio, we need to check the test set anomalies
-            test_mask = data.test_mask
-            test_edges = test_mask.sum().item()
-            if test_edges > 0:
-                test_labels = data.edge_labels[test_mask]
-                anom_val_ratio = (test_labels == 1).sum().item() / test_edges
-            else:
-                anom_val_ratio = kwargs.get("anom_val_ratio", 0.5)
-        else:
-            train_ratio = kwargs.get("train_ratio", 0.6)
-            val_ratio = kwargs.get("val_ratio", 0.2)
-            anom_val_ratio = kwargs.get("anom_val_ratio", 0.5)
+            # test_mask = data.test_mask
+            # test_edges = test_mask.sum().item()
+            # if test_edges > 0:
+            #     test_labels = data.edge_labels[test_mask]
+                # anom_val_ratio = (test_labels == 1).sum().item() / test_edges
+            # else:
+                # anom_val_ratio = kwargs.get("anom_val_ratio", 0.5)
+        # else:
+        #     train_ratio = kwargs.get("train_ratio", 0.6)
+        #     val_ratio = kwargs.get("val_ratio", 0.2)
+            # anom_val_ratio = kwargs.get("anom_val_ratio", 0.5)
 
         # Build training adjacency matrix
         train_mask = data.train_mask
@@ -206,7 +206,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
         # Build adjacency matrices
         adjs, eigen_adjs = self._get_adjs(
-            rows, cols, weis, num_nodes, dataset_name, train_ratio, val_ratio, anom_val_ratio, self.snap_size
+            rows, cols, weis, num_nodes, dataset_name, train_ratio, val_ratio, self.snap_size
         )
 
         idx = list(range(num_nodes))
@@ -527,7 +527,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         dataset_name: str,
         train_ratio: float,
         val_ratio: float,
-        anom_val_ratio: float,
+        # anom_val_ratio: float,
         snap_size: int,
     ) -> tuple[list[torch.Tensor], list[np.ndarray | None]]:
         """Build adjacency matrices and optionally compute/load eigen adjacencies."""
@@ -539,8 +539,8 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             + str(train_ratio)
             + "_v"
             + str(val_ratio)
-            + "_a"
-            + str(anom_val_ratio)
+            # + "_a"
+            # + str(anom_val_ratio)
             + "_s"
             + str(snap_size)
             + ".pkl"
