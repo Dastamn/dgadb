@@ -46,6 +46,7 @@ loguru = ">=0.7.3"
 marimo = ">=0.19.7,<0.20"
 duckdb = ">=1.4.4,<2"
 sqlglot = ">=28.6.0,<29"
+graph-tool = ">=2.98,<3"
 
 [tool.pixi.feature.cuda]
 platforms = ["linux-64"]
