@@ -44,7 +44,7 @@ From: condaforge/miniforge3:latest
     /opt/pixi/bin/pixi clean cache -y || true
 
 %runscript
-    exec python -m build.src.dgadb.experiment.runner "$@"
+    exec python -m dgadb.experiment.runner "$@"
 
 %test
     python -c "import torch; print(f'PyTorch: {torch.__version__}')"
