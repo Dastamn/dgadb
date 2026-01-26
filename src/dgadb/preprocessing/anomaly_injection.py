@@ -1,4 +1,4 @@
-from src.dgadb.storage import TemporalGraph
+from dgadb.storage import TemporalGraph
 
 import os
 import json
