@@ -4,6 +4,7 @@
 Orchestrates execution of:
 - Experiment 4a: Spectral baseline analysis
 - Experiment 4b: Spectral shift under anomaly injection
+- Experiment 4c: Spectral signature by anomaly type
 - Experiment 5: Multigraph multiplicity analysis
 """
 
@@ -62,6 +63,7 @@ def main(
     ),
     skip_baseline: bool = typer.Option(False, help="Skip spectral baseline (4a)"),
     skip_shift: bool = typer.Option(False, help="Skip spectral shift (4b)"),
+    skip_signature: bool = typer.Option(False, help="Skip spectral signature (4c)"),
     skip_multigraph: bool = typer.Option(False, help="Skip multigraph analysis (5)"),
     datasets: list[str] = typer.Option(None, help="Specific datasets to analyze"),
 ) -> None:
@@ -112,6 +114,21 @@ def main(
             "Experiment 4b: Spectral Shift",
         )
         results["spectral_shift"] = success
+
+    # Experiment 4c: Spectral Signature
+    if not skip_signature:
+        success = run_script(
+            os.path.join(scripts_dir, "run_spectral_signature.py"),
+            [
+                "--n-workers",
+                str(n_workers),
+                "--output-base",
+                os.path.join(output_base, "spectral"),
+            ]
+            + dataset_args,
+            "Experiment 4c: Spectral Signature",
+        )
+        results["spectral_signature"] = success
 
     # Experiment 5: Multigraph Analysis
     if not skip_multigraph:

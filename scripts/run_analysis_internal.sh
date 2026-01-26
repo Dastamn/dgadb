@@ -17,6 +17,7 @@
 #   --skip-download   Skip data download check
 #   --skip-baseline   Skip spectral baseline analysis
 #   --skip-shift      Skip spectral shift analysis
+#   --skip-signature  Skip spectral signature analysis
 #   --skip-multigraph Skip multigraph analysis
 #
 
@@ -42,6 +43,7 @@ N_WORKERS=${N_WORKERS:-8}
 SKIP_DOWNLOAD=false
 SKIP_BASELINE=false
 SKIP_SHIFT=false
+SKIP_SIGNATURE=false
 SKIP_MULTIGRAPH=false
 
 # Datasets
@@ -83,6 +85,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-shift)
             SKIP_SHIFT=true
+            shift
+            ;;
+        --skip-signature)
+            SKIP_SIGNATURE=true
             shift
             ;;
         --skip-multigraph)
@@ -232,6 +238,21 @@ if [ "$SKIP_SHIFT" = false ]; then
     [ $? -eq 0 ] && log_success "Spectral shift complete" || { log_error "Failed"; exit 1; }
 else
     log_info "Skipping spectral shift"
+fi
+
+# Experiment 4c: Spectral Signature
+if [ "$SKIP_SIGNATURE" = false ]; then
+    log_info "=========================================="
+    log_info "Experiment 4c: Spectral Signature"
+    log_info "=========================================="
+
+    $PYTHON "$SCRIPT_DIR/run_spectral_signature.py" \
+        --n-workers "$N_WORKERS" \
+        --output-base "$OUTPUT_DIR/spectral"
+
+    [ $? -eq 0 ] && log_success "Spectral signature complete" || { log_error "Failed"; exit 1; }
+else
+    log_info "Skipping spectral signature"
 fi
 
 # Experiment 5: Multigraph Analysis

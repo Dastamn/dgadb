@@ -13,6 +13,7 @@
 #   --skip-download   Skip data download check
 #   --skip-baseline   Skip spectral baseline analysis (Exp 4a)
 #   --skip-shift      Skip spectral shift analysis (Exp 4b)
+#   --skip-signature  Skip spectral signature analysis (Exp 4c)
 #   --skip-multigraph Skip multigraph analysis (Exp 5)
 #   --data-dir PATH   Custom data directory to bind mount
 #   --cpus RANGE      CPU range for taskset (e.g., "0-7")
@@ -32,6 +33,7 @@ N_WORKERS=8
 SKIP_DOWNLOAD=""
 SKIP_BASELINE=""
 SKIP_SHIFT=""
+SKIP_SIGNATURE=""
 SKIP_MULTIGRAPH=""
 DATA_DIR=""
 CPUS=""
@@ -53,6 +55,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-shift)
             SKIP_SHIFT="--skip-shift"
+            shift
+            ;;
+        --skip-signature)
+            SKIP_SIGNATURE="--skip-signature"
             shift
             ;;
         --skip-multigraph)
@@ -103,7 +109,7 @@ ENV_OPTS="$ENV_OPTS --env OPENBLAS_NUM_THREADS=$N_WORKERS"
 CMD="apptainer exec $BIND_OPTS $ENV_OPTS $CONTAINER_IMAGE"
 CMD="$CMD /app/scripts/run_analysis_internal.sh"
 CMD="$CMD --n-workers $N_WORKERS"
-CMD="$CMD $SKIP_DOWNLOAD $SKIP_BASELINE $SKIP_SHIFT $SKIP_MULTIGRAPH"
+CMD="$CMD $SKIP_DOWNLOAD $SKIP_BASELINE $SKIP_SHIFT $SKIP_SIGNATURE $SKIP_MULTIGRAPH"
 
 # Add CPU pinning if specified
 if [ -n "$CPUS" ]; then

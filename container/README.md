@@ -106,7 +106,7 @@ Usage:
 
 ## Spectral & Multigraph Analysis
 
-Run the spectral and multigraph analysis pipeline (Experiments 4a, 4b, 5):
+Run the spectral and multigraph analysis pipeline (Experiments 4a, 4b, 4c, 5):
 
 ### Using the Wrapper Script
 
@@ -143,6 +143,7 @@ analysis-results/
 ├── spectral/
 │   ├── {dataset}/baseline/     # Eigenvalues, S_high metrics
 │   ├── {dataset}/anomalous/    # Spectral shift per anomaly type
+│   ├── {dataset}/signature/    # Full spectral signature per anomaly type
 │   └── plots/                  # Cross-dataset visualizations
 └── multigraph/
     ├── {dataset}/              # Edge multiplicity statistics
