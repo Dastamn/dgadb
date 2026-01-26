@@ -53,7 +53,7 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         self.precomputed_data = None
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
-        dataset_name = data.metadata.get("variant_name", "default")
+        dataset_name = f"{data.metadata['dataset_name']}_{data.metadata['variant_name']}"
         cache_path = os.path.join(
             self.cache_dir, f"{dataset_name}_subgraphs.pkl")
 
