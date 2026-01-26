@@ -188,7 +188,7 @@ def run_experiment(
         case Method.taddy:
             from dgadb.models.taddy_new.taddy import TADDYAD
 
-            model = TADDYAD()
+            model = TADDYAD(snap_size=window_size)
         case Method.slade:
             from dgadb.models.slade_new.slade import SLADEAD
 
@@ -266,8 +266,11 @@ def run_experiment(
                 resource_monitor = ResourceMonitor(output_dir)
 
                 runner = ExperimentRunner(model, data, output_dir=output_dir)
-                runner.run(epochs, snapshot_config, [
-                           aim_callback, resource_monitor])
+                try:
+                    runner.run(epochs, snapshot_config, [
+                            aim_callback, resource_monitor])
+                except Exception as e:
+                    print(e)
 
                 print("DONE.")
                 print("========================")
