@@ -104,6 +104,53 @@ Usage:
 ./run_isolated.sh 2 --method slade --dataset bitcoin-alpha & # CPUs 8-11
 ```
 
+## Spectral & Multigraph Analysis
+
+Run the spectral and multigraph analysis pipeline (Experiments 4a, 4b, 5):
+
+### Using the Wrapper Script
+
+```bash
+# Run full analysis with 16 workers
+./container/run-analysis.sh --n-workers 16
+
+# Pin to specific CPUs
+./container/run-analysis.sh --n-workers 8 --cpus 0-7
+
+# Skip data download (if data already exists)
+./container/run-analysis.sh --skip-download --n-workers 16
+
+# Run only specific experiments
+./container/run-analysis.sh --skip-shift --skip-multigraph  # Only baseline
+```
+
+### Using Apptainer Directly
+
+```bash
+apptainer exec \
+    --bind /path/to/dgadb:/app \
+    --env OMP_NUM_THREADS=16 \
+    container/dgadb.sif \
+    /app/scripts/run_analysis_internal.sh --n-workers 16
+```
+
+### Output
+
+Results are saved to `analysis-results/`:
+
+```
+analysis-results/
+├── spectral/
+│   ├── {dataset}/baseline/     # Eigenvalues, S_high metrics
+│   ├── {dataset}/anomalous/    # Spectral shift per anomaly type
+│   └── plots/                  # Cross-dataset visualizations
+└── multigraph/
+    ├── {dataset}/              # Edge multiplicity statistics
+    └── correlation/            # DTDG/CTDG performance correlation
+```
+
+Plots are saved in both PNG (300 DPI) and SVG formats.
+
 ## Aim UI (Experiment Tracking)
 
 Run the Aim web UI from within the container to view experiment results.
