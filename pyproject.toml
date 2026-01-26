@@ -16,7 +16,7 @@ build-backend = "hatchling.build"
 packages = ["src/dgadb"]
 
 [tool.pixi.workspace]
-channels = ["conda-forge", "nvidia"]
+channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
@@ -43,6 +43,9 @@ pyg-lib = ">=0.4.0"
 ty = "*"
 ruff = ">=0.14.13"
 loguru = ">=0.7.3"
+marimo = ">=0.19.7,<0.20"
+duckdb = ">=1.4.4,<2"
+sqlglot = ">=28.6.0,<29"
 
 [tool.pixi.feature.cuda]
 platforms = ["linux-64"]
