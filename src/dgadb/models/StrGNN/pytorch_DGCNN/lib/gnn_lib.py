@@ -6,10 +6,18 @@ import torch
 import pdb
 
 
+def _get_lib_path():
+    """Get the path to libgnn.so, checking env var first for container support."""
+    env_path = os.environ.get("STRGNN_LIB_PATH")
+    if env_path and os.path.exists(env_path):
+        return env_path
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    return f"{dir_path}/build/dll/libgnn.so"
+
+
 class _gnn_lib(object):
     def __init__(self, args):
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        self.lib = ctypes.CDLL("%s/build/dll/libgnn.so" % dir_path)
+        self.lib = ctypes.CDLL(_get_lib_path())
 
         self.lib.GetGraphStruct.restype = ctypes.c_void_p
         self.lib.PrepareBatchGraph.restype = ctypes.c_int
@@ -85,7 +93,7 @@ class _gnn_lib(object):
         return n2n_sp, e2n_sp, subg_sp
 
 
-dll_path = "%s/build/dll/libgnn.so" % os.path.dirname(os.path.realpath(__file__))
+dll_path = _get_lib_path()
 if os.path.exists(dll_path):
     GNNLIB = _gnn_lib(sys.argv)
 else:
