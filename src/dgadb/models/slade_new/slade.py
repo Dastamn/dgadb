@@ -113,9 +113,9 @@ class SLADEAD(BaseADModel[SLADEComponents]):
             data: TemporalGraph object containing the graph data
             **kwargs: Additional arguments (can override hyperparameters)
         """
-        if self._components is not None:
-            self.logger.info("Model already initialized, skipping setup")
-            return
+        # if self._components is not None:
+        #     self.logger.info("Model already initialized, skipping setup")
+        #     return
 
         self.logger.info("Setting up SLADE model...")
 
