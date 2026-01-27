@@ -17,6 +17,8 @@ from scipy.sparse.linalg import eigsh
 from scipy.sparse.csgraph import shortest_path, laplacian
 
 
+_ANOMALY_DURATION_TYPE_MAP = {"small": 0.001, "medium": 0.01, "large": 0.05}
+
 class AnomalyInjector:
     def __init__(self, tg: TemporalGraph, max_k: int = 50, cache_dir: str = "processed"):
         self.tg = tg
@@ -43,7 +45,7 @@ class AnomalyInjector:
 
         self._load_or_compute_analysis(max_k)
 
-        self.dur_map = {"small": 0.001, "medium": 0.01, "large": 0.05}
+        # self.dur_map = {"small": 0.001, "medium": 0.01, "large": 0.05}
 
     def _load_or_compute_analysis(self, max_k: int):
         if os.path.exists(self.stats_file) and os.path.exists(self.comm_file):
@@ -164,14 +166,22 @@ class AnomalyInjector:
         train_ratio=0.0,
         val_ratio=0.0,
         test_ratio=0.0,
-        duration_type: Literal["small", "medium", "large"] = "medium"
+        duration: float | Literal["small", "medium", "large"] = "medium"
     ):
+        if isinstance(duration, str):
+            duration_rate = _ANOMALY_DURATION_TYPE_MAP.get(duration, 0.01)
+            duration_type = duration
+        else:
+            duration_rate = float(duration)
+            duration_type = "custom"
+
         meta = {
             "is_injected": True,
             "last_injection_timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "type": anom_type,
             "duration_category": duration_type,
-            "duration_rates": self.dur_map,
+            "duration_rate": duration_rate,
+            "duration_rate_map": _ANOMALY_DURATION_TYPE_MAP,
             "graph_stats": self.stats,
             "splits": {
                 "train": {"ratio": train_ratio, "requested": 0, "generated": 0},
@@ -184,8 +194,7 @@ class AnomalyInjector:
         for split, ratio in [("train", train_ratio), ("val", val_ratio), ("test", test_ratio)]:
             if ratio <= 0:
                 continue
-            req, gen = self._inject_split(
-                anom_type, ratio, split, duration_type)
+            req, gen = self._inject_split(anom_type, ratio, split, duration_rate)
             meta["splits"][split]["requested"], meta["splits"][split]["generated"] = req, gen
             meta["total_generated"] += gen
 
@@ -193,19 +202,25 @@ class AnomalyInjector:
         self.tg.metadata["anomaly_injection"] = meta
         return self.tg
 
-    def _inject_split(self, anom_type: str, ratio: float, split: str, duration_type: str) -> tuple[int, int]:
+    def _inject_split(self, anom_type: str, ratio: float, split: str, duration_rate: float) -> tuple[int, int]:
         mask = getattr(self.tg, f"{split}_mask", None)
         if mask is None:
             return 0, 0
         target_count = int(mask.sum().item() * ratio)
         if target_count == 0:
             return 0, 0
+        
         t_split = self.tg.t[mask]
-        duration = float(t_split.max() - t_split.min()) * \
-            self.dur_map.get(duration_type, 0.01)
+        t_min, t_max = float(t_split.min()), float(t_split.max())
+        split_range = t_max - t_min
+
+        if duration_rate >= 1.0:
+            duration = split_range
+        else:
+            duration = split_range * duration_rate
 
         pbar = tqdm(total=target_count,
-                    desc=f"Injecting {anom_type} -> {split}", file=sys.stdout, mininterval=0)
+                    desc=f"Injecting {anom_type} -> {split} (rate: {duration_rate})", file=sys.stdout, mininterval=0)
 
         edges_added, attempts = 0, 0
         max_attempts = target_count * 20

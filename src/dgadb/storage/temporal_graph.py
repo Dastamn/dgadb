@@ -358,7 +358,7 @@ class TemporalGraphLoaderNew:
         self.base_dir = base_directory
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def _get_variant_name(self, anom_type: Optional[str], tr: float, v: float, te: float, dur: Optional[str]) -> Optional[str]:
+    def _get_variant_name(self, anom_type: Optional[str], tr: float, v: float, te: float, dur: float) -> Optional[str]:
         if anom_type is None:
             return None
 
@@ -404,11 +404,18 @@ class TemporalGraphLoaderNew:
         anom_train_ratio: float = 0.0,
         anom_val_ratio: float = 0.0,
         anom_test_ratio: float = 0.0,
-        duration_type: Literal["small", "medium", "large"] = "medium",
+        duration: float | Literal["small", "medium", "large"] = "medium",
         create_if_not_found: bool = False
     ) -> TemporalGraph:
+        if isinstance(duration, float):
+            duration_rate = duration
+        else:
+            from dgadb.preprocessing.anomaly_injection import _ANOMALY_DURATION_TYPE_MAP
+            
+            duration_rate = _ANOMALY_DURATION_TYPE_MAP[str(duration)]
+
         variant_name = self._get_variant_name(
-            anom_type, anom_train_ratio, anom_val_ratio, anom_test_ratio, duration_type)
+            anom_type, anom_train_ratio, anom_val_ratio, anom_test_ratio, duration_rate)
         variant_dir = os.path.join(
             self.base_dir, dataset_name, variant_name or "clean")
         data_path = os.path.join(variant_dir, "data.pt")
@@ -445,7 +452,7 @@ class TemporalGraphLoaderNew:
                 train_ratio=anom_train_ratio,
                 val_ratio=anom_val_ratio,
                 test_ratio=anom_test_ratio,
-                duration_type=duration_type
+                duration=duration_rate
             )
             tg.metadata["variant_name"] = variant_name
             self.save(tg, variant_dir)
