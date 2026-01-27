@@ -95,9 +95,9 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             data: TemporalGraph object containing the graph data
             **kwargs: Additional arguments (dataset_name, train_ratio, val_ratio, anom_val_ratio)
         """
-        if self._components is not None:
-            logger.info("Model already initialized, skipping setup")
-            return
+        # if self._components is not None:
+        #     logger.info("Model already initialized, skipping setup")
+        #     return
 
         logger.info("Setting up TADDY model...")
 
