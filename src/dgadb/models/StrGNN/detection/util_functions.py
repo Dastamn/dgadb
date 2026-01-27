@@ -112,11 +112,11 @@ def dyn_links2subgraphs(
         return g_list
 
     print("Enclosing subgraph extraction begins...")
-    train_graphs = helper(net, train_pos, train_pos_id, 1, window_size) + helper(
-        net, train_neg, train_neg_id, 0, window_size
+    train_graphs = helper(net, train_pos, train_pos_id, 0, window_size) + helper(
+        net, train_neg, train_neg_id, 1, window_size
     )
-    test_graphs = helper(net, test_pos, test_pos_id, 1, window_size) + helper(
-        net, test_neg, test_neg_id, 0, window_size
+    test_graphs = helper(net, test_pos, test_pos_id, 0, window_size) + helper(
+        net, test_neg, test_neg_id, 1, window_size
     )
     print(max_n_label)
     return train_graphs, test_graphs, max_n_label["value"]

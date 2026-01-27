@@ -159,13 +159,13 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         # (usually provided by the dataset labels)
         edge_labels = data.edge_labels.cpu().numpy()
         self.data_dict["test_pos"] = (
-            src[(test_mask) & (edge_labels == 1)], tgt[(test_mask) & (edge_labels == 1)])
-        self.data_dict["test_neg"] = (
             src[(test_mask) & (edge_labels == 0)], tgt[(test_mask) & (edge_labels == 0)])
+        self.data_dict["test_neg"] = (
+            src[(test_mask) & (edge_labels == 1)], tgt[(test_mask) & (edge_labels == 1)])
         self.data_dict["test_pos_id"] = snapshot_ids[(
-            test_mask) & (edge_labels == 1)]
-        self.data_dict["test_neg_id"] = snapshot_ids[(
             test_mask) & (edge_labels == 0)]
+        self.data_dict["test_neg_id"] = snapshot_ids[(
+            test_mask) & (edge_labels == 1)]
 
         if data.val_mask is not None and data.val_mask.sum():
             val_src = src[data.val_mask]
@@ -174,11 +174,11 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
             val_labels = edge_labels[data.val_mask]
 
             self.data_dict["val_pos"] = (
-                val_src[val_labels == 1], val_tgt[val_labels == 1])
-            self.data_dict["val_neg"] = (
                 val_src[val_labels == 0], val_tgt[val_labels == 0])
-            self.data_dict["val_pos_id"] = val_snap_ids[val_labels == 1]
-            self.data_dict["val_neg_id"] = val_snap_ids[val_labels == 0]
+            self.data_dict["val_neg"] = (
+                val_src[val_labels == 1], val_tgt[val_labels == 1])
+            self.data_dict["val_pos_id"] = val_snap_ids[val_labels == 0]
+            self.data_dict["val_neg_id"] = val_snap_ids[val_labels == 1]
 
             # 6. Extract Subgraphs
             print("Extracting subgraphs with VALIDATION...")
