@@ -131,9 +131,9 @@ class SADAD(BaseADModel[SADComponents]):
             data: TemporalGraph object containing the graph data
             **kwargs: Additional arguments
         """
-        if self._components is not None:
-            logger.info("Model already initialized, skipping setup")
-            return
+        # if self._components is not None:
+        #     logger.info("Model already initialized, skipping setup")
+        #     return
 
         print("[SAD] Setting up model...", flush=True)
 
