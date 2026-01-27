@@ -229,7 +229,7 @@ def loop_dataset(g_list, classifier, sample_idxes, optimizer=None, bsize=32, sta
         assert n_samples == len(sample_idxes)
     total_loss = np.array(total_loss)
     avg_loss = np.sum(total_loss, 0) / n_samples
-    all_scores = torch.cat(all_scores).cpu().numpy()
+    all_scores = torch.cat(all_scores)
 
     # np.savetxt('test_scores.txt', all_scores)  # output test predictions
 
