@@ -31,6 +31,7 @@ class StrGNNComponents(BaseADModelComponents):
 class StrGNNAD(BaseADModel[StrGNNComponents]):
     def __init__(
         self,
+        snap_size: int,
         hop: int = 1,
         window_size: int = 5,
         latent_dim: List[int] = [32, 32, 32, 1],
@@ -52,6 +53,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.use_embedding = use_embedding
+        self.snap_size = snap_size
 
         # Storage for pre-computed subgraphs
         self._train_graphs = []
@@ -72,8 +74,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         test_mask = data.test_mask.cpu().numpy()
         val_mask = data.val_mask.cpu().numpy() if data.val_mask is not None else None
 
-        # 2. Define Fixed Window Size (e.g., 1000 edges per snapshot)
-        edges_per_snapshot = 2000
+        edges_per_snapshot = self.snap_size
         num_total_edges = len(src)
         # Calculate snapshot ID for every edge: 0, 0, ... (1000 times), 1, 1, ...
         snapshot_ids = np.floor(
@@ -277,7 +278,8 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
             np.random.shuffle(train_idxes)
             self.classifier.train()
             avg_loss, labels, preds = loop_dataset(
-                train_graphs, self.classifier, train_idxes, optimizer=self.optimizer, bsize=self.batch_size
+                train_graphs, self.classifier, train_idxes, optimizer=self.optimizer, bsize=self.batch_size,
+                state=state, handler=handler
             )
 
             # Compute training score
@@ -290,7 +292,12 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
                 avg_loss, labels, preds = loop_dataset(
                     val_graphs, self.classifier, list(range(len(val_graphs))), bsize=self.batch_size)
                 val_score = roc_auc_score(labels, preds)
+                state.val_metrics = {'roc_auc': val_score}
                 print(f"Epoch {epoch}: val score={val_score:.5f}")
+
+            handler.on_train_epoch_end(state)
+            
+        handler.on_train_end(state)
 
     def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[Tensor, Tensor]:
         self.classifier.eval()
