@@ -296,7 +296,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
                 print(f"Epoch {epoch}: val score={val_score:.5f}")
 
             handler.on_train_epoch_end(state)
-            
+
         handler.on_train_end(state)
 
     def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[Tensor, Tensor]:
@@ -304,7 +304,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         graphs = self.data_dict["test_graphs"]
         avg_loss, labels, preds = loop_dataset(
             graphs, self.classifier, list(range(len(graphs))), bsize=self.batch_size)
-        return preds, labels
+        return labels, preds
 
     def _train_step(self, snapshot: TemporalGraphSnapshot, **kwargs) -> float:
         return 0
