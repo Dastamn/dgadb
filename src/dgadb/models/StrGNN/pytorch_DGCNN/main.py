@@ -234,5 +234,5 @@ def loop_dataset(g_list, classifier, sample_idxes, optimizer=None, bsize=32, sta
     # np.savetxt('test_scores.txt', all_scores)  # output test predictions
 
     if not classifier.regression:
-        all_targets = np.array(all_targets)
+        all_targets = torch.tensor(all_targets)
     return avg_loss, all_targets, all_scores
