@@ -59,7 +59,7 @@ class TemporalGraph:
 
     @property
     def edge_index(self) -> torch.Tensor:
-        return self.edges.T
+        return torch.stack([self.src, self.tgt], dim=0)
 
     @property
     def adj_matrix_coo(self) -> torch.Tensor:
@@ -164,16 +164,19 @@ class TemporalGraph:
 
 
 class TemporalGraphView:
-    def __init__(self, temporal_graph: TemporalGraph, slice_obj: slice):
+    def __init__(self, temporal_graph: TemporalGraph, indices: slice | torch.Tensor):
         self._temporal_graph = temporal_graph
-        self._slice = slice_obj
-        self._num_edges = len(range(slice_obj.start, slice_obj.stop)[
-                              0:slice_obj.step]) if slice_obj else 0
+        self._indices = indices
+        
+        if isinstance(indices, slice):
+            self._num_edges = len(range(*indices.indices(temporal_graph.num_edges)))
+        else:
+            self._num_edges = indices.size(0)
 
     def __getattr__(self, name: str):
         attr = getattr(self._temporal_graph, name)
-        if torch.is_tensor(attr) and attr.size(0) == self._temporal_graph.num_edges:
-            return attr[self._slice]
+        if torch.is_tensor(attr) and attr.dim() > 0 and attr.size(0) == self._temporal_graph.num_edges:
+            return attr[self._indices]
 
         return attr
 
@@ -183,7 +186,7 @@ class TemporalGraphView:
 
     @property
     def edge_index(self) -> torch.Tensor:
-        return torch.stack([self.src, self.tgt], dim=1).T
+        return torch.stack([self.src, self.tgt], dim=0)
 
 
 class TemporalGraphLoader:

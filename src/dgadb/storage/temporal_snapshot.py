@@ -34,42 +34,20 @@ class TemporalGraphSnapshotLoader:
         self.copy_on_load = copy_on_load
         self.include_cumulative = include_cumulative
         self.kwargs = kwargs
-        self._split_start_i: int = 0
-        self._num_split_edges: int = self.data.num_edges
-
-        if self.split is not None:
-            if self.split not in ['train', 'val', 'test']:
-                raise ValueError(
-                    "Split must be one of 'train', 'val' or 'test'.")
-
-            split_mask_name = f"{self.split}_mask"
-            split_mask: torch.Tensor = getattr(self.data, split_mask_name)
-            if split_mask is None:
-                raise RuntimeError(
-                    f"Split mask '{split_mask_name}' not found in graph object.")
-
-            if not split_mask.any():
-                self.logger.warning(f"'{self.split}' split is empty.")
-                self._num_split_edges = 0
-            else:
-                split_indices = torch.where(split_mask)[0]
-                self._split_start_i = int(split_indices[0].item())
-                self._num_split_edges = len(split_indices)
-
-        self._snapshot_global_indices = self._compute_snapshot_indices()
+        
+        self._snapshot_indices: list[torch.Tensor] = self._compute_snapshot_indices()
         self.reset()
 
     @property
     def total_num_nodes(self):
         return self.data.num_nodes
 
-    def _slice_data(self, indices: torch.Tensor | slice) -> TemporalGraph:
-        sliced_attrs = {
-            key: value[indices].clone()
-            for key, value in self.data.__dict__.items()
-            if torch.is_tensor(value) and value.size(0) == self.data.num_edges
-        }
-
+    def _slice_data(self, indices: torch.Tensor) -> TemporalGraph:
+        sliced_attrs = {}
+        for key, value in self.data.__dict__.items():
+            if torch.is_tensor(value) and value.dim() > 0 and value.size(0) == self.data.num_edges:
+                sliced_attrs[key] = value[indices].clone()
+        
         return TemporalGraph(
             **sliced_attrs,
             node_attr=self.data.node_attr,
@@ -79,60 +57,55 @@ class TemporalGraphSnapshotLoader:
     def reset(self):
         self._current_snapshot_num = 0
 
-    def _compute_snapshot_indices(self) -> list[tuple[int, int]]:
+    def _compute_snapshot_indices(self) -> list[torch.Tensor]:
         indices_list = []
 
-        if self._num_split_edges == 0:
-            return indices_list
+        if self.split is not None:
+            split_mask = getattr(self.data, f"{self.split}_mask")
+            if split_mask is None or not split_mask.any():
+                return []
+            all_split_indices = torch.where(split_mask)[0]
+        else:
+            all_split_indices = torch.arange(self.data.num_edges, device=self.data.device)
+
+        num_split_edges = len(all_split_indices)
 
         if self.strategy == 'window':
             window_size = self.kwargs.get('window_size')
             if not isinstance(window_size, int) or window_size <= 0:
-                raise ValueError(
-                    "Strategy 'window' requires a positive integer 'window_size'.")
+                raise ValueError("Strategy 'window' requires a positive integer 'window_size'.")
 
-            pos_in_split = 0
-            while pos_in_split < self._num_split_edges:
-                start_in_split = pos_in_split
-                end_in_split = min(pos_in_split + window_size,
-                                   self._num_split_edges)
-
-                global_start = self._split_start_i + start_in_split
-                global_end = self._split_start_i + end_in_split
-                indices_list.append((global_start, global_end))
-
-                pos_in_split = end_in_split
+            pos = 0
+            while pos < num_split_edges:
+                batch_indices = all_split_indices[pos : pos + window_size]
+                indices_list.append(batch_indices)
+                pos += window_size
 
             return indices_list
 
         if self.strategy == "event":
-            global_split_end = self._split_start_i + self._num_split_edges
-            src_in_split = self.data.src[self._split_start_i:global_split_end]
-
-            if src_in_split.numel() < 2:
-                return [(self._split_start_i, global_split_end)]
-
-            change_mask = src_in_split[1:] != src_in_split[:-1]
-            change_indices_in_split = torch.where(change_mask)[0] + 1
-
-            device = self.data.device
-            split_points_in_split = torch.cat([
-                torch.tensor([0], device=device),
-                change_indices_in_split,
-                torch.tensor([self._num_split_edges], device=device)
+            if num_split_edges < 1:
+                return []
+            
+            src_in_split = self.data.src[all_split_indices]
+            
+            change_mask = torch.cat([
+                torch.tensor([True], device=self.data.device),
+                src_in_split[1:] != src_in_split[:-1]
             ])
+            change_points = torch.where(change_mask)[0]
+            
+            for i in range(len(change_points)):
+                start_idx = change_points[i]
+                end_idx = change_points[i+1] if (i+1) < len(change_points) else num_split_edges
+                indices_list.append(all_split_indices[start_idx:end_idx])
 
-            global_split_points = self._split_start_i + split_points_in_split
-            starts = global_split_points[:-1]
-            ends = global_split_points[1:]
+            return indices_list
 
-            return list(zip(starts.tolist(), ends.tolist()))
-
-        raise ValueError(
-            f"Unknown strategy: '{self.strategy}'. Choose from {_SNAPSHOTTING_STRATEGIES}.")
+        raise ValueError(f"Unknown strategy: '{self.strategy}'. Choose from {_SNAPSHOTTING_STRATEGIES}.")
 
     def __len__(self) -> int:
-        return len(self._snapshot_global_indices)
+        return len(self._snapshot_indices)
 
     def __iter__(self) -> Iterator[TemporalGraphSnapshot]:
         self.reset()
@@ -142,18 +115,21 @@ class TemporalGraphSnapshotLoader:
         if self._current_snapshot_num >= len(self):
             raise StopIteration
 
-        start_i, end_i = self._snapshot_global_indices[self._current_snapshot_num]
-        current_slice = slice(start_i, end_i)
-        cumulative_slice = slice(0, end_i)
+        current_indices = self._snapshot_indices[self._current_snapshot_num]
 
         if self.copy_on_load:
-            current = self._slice_data(current_slice)
-            cumulative = self._slice_data(
-                cumulative_slice) if self.include_cumulative else None
+            current = self._slice_data(current_indices)
+            cumulative = None
+            if self.include_cumulative:
+                # Cumulative is everything from edge 0 up to the maximum index in the current batch
+                max_idx = int(current_indices.max().item())
+                cumulative = self._slice_data(torch.arange(0, max_idx + 1, device=self.data.device))
         else:
-            current = TemporalGraphView(self.data, current_slice)
-            cumulative = TemporalGraphView(
-                self.data, cumulative_slice) if self.include_cumulative else None
+            current = TemporalGraphView(self.data, current_indices)
+            cumulative = None
+            if self.include_cumulative:
+                max_idx = int(current_indices.max().item())
+                cumulative = TemporalGraphView(self.data, slice(0, max_idx + 1))
 
         snapshot = TemporalGraphSnapshot(
             snapshot_id=self._current_snapshot_num,
