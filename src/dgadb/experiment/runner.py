@@ -3,8 +3,6 @@ import os
 from enum import Enum
 from typing import Annotated
 
-import numpy as np
-import torch
 import typer
 from dgadb.evaluation import ADEvaluator
 from dgadb.models.base import BaseADModel, BaseADModelComponentsType
@@ -33,39 +31,6 @@ class Method(str, Enum):
 
 
 app = typer.Typer()
-
-
-def remove_duplicates(tg: TemporalGraph) -> TemporalGraph:
-    """
-    Removes duplicate edges from a TemporalGraph.
-    This is temporary because anomaly injection can add duplicates, will be fixed soon.
-    """
-    if tg.num_edges == 0:
-        return tg
-
-    edge_keys = torch.stack([tg.src, tg.tgt, tg.t], dim=1).cpu().numpy()
-
-    _, indices = np.unique(edge_keys, axis=0, return_index=True)
-
-    indices = np.sort(indices)
-    indices_torch = torch.from_numpy(indices).to(tg.device)
-
-    tg.src = tg.src[indices_torch]
-    tg.tgt = tg.tgt[indices_torch]
-    tg.t = tg.t[indices_torch]
-    tg.msg = tg.msg[indices_torch]
-    tg.train_mask = tg.train_mask[indices_torch]
-    tg.test_mask = tg.test_mask[indices_torch]
-
-    if tg.edge_labels is not None:
-        tg.edge_labels = tg.edge_labels[indices_torch]
-    if tg.val_mask is not None:
-        tg.val_mask = tg.val_mask[indices_torch]
-    if tg.w is not None:
-        tg.w = tg.w[indices_torch]
-
-    return tg
-
 
 class ExperimentRunner:
     def __init__(
@@ -196,7 +161,7 @@ def run_experiment(
         case Method.strgnn:
             from dgadb.models.StrGNN.strgnn import StrGNNAD
 
-            model = StrGNNAD()
+            model = StrGNNAD(snap_size=window_size)
         case Method.rustgraph:
             from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
 
@@ -222,26 +187,25 @@ def run_experiment(
 
     loader = TemporalGraphLoaderNew()
 
+    anomaly_ratios = [0.1, 0.01, 0.05]
     anomaly_types = ["random", "burst", "bridge", "clique", "path"]
-    # anomaly_ratios = [0.01, 0.05, 0.1]
-    anomaly_ratios = [0.1]
-    anom_duration_types = ["small", "medium", "large"]
+    anom_durations = [0.001, 0.01, 0.1, 0.2, 0.5]
 
     epochs = 10
 
     for anom_ratio in anomaly_ratios:
         for anom_type in anomaly_types:
-            for anom_dur_type in anom_duration_types:
+            for anom_dur in anom_durations:
                 print(
-                    f"STARTING: anom_type={anom_type}, anom_ratio={anom_ratio}, anom_duration_type={anom_dur_type}")
+                    f"STARTING: anom_type={anom_type}, anom_ratio={anom_ratio}, anom_duration={anom_dur}")
                 data = loader.load(dataset, anom_type, anom_val_ratio=anom_ratio,
-                                   anom_test_ratio=anom_ratio, duration_type=anom_dur_type, create_if_not_found=True)
-
+                                   anom_test_ratio=anom_ratio, duration=anom_dur, create_if_not_found=True)
+                
                 # Configure Aim tracking with comprehensive logging
                 anom_config = {
                     "anom_type": anom_type,
                     "anom_ratio": anom_ratio,
-                    "anom_duration_type": anom_dur_type
+                    "anom_duration": anom_dur
                 }
 
                 aim_callback = AimCallback(
@@ -252,10 +216,10 @@ def run_experiment(
                         "dataset": dataset,
                         "variant": data.variant_name,
                         "epochs": epochs,
+                        "anom_duration": anom_dur,
                         **snapshot_config,
                     },
-                    tags=[method.value, dataset, anom_config["anom_type"],
-                          anom_config["anom_duration_type"]],
+                    tags=[method.value, dataset, anom_type],
                 )
                 aim_callback.log_config(anom_config, name="anom_config")
                 aim_callback.log_config(
@@ -266,11 +230,11 @@ def run_experiment(
                 resource_monitor = ResourceMonitor(output_dir)
 
                 runner = ExperimentRunner(model, data, output_dir=output_dir)
-                try:
-                    runner.run(epochs, snapshot_config, [
-                            aim_callback, resource_monitor])
-                except Exception as e:
-                    print(e)
+                # try:
+                runner.run(epochs, snapshot_config, [
+                        aim_callback, resource_monitor])
+                # except Exception as e:
+                #     print(e)
 
                 print("DONE.")
                 print("========================")
