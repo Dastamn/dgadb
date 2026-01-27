@@ -178,7 +178,7 @@ class Classifier(nn.Module):
         return embed, labels
 
 
-def loop_dataset(g_list, classifier, sample_idxes, optimizer=None, bsize=32):
+def loop_dataset(g_list, classifier, sample_idxes, optimizer=None, bsize=32, state=None, handler=None):
     total_loss = []
     total_iters = (len(sample_idxes) + (bsize - 1) * (optimizer is None)) // bsize
     pbar = tqdm(list(range(total_iters)), unit="batch")
@@ -187,6 +187,12 @@ def loop_dataset(g_list, classifier, sample_idxes, optimizer=None, bsize=32):
 
     n_samples = 0
     for pos in pbar:
+        if state is not None:
+            state.step_in_epoch = pos
+            state.total_steps += 1
+            if handler is not None:
+                handler.on_train_step_begin(state)
+
         selected_idx = sample_idxes[pos * bsize : (pos + 1) * bsize]
 
         batch_graph = [g_list[idx] for idx in selected_idx]
@@ -205,6 +211,12 @@ def loop_dataset(g_list, classifier, sample_idxes, optimizer=None, bsize=32):
             optimizer.step()
 
         loss = loss.data.cpu().detach().numpy()
+        
+        if state is not None:
+            state.loss = loss
+            if handler is not None:
+                handler.on_train_step_end(state)
+
         if classifier.regression:
             pbar.set_description("MSE_loss: %0.5f MAE_loss: %0.5f" % (loss, mae))
             total_loss.append(np.array([loss, mae]) * len(selected_idx))
