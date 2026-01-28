@@ -145,44 +145,6 @@ def run_experiment(
         "include_cumulative": True,
     }
 
-    match method:
-        case Method.sad:
-            from dgadb.models.sad_new.sad import SADAD
-
-            model = SADAD()
-        case Method.taddy:
-            from dgadb.models.taddy_new.taddy import TADDYAD
-
-            model = TADDYAD(snap_size=window_size)
-        case Method.slade:
-            from dgadb.models.slade_new.slade import SLADEAD
-
-            model = SLADEAD()
-        case Method.strgnn:
-            from dgadb.models.StrGNN.strgnn import StrGNNAD
-
-            model = StrGNNAD(snap_size=window_size)
-        case Method.rustgraph:
-            from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
-
-            model = RustGraphAD()
-        case Method.generaldyg:
-            from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
-
-            model = GeneralDyGAD()
-        case Method.gcn:
-            from dgadb.models.baseline.gnn import GNNAD
-
-            model = GNNAD("GCN")
-        case Method.gat:
-            from dgadb.models.baseline.gnn import GNNAD
-
-            model = GNNAD("GAT")
-        case Method.graphsage:
-            from dgadb.models.baseline.gnn import GNNAD
-
-            model = GNNAD("GraphSAGE")
-
     from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
 
     loader = TemporalGraphLoaderNew()
@@ -198,6 +160,45 @@ def run_experiment(
             for anom_dur in anom_durations:
                 print(
                     f"STARTING: anom_type={anom_type}, anom_ratio={anom_ratio}, anom_duration={anom_dur}")
+                
+                match method:
+                    case Method.sad:
+                        from dgadb.models.sad_new.sad import SADAD
+
+                        model = SADAD()
+                    case Method.taddy:
+                        from dgadb.models.taddy_new.taddy import TADDYAD
+
+                        model = TADDYAD(snap_size=window_size)
+                    case Method.slade:
+                        from dgadb.models.slade_new.slade import SLADEAD
+
+                        model = SLADEAD()
+                    case Method.strgnn:
+                        from dgadb.models.StrGNN.strgnn import StrGNNAD
+
+                        model = StrGNNAD(snap_size=window_size)
+                    case Method.rustgraph:
+                        from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
+
+                        model = RustGraphAD()
+                    case Method.generaldyg:
+                        from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
+
+                        model = GeneralDyGAD()
+                    case Method.gcn:
+                        from dgadb.models.baseline.gnn import GNNAD
+
+                        model = GNNAD("GCN")
+                    case Method.gat:
+                        from dgadb.models.baseline.gnn import GNNAD
+
+                        model = GNNAD("GAT")
+                    case Method.graphsage:
+                        from dgadb.models.baseline.gnn import GNNAD
+
+                        model = GNNAD("GraphSAGE")
+        
                 data = loader.load(dataset, anom_type, anom_val_ratio=anom_ratio,
                                    anom_test_ratio=anom_ratio, duration=anom_dur, create_if_not_found=True)
                 
