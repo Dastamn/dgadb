@@ -28,6 +28,7 @@ class Method(str, Enum):
     graphsage = "graphsage"
     rustgraph = "rustgraph"
     generaldyg = "generaldyg"
+    addgraph = "addgraph"
 
 
 app = typer.Typer()
@@ -132,6 +133,15 @@ def run_experiment(
         help="Dataset name")] = "bitcoin-alpha",
     experiment_name: Annotated[str, typer.Option(
         help="Aim experiment name")] = "dgadb",
+    anom_types: Annotated[list[str], typer.Option(
+        help="Types of anomalies to inject")] = ["random", "burst", "bridge", "clique", "path"],
+    anom_ratios: Annotated[list[float], typer.Option(
+        help="Anomaly ratios to test")] = [0.1, 0.01, 0.05],
+    anom_durations: Annotated[list[float], typer.Option(
+        help="Anomaly durations to test")] = [0.001, 0.01, 0.1, 0.2, 0.5, 1.0],
+    sad_anom_train_ratio: Annotated[float, typer.Option(
+        help="The anomaly ratio used during SAD training phase")] = 0.01,
+    epochs: Annotated[int, typer.Option(help="Number of training epochs")] = 10,
 ):
     """Run an anomaly detection experiment with the specified method and dataset."""
 
@@ -149,23 +159,17 @@ def run_experiment(
 
     loader = TemporalGraphLoaderNew()
 
-    anomaly_ratios = [0.1, 0.01, 0.05]
-    anomaly_types = ["random", "burst", "bridge", "clique", "path"]
-    anom_durations = [0.001, 0.01, 0.1, 0.2, 0.5]
-
-    epochs = 10
-
-    for anom_ratio in anomaly_ratios:
-        for anom_type in anomaly_types:
-            for anom_dur in anom_durations:
+    for ar in anom_ratios:
+        for at in anom_types:
+            for ad in anom_durations:
                 print(
-                    f"STARTING: anom_type={anom_type}, anom_ratio={anom_ratio}, anom_duration={anom_dur}")
+                    f"STARTING: anom_type={at}, anom_ratio={ar}, anom_duration={ad}")
                 
                 match method:
                     case Method.sad:
                         from dgadb.models.sad_new.sad import SADAD
 
-                        model = SADAD()
+                        model = SADAD(input_dim=8)
                     case Method.taddy:
                         from dgadb.models.taddy_new.taddy import TADDYAD
 
@@ -198,15 +202,26 @@ def run_experiment(
                         from dgadb.models.baseline.gnn import GNNAD
 
                         model = GNNAD("GraphSAGE")
-        
-                data = loader.load(dataset, anom_type, anom_val_ratio=anom_ratio,
-                                   anom_test_ratio=anom_ratio, duration=anom_dur, create_if_not_found=True)
+                    case "addgraph":
+                        from dgadb.models.addgraph.addgraph import AddGraphAD
+
+                        model = AddGraphAD()
+
+                if method == Method.sad:
+                    from dgadb.preprocessing.anomaly_injection import AnomalyInjector
+                    data = loader.load(dataset, create_if_not_found=True)
+                    ai = AnomalyInjector(data)
+                    ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
+                    ai.generate_anomalous_samples(at, val_ratio=ar, test_ratio=ar, duration=ad)
+                else:
+                    data = loader.load(dataset, at, anom_val_ratio=ar,
+                                   anom_test_ratio=ar, duration=ad, create_if_not_found=True)
                 
                 # Configure Aim tracking with comprehensive logging
                 anom_config = {
-                    "anom_type": anom_type,
-                    "anom_ratio": anom_ratio,
-                    "anom_duration": anom_dur
+                    "anom_type": at,
+                    "anom_ratio": ar,
+                    "anom_duration": ad
                 }
 
                 aim_callback = AimCallback(
@@ -217,10 +232,10 @@ def run_experiment(
                         "dataset": dataset,
                         "variant": data.variant_name,
                         "epochs": epochs,
-                        "anom_duration": anom_dur,
+                        "anom_duration": ad,
                         **snapshot_config,
                     },
-                    tags=[method.value, dataset, anom_type],
+                    tags=[method.value, dataset, at],
                 )
                 aim_callback.log_config(anom_config, name="anom_config")
                 aim_callback.log_config(
@@ -239,6 +254,9 @@ def run_experiment(
 
                 print("DONE.")
                 print("========================")
+        #         break
+        #     break
+        # break
 
 
 if __name__ == "__main__":
