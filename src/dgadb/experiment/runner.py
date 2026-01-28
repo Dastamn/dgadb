@@ -166,10 +166,6 @@ def run_experiment(
                     f"STARTING: anom_type={at}, anom_ratio={ar}, anom_duration={ad}")
                 
                 match method:
-                    case Method.sad:
-                        from dgadb.models.sad_new.sad import SADAD
-
-                        model = SADAD(input_dim=8)
                     case Method.taddy:
                         from dgadb.models.taddy_new.taddy import TADDYAD
 
@@ -209,6 +205,7 @@ def run_experiment(
 
                 if method == Method.sad:
                     from dgadb.preprocessing.anomaly_injection import AnomalyInjector
+
                     data = loader.load(dataset, create_if_not_found=True)
                     ai = AnomalyInjector(data)
                     ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
@@ -246,17 +243,12 @@ def run_experiment(
                 resource_monitor = ResourceMonitor(output_dir)
 
                 runner = ExperimentRunner(model, data, output_dir=output_dir)
-                # try:
+                
                 runner.run(epochs, snapshot_config, [
                         aim_callback, resource_monitor])
-                # except Exception as e:
-                #     print(e)
 
                 print("DONE.")
                 print("========================")
-        #         break
-        #     break
-        # break
 
 
 if __name__ == "__main__":
