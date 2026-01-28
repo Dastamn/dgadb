@@ -6,17 +6,18 @@ import numpy as np
 import networkx as nx
 import scipy.sparse as sp
 from tqdm import tqdm
-from dataclasses import dataclass
+import random
 
 from .model.CensNet import CensNet
 from .model.Transformer import TransformerBinaryClassifier
 from .model.Combine import CombinedModel
 
-from dgadb.models.base import BaseADModel, BaseADModelComponents
-from dgadb.storage.temporal_graph import TemporalGraph, TemporalGraphView
-from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
-import random
-
+from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.storage.temporal_graph import TemporalGraph
+from dgadb.experiment.callbacks import ExperimentCallbackHandler
+from dataclasses import dataclass
+from sklearn.metrics import roc_auc_score
+from pathlib import Path
 
 @dataclass
 class GeneralDyGComponents(BaseADModelComponents):
@@ -36,11 +37,14 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         drop_out: float = 0.4,
         learning_rate: float = 0.0001,
         max_mask_len: int = 26,
+        batch_size: int = 128,
         k_hop: int = 1,
         device: torch.device | str = "cpu",
-        cache_dir: str = "cache/generaldyg"
+        cache_dir: str = "cache",
+        seed: int = 1234
     ) -> None:
         super().__init__(device)
+        self.seed = seed
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.n_heads = n_heads
@@ -48,64 +52,89 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         self.drop_out = drop_out
         self.learning_rate = learning_rate
         self.max_mask_len = max_mask_len
+        self.batch_size = batch_size
         self.k_hop = k_hop
         self.cache_dir = cache_dir
-        self.precomputed_data = None
+
+        self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
+
+        # Internal storage for precomputed subgraph tensors
+        self.precomputed_tensors = {}
+        self.train_mask = None
+        self.test_mask = None
+        self.val_mask = None
+
+    def __get_cache_identifier(self, data: TemporalGraph):
+        base_name = data.metadata.get("variant_name", "clean")
+        
+        tr = data.metadata.get('train_ratio', 0)
+        vr = data.metadata.get('val_ratio', 0)
+        te = data.metadata.get('test_ratio', 0)
+        split_str = f"split_{tr}_{vr}_{te}"
+        
+        params_str = f"hop{self.k_hop}_mask{self.max_mask_len}"
+        
+        return f"{base_name}_{split_str}_{params_str}"
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
-        dataset_name = f"{data.metadata['dataset_name']}_{data.metadata['variant_name']}"
-        cache_path = os.path.join(
-            self.cache_dir, f"{dataset_name}_subgraphs.pkl")
+        dataset_name = data.dataset_name
+        current_cache_dir = self.cache_dir / dataset_name
+        current_cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # 1. Replicate Feature Initialization (datasets.py lines 34-35)
-        # These are generated ONCE and never updated.
-        self.logger.info("Initializing static random features...")
+        cache_id = self.__get_cache_identifier(data)
+        cache_file = current_cache_dir / f"{cache_id}.pkl"
+
+        self.train_mask = data.train_mask
+        self.test_mask = data.test_mask
+        self.val_mask = data.val_mask
+        self.edge_labels = data.edge_labels if data.edge_labels is not None else torch.zeros(
+            data.num_edges)
+
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+
+        # 1. Feature Initialization (Static/Random as per original)
         num_nodes = data.num_nodes
         num_edges = data.num_edges
         node_feats_np = np.random.uniform(
-            low=0.0, high=1.0, size=(num_nodes, self.input_dim))
+            0.0, 1.0, size=(num_nodes, self.input_dim))
         edge_feats_np = np.random.uniform(
-            low=0.0, high=1.0, size=(num_edges, self.input_dim))
-
-        if os.path.exists(cache_path):
-            self.logger.info(f"Loading subgraphs from {cache_path}")
-            with open(cache_path, 'rb') as f:
-                self.precomputed_data = pickle.load(f)
+            0.0, 1.0, size=(num_edges, self.input_dim))
+        
+        if cache_file.exists():
+            self.logger.info(f"CACHE HIT: Loading subgraphs from {cache_file}")
+            with open(cache_file, 'rb') as f:
+                cached_payload = pickle.load(f)
+            
+            subgraph_data = cached_payload['subgraph_data']
+            self.max_edges_all = cached_payload['max_edges_all']
         else:
-            self.logger.info("Preprocessing subgraphs (one-time)...")
-            self.precomputed_data = self._global_preprocessing(data)
-            os.makedirs(self.cache_dir, exist_ok=True)
-            with open(cache_path, 'wb') as f:
-                pickle.dump(self.precomputed_data, f)
+            self.logger.info(f"CACHE MISS: Preprocessing subgraphs for {cache_id}...")
+            subgraph_data = self._global_preprocessing(data)
+            self.max_edges_all = max(len(item['sub_edge_ids']) for item in subgraph_data)
+            
+            payload = {
+                'subgraph_data': subgraph_data,
+                'max_edges_all': self.max_edges_all
+            }
+            with open(cache_file, 'wb') as f:
+                pickle.dump(payload, f)
 
-        # Find the maximum number of edges across all subgraphs
-        self.max_edges_all = max(len(item['sub_edge_ids'])
-                                 for item in self.precomputed_data)
-        self.logger.info(
-            f"Subgraphs precomputed. Node limit: {self.max_mask_len}, Max edges found: {self.max_edges_all}")
+        self.precomputed_tensors = {
+            'n_feat': [torch.from_numpy(node_feats_np[item['sub_node_ids']]).float() for item in subgraph_data],
+            'e_feat': [torch.from_numpy(edge_feats_np[item['sub_edge_ids']]).float() for item in subgraph_data],
+            'Tmats': [torch.from_numpy(item['T']).float() for item in subgraph_data],
+            'adjs': [torch.from_numpy(item['adj']).float() for item in subgraph_data],
+            'eadjs': [torch.from_numpy(item['eadj']).float() for item in subgraph_data],
+            'edge_ids': [item['sub_edge_ids'] for item in subgraph_data]
+        }
 
-        self.logger.info("Converting precomputed subgraphs to Tensors...")
-        self.processed_n_feats = []
-        self.processed_e_feats = []
-        self.processed_Tmats = []
-        self.processed_adjs = []
-        self.processed_eadjs = []
-
-        for item in tqdm(self.precomputed_data, desc="Tensor-ifying"):
-            n_feat = node_feats_np[item['sub_node_ids']]
-            e_feat = edge_feats_np[item['sub_edge_ids']]
-
-            self.processed_n_feats.append(torch.from_numpy(n_feat).float())
-            self.processed_e_feats.append(torch.from_numpy(e_feat).float())
-            self.processed_Tmats.append(torch.from_numpy(item['T']).float())
-            self.processed_adjs.append(torch.from_numpy(item['adj']).float())
-            self.processed_eadjs.append(torch.from_numpy(item['eadj']).float())
-
+        # 4. Model Initialization
         gnn = CensNet(self.input_dim, self.drop_out)
         transformer = TransformerBinaryClassifier(
             self, self.device, hidden_size=self.hidden_dim)
         model = CombinedModel(gnn, transformer)
-
         optimizer = torch.optim.Adam(model.parameters(), lr=self.learning_rate)
 
         self._components = GeneralDyGComponents(
@@ -116,6 +145,82 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         ).to(self.device)
 
     def _global_preprocessing(self, data: TemporalGraph):
+        G = nx.Graph()
+        src_np = data.src.cpu().numpy().astype(int)
+        tgt_np = data.tgt.cpu().numpy().astype(int)
+
+        # Use the full graph as the context (matching original leakage/context)
+        for i in range(len(src_np)):
+            u, v = src_np[i], tgt_np[i]
+            if G.has_edge(u, v):
+                G[u][v]['edge_ids'].append(i)
+            else:
+                G.add_edge(u, v, edge_ids=[i])
+
+        all_subgraphs = []
+        for i in tqdm(range(len(src_np)), desc="Subgraphs"):
+            u, v = src_np[i], tgt_np[i]
+
+            # K-hop extraction
+            nodes_u = self._extract_k_hop(G, u, v)
+            nodes_v = self._extract_k_hop(G, v, u)
+            sub_nodes = nodes_u.union(nodes_v)
+            sub_g = G.subgraph(sub_nodes).copy()
+
+            # Resolution: Store the structural adj separately from the lookup
+            # Original logic: Use a random edge if multiple exist, EXCEPT for the target edge
+            edge_lookup = {}
+            for eu, ev, edata in sub_g.edges(data=True):
+                chosen_id = random.choice(edata['edge_ids'])
+                edge_lookup[tuple(sorted((eu, ev)))] = chosen_id
+
+            # Ensure the target edge uses the CURRENT index 'i'
+            edge_lookup[tuple(sorted((u, v)))] = i
+
+            # Reorder Nodes by Min Weight (Earliest interaction)
+            node_weights = {}
+            for node in sub_g.nodes:
+                # Look up the min edge ID this node participates in within the SUBGRAPH
+                incident_edges = sub_g.edges(node)
+                node_weights[node] = min(
+                    edge_lookup[tuple(sorted(e))] for e in incident_edges)
+
+            sorted_nodes = sorted(node_weights.items(), key=lambda x: x[1])
+            mapping = {old_id: new_id for new_id,
+                       (old_id, _) in enumerate(sorted_nodes)}
+
+            # Create STRUCTURAL Adjacency (Binary 0/1)
+            new_sub = nx.relabel_nodes(sub_g, mapping)
+            adj_binary = nx.adjacency_matrix(
+                new_sub, nodelist=sorted(new_sub.nodes()), weight=None)
+
+            # Create Transition Matrix from Binary Adj
+            T = self._create_transition_matrix(adj_binary)
+
+            # Create Edge Adj from Binary Adj
+            eadj, edge_name = self._create_edge_adj(adj_binary)
+
+            # Map Edge IDs to match the columns of T
+            # T columns are built from the order in sp.triu(adj_binary)
+            sub_edge_ids = []
+            edge_indices = np.nonzero(sp.triu(adj_binary, k=1))
+
+            # We need the original IDs for these edges
+            inv_mapping = {v: k for k, v in mapping.items()}
+            for r, c in zip(edge_indices[0], edge_indices[1]):
+                u_old, v_old = inv_mapping[r], inv_mapping[c]
+                sub_edge_ids.append(edge_lookup[tuple(sorted((u_old, v_old)))])
+
+            all_subgraphs.append({
+                'adj': self._normalize(adj_binary + sp.eye(adj_binary.shape[0])).toarray(),
+                'T': T.toarray(),
+                'eadj': self._normalize(eadj).toarray(),
+                'sub_node_ids': np.array([old for old, _ in sorted_nodes]),
+                'sub_edge_ids': np.array(sub_edge_ids)
+            })
+        return all_subgraphs
+
+    def _global_preprocessing_old(self, data: TemporalGraph):
         import random
         G = nx.Graph()
         src_np = data.src.cpu().numpy().astype(int)
@@ -178,105 +283,6 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
             })
         return all_subgraphs
 
-    def _get_batch_tensors(self, global_indices: range | list):
-        # Collate equivalent
-        batch_n = [self.processed_n_feats[i].to(
-            self.device) for i in global_indices]
-        batch_e = [self.processed_e_feats[i].to(
-            self.device) for i in global_indices]
-        batch_T = [self.processed_Tmats[i].to(
-            self.device) for i in global_indices]
-        batch_adj = [self.processed_adjs[i].to(
-            self.device) for i in global_indices]
-        batch_eadj = [self.processed_eadjs[i].to(
-            self.device) for i in global_indices]
-
-        # Padding
-        batch_size = len(global_indices)
-        e_pad = torch.zeros(batch_size, self.max_edges_all,
-                            self.input_dim).to(self.device)
-        mask_edge = torch.ones(batch_size, self.max_edges_all).to(self.device)
-
-        for i, idx in enumerate(global_indices):
-            feat = self.processed_e_feats[idx]
-            seq_len = feat.size(0)
-            e_pad[i, :seq_len, :] = feat.to(self.device)
-            mask_edge[i, :seq_len] = 0
-
-        return batch_n, batch_e, e_pad, batch_eadj, batch_adj, batch_T, mask_edge
-
-    def _get_batch_tensors_old(self, global_indices: range):
-        items = [self.precomputed_data[i] for i in global_indices]
-        batch_size = len(items)
-
-        input_nodes_feature = []
-        input_edges_feature = []
-        Tmats, adjs, eadjs = [], [], []
-
-        input_edges_pad = torch.zeros(
-            batch_size, self.max_edges_all, self.input_dim).to(self.device)
-        mask_edge = torch.ones(batch_size, self.max_edges_all).to(self.device)
-
-        for i, item in enumerate(items):
-            n_feat = self.components.node_features_static[item['sub_node_ids']]
-            e_feat = self.components.edge_features_static[item['sub_edge_ids']]
-
-            input_nodes_feature.append(n_feat.to(self.device))
-            input_edges_feature.append(e_feat.to(self.device))
-            Tmats.append(torch.from_numpy(item['T']).float().to(self.device))
-            adjs.append(torch.from_numpy(item['adj']).float().to(self.device))
-            eadjs.append(torch.from_numpy(
-                item['eadj']).float().to(self.device))
-
-            seq_len = len(e_feat)
-            input_edges_pad[i, :seq_len, :] = e_feat
-            mask_edge[i, :seq_len] = 0
-
-        return input_nodes_feature, input_edges_feature, input_edges_pad, eadjs, adjs, Tmats, mask_edge
-
-    def _train_step(self, snapshot: TemporalGraphSnapshot, **kwargs) -> float:
-        self.set_training_mode(True)
-        view: TemporalGraphView = snapshot.current
-        start, stop = view._slice.start, view._slice.stop
-        # global_indices = range(view._slice.start, view._slice.stop)
-
-        indices = list(range(start, stop))
-        random.shuffle(indices)
-
-        n_feat, e_feat, e_pad, eadjs, adjs, Tmats, mask = self._get_batch_tensors(
-            indices)
-
-        # n_feat, e_feat, e_pad, eadjs, adjs, Tmats, mask = self._get_batch_tensors(
-        #     global_indices)
-
-        self.components.optimizer.zero_grad()
-        # forward (train.py lines 152-160)
-        logits = self.components.model(
-            n_feat, e_feat, e_pad, eadjs, adjs, Tmats, mask)
-
-        labels = view.edge_labels.to(self.device).float()
-
-        relative_indices = [i - start for i in indices]
-        shuffled_labels = labels[relative_indices]
-
-        loss = torch.nn.functional.binary_cross_entropy_with_logits(
-            logits, shuffled_labels)
-
-        loss.backward()
-        self.components.optimizer.step()
-        return loss.item()
-
-    def _predict(self, snapshot: TemporalGraphSnapshot, **kwargs) -> torch.Tensor:
-        self.set_training_mode(False)
-        view: TemporalGraphView = snapshot.current
-        global_indices = range(view._slice.start, view._slice.stop)
-        with torch.no_grad():
-            n_feat, e_feat, e_pad, eadjs, adjs, Tmats, mask = self._get_batch_tensors(
-                global_indices)
-            logits = self.components.model(
-                n_feat, e_feat, e_pad, eadjs, adjs, Tmats, mask)
-            return torch.sigmoid(logits)
-
     def _extract_k_hop(self, G, src, dest):
         nodes = {src}
         visited = {src}
@@ -323,6 +329,114 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         rowsum = np.array(mx.sum(1)).flatten()
         r_inv = np.power(rowsum, -1, where=rowsum != 0)
         return sp.diags(r_inv).dot(mx)
+
+    def train(self, epochs: int, train_loader=None, val_loader=None, callbacks=None):
+        assert self.train_mask is not None
+        train_indices = torch.where(self.train_mask)[0].tolist()
+        val_indices = torch.where(self.val_mask)[
+            0].tolist() if self.val_mask is not None else []
+
+        handler = ExperimentCallbackHandler(callbacks)
+        state = TrainingState(model=self)
+        handler.on_train_begin(state)
+
+        for epoch in range(epochs):
+            self.set_training_mode(True)
+            state.epoch = epoch
+            handler.on_train_epoch_begin(state)
+
+            # Shuffle just like original code
+            random.shuffle(train_indices)
+
+            # Manual batching
+            for i in tqdm(range(0, len(train_indices), self.batch_size), desc=f"TRAIN - Epoch {epoch}"):
+                batch_idx = train_indices[i: i + self.batch_size]
+
+                self.components.optimizer.zero_grad()
+
+                # Forward Pass
+                logits = self._forward_batch(batch_idx)
+                labels = self.edge_labels[batch_idx].to(
+                    self.device).float()
+
+                loss = torch.nn.functional.binary_cross_entropy_with_logits(
+                    logits, labels)
+                loss.backward()
+                self.components.optimizer.step()
+
+                state.loss = loss.item()
+                state.step_in_epoch = i // self.batch_size
+                state.total_steps += 1
+
+            # Validation step
+            if val_indices:
+                val_auc = self.evaluate_indices(val_indices)
+                print(f"Epoch {epoch} Val AUC: {val_auc}")
+                state.val_metrics = {'roc_auc': val_auc}
+
+            handler.on_train_epoch_end(state)
+        handler.on_train_end(state)
+
+    def run_inference(self, loader=None) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Overrides base.py inference to use precomputed subgraphs for the test mask.
+        """
+        assert self.test_mask is not None
+        test_indices = torch.where(self.test_mask)[0].tolist()
+        all_probs = []
+
+        self.set_training_mode(False)
+        with torch.no_grad():
+            for i in range(0, len(test_indices), self.batch_size):
+                batch_idx = test_indices[i: i + self.batch_size]
+                logits = self._forward_batch(batch_idx)
+                all_probs.append(torch.sigmoid(logits))
+
+        return self.edge_labels[test_indices], torch.cat(all_probs)
+
+    def _forward_batch(self, batch_indices):
+        batch_size = len(batch_indices)
+
+        # Prepare lists for GNN (lists of tensors)
+        n_feat = [self.precomputed_tensors['n_feat']
+                  [i].to(self.device) for i in batch_indices]
+        e_feat_list = [self.precomputed_tensors['e_feat']
+                       [i].to(self.device) for i in batch_indices]
+        Tmats = [self.precomputed_tensors['Tmats']
+                 [i].to(self.device) for i in batch_indices]
+        adjs = [self.precomputed_tensors['adjs']
+                [i].to(self.device) for i in batch_indices]
+        eadjs = [self.precomputed_tensors['eadjs']
+                 [i].to(self.device) for i in batch_indices]
+
+        # Prepare padded tensor for Transformer
+        e_pad = torch.zeros(batch_size, self.max_edges_all,
+                            self.input_dim).to(self.device)
+        mask_edge = torch.ones(batch_size, self.max_edges_all).to(self.device)
+
+        for i, idx in enumerate(batch_indices):
+            feat = self.precomputed_tensors['e_feat'][idx]
+            seq_len = feat.size(0)
+            e_pad[i, :seq_len, :] = feat
+            mask_edge[i, :seq_len] = 0
+
+        return self.components.model(n_feat, e_feat_list, e_pad, eadjs, adjs, Tmats, mask_edge)
+
+    def evaluate_indices(self, indices):
+        self.set_training_mode(False)
+        all_probs = []
+        with torch.no_grad():
+            for i in tqdm(range(0, len(indices), self.batch_size), desc=f"TEST"):
+                batch = indices[i: i + self.batch_size]
+                logits = self._forward_batch(batch)
+                all_probs.append(torch.sigmoid(logits))
+
+        y_true = self.edge_labels[indices].cpu().numpy()
+        y_pred = torch.cat(all_probs).cpu().numpy()
+        return roc_auc_score(y_true, y_pred)
+
+    def _train_step(self, snapshot, **kwargs): return 0.0
+    def _predict(self, snapshot, **kwargs): return torch.zeros(1)
 
     def save(self, save_dir: str) -> None:
         os.makedirs(save_dir, exist_ok=True)
