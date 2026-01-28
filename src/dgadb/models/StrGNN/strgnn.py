@@ -65,11 +65,11 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.data_dict = {}
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
-        self.cache_dir /= Path(data.dataset_name)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        current_cache_dir = self.cache_dir / Path(data.dataset_name)
+        current_cache_dir.mkdir(parents=True, exist_ok=True)
 
         cache_id = self.__get_cache_identifier(data)
-        cache_file = self.cache_dir / f"{cache_id}.pkl"
+        cache_file = current_cache_dir / f"{cache_id}.pkl"
 
         if cache_file.exists():
             print(f"CACHE HIT: Loading precomputed data from {cache_file}")
