@@ -20,14 +20,14 @@ from dgadb.storage.temporal_graph import TemporalGraph
 from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 import math
 from sklearn.metrics import roc_auc_score
-
+from pathlib import Path
 
 @dataclass
 class StrGNNComponents(BaseADModelComponents):
     classifier: Classifier
     optimizer: torch.optim.Optimizer
 
-
+import pickle
 class StrGNNAD(BaseADModel[StrGNNComponents]):
     def __init__(
         self,
@@ -41,7 +41,8 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         learning_rate: float = 1e-4,
         batch_size: int = 32,
         use_embedding: bool = True,
-        device: torch.device | str = "cpu"
+        device: torch.device | str = "cpu",
+        cache_dir: str = "cache"
     ) -> None:
         super().__init__(device)
         self.hop = hop
@@ -55,6 +56,8 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.use_embedding = use_embedding
         self.snap_size = snap_size
 
+        self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
+
         # Storage for pre-computed subgraphs
         self._train_graphs = []
         self._test_graphs = []
@@ -62,7 +65,26 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.data_dict = {}
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
-        print("STRGNN setup started with Negative Sampling...")
+        self.cache_dir /= Path(data.dataset_name)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        cache_id = self.__get_cache_identifier(data)
+        cache_file = self.cache_dir / f"{cache_id}.pkl"
+
+        if cache_file.exists():
+            print(f"CACHE HIT: Loading precomputed data from {cache_file}")
+            with open(cache_file, 'rb') as f:
+                cached_payload = pickle.load(f)
+            
+            self.data_dict = cached_payload['data_dict']
+            self.sortpooling_k = cached_payload['sortpooling_k']
+            self.feat_dim = cached_payload['feat_dim']
+            self.attr_dim = cached_payload['attr_dim']
+            # Re-initialize the classifier with loaded dims
+            self.__init_classifier_and_optimizer()
+            return
+        
+        print(f"CACHE MISS: Starting preprocessing for {cache_id}...")
 
         num_nodes = data.num_nodes
         src = data.src.cpu().numpy()
@@ -232,19 +254,58 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.feat_dim = max_n_label + 1
         self.attr_dim = node_information.shape[1] if node_information is not None else 0
 
+        print(f"Saving precomputed data to {cache_file}...")
+        payload_to_cache = {
+            'data_dict': self.data_dict,
+            'sortpooling_k': self.sortpooling_k,
+            'feat_dim': self.feat_dim,
+            'attr_dim': self.attr_dim
+        }
+        with open(cache_file, 'wb') as f:
+            pickle.dump(payload_to_cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        self.__init_classifier_and_optimizer()
+
+        # self.classifier = Classifier(
+        #     gm="DGCNN", latent_dim=[32, 32, 32, 1], out_dim=0,
+        #     feat_dim=self.feat_dim, attr_dim=self.attr_dim, edge_feat_dim=0,
+        #     sortpooling_k=int(self.sortpooling_k), conv1d_activation="relu",
+        #     hidden=128, num_class=2, dropout=0.5,
+        #     mode="gpu" if "cuda" in str(self.device) else "cpu"
+        # )
+
+        # if "cuda" in str(self.device):
+        #     self.classifier = self.classifier.cuda()
+
+        # self.optimizer = torch.optim.Adam(
+        #     self.classifier.parameters(), lr=self.learning_rate)
+        
+    def __init_classifier_and_optimizer(self):
         self.classifier = Classifier(
-            gm="DGCNN", latent_dim=[32, 32, 32, 1], out_dim=0,
+            gm="DGCNN", latent_dim=self.latent_dim, out_dim=0,
             feat_dim=self.feat_dim, attr_dim=self.attr_dim, edge_feat_dim=0,
             sortpooling_k=int(self.sortpooling_k), conv1d_activation="relu",
-            hidden=128, num_class=2, dropout=0.5,
+            hidden=self.hidden, num_class=2, dropout=self.dropout,
             mode="gpu" if "cuda" in str(self.device) else "cpu"
         )
 
         if "cuda" in str(self.device):
             self.classifier = self.classifier.cuda()
 
-        self.optimizer = torch.optim.Adam(
-            self.classifier.parameters(), lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=self.learning_rate)
+        
+    def __get_cache_identifier(self, data: TemporalGraph):
+        base_name = data.variant_name
+        
+        splits = data.metadata.get('splits', {})
+        tr = splits.get('train_ratio', 0)
+        vr = splits.get('val_ratio', 0)
+        te = splits.get('test_ratio', 0)
+        split_str = f"split_{tr}_{vr}_{te}"
+        
+        params_str = f"hop{self.hop}_win{self.window_size}_snap{self.snap_size}"
+        
+        return f"{base_name}_{split_str}_{params_str}"
 
     def __dyn_links2subgraphs_with_val(self, net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
                                        test_pos_id, test_pos, test_neg_id, test_neg,
