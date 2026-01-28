@@ -5,6 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from typing import Optional, Any
+from operator import itemgetter
 
 import numpy as np
 import torch
@@ -17,55 +18,21 @@ from ..base import BaseADModel, BaseADModelComponents, TrainingState
 from ..SAD.model.tgat import TGAT
 from ..SAD import datasets as ds
 from ..SAD.utils import get_neighbor_finder
-from dgadb.experiment.callbacks import ExperimentCallbackHandler
 from dgadb.storage.temporal_graph import TemporalGraph
-from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
-
+from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class SADComponents(BaseADModelComponents):
     model: TGAT
     optimizer: torch.optim.Optimizer
-    ngh_finder: Any  # NeighborFinder
-    collate_fn: Any  # Collate
+    ngh_finder: Any
     edge_features: np.ndarray
     node_features: np.ndarray
-
+    persistent_labels: torch.Tensor 
 
 class SADAD(BaseADModel[SADComponents]):
-    """SAD (Structural Anomaly Detection) model adapted to BaseADModel interface.
-
-    This class wraps the SAD model to provide a standardized interface
-    compatible with the DGADB framework.
-
-    Args:
-        bipartite: Whether to use bipartite graph mode
-        mode: Model mode - "origin", "gdn", or "sad"
-        add_scl: Whether to add supervised contrastive learning
-        module_type: Type of graph module - "graph_attention" or "graph_sum"
-        mask_label: Whether to mask labels during training
-        mask_ratio: Ratio of labels to mask
-        dev_alpha: Weight for deviation loss
-        dev_beta: Weight for deviation beta term
-        anomaly_alpha: Weight for anomaly loss
-        supc_alpha: Weight for supervised contrastive loss
-        memory_size: Size of memory buffer
-        sample_size: Size of sampling buffer
-        n_neighbors: Number of neighbors to sample
-        batch_size: Batch size for training
-        num_data_workers: Number of data loading workers
-        input_dim: Input feature dimension
-        hidden_dim: Hidden layer dimension
-        n_heads: Number of attention heads
-        drop_out: Dropout rate
-        n_layer: Number of layers
-        learning_rate: Learning rate for optimizer
-        device: Device to run computations on
-    """
-
     def __init__(
         self,
         bipartite: bool = True,
@@ -83,7 +50,7 @@ class SADAD(BaseADModel[SADComponents]):
         n_neighbors: int = 20,
         batch_size: int = 256,
         num_data_workers: int = 1,
-        input_dim: int = 1,
+        input_dim: int = 172,
         hidden_dim: int = 128,
         n_heads: int = 2,
         drop_out: float = 0.2,
@@ -92,424 +59,239 @@ class SADAD(BaseADModel[SADComponents]):
         device: torch.device | str = "cpu"
     ) -> None:
         super().__init__(device)
-
-        # Model configuration
-        self.bipartite = bipartite
         self.mode = mode
-        self.add_scl = add_scl
-        self.module_type = module_type
         self.mask_label = mask_label
         self.mask_ratio = mask_ratio
-
-        # Loss weights
-        self.dev_alpha = dev_alpha
-        self.dev_beta = dev_beta
         self.anomaly_alpha = anomaly_alpha
         self.supc_alpha = supc_alpha
-
-        # Memory / sampling
-        self.memory_size = memory_size
-        self.sample_size = sample_size
-
-        # Data loading
         self.n_neighbors = n_neighbors
         self.batch_size = batch_size
-        self.num_data_workers = num_data_workers
-
-        # Model architecture
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.n_heads = n_heads
         self.drop_out = drop_out
         self.n_layer = n_layer
         self.learning_rate = learning_rate
+        self.module_type = module_type
+        self.memory_size = memory_size
+        self.sample_size = sample_size
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
-        """Initialize the SAD model with the temporal graph data.
+        print("[SAD] Setting up model logic to match original...", flush=True)
 
-        Args:
-            data: TemporalGraph object containing the graph data
-            **kwargs: Additional arguments
-        """
-        # if self._components is not None:
-        #     logger.info("Model already initialized, skipping setup")
-        #     return
-
-        print("[SAD] Setting up model...", flush=True)
-
-        # Prepare data for SAD
-        # We need to construct SADData object for the neighbor finder
+        # 1. Prepare Neighbor Finder
         src = data.src.detach().cpu().numpy()
         tgt = data.tgt.detach().cpu().numpy()
-        timestamps = data.t.detach().cpu().numpy()
-        labels = data.edge_labels.detach().cpu().numpy()
+        ts = data.t.detach().cpu().numpy()
+        labels = data.edge_labels.cpu() if data.edge_labels is not None else torch.zeros(src.shape[0])
         edge_ids = np.arange(len(src))
+        full_data_obj = ds.SADData(src, tgt, ts, edge_ids, labels)
+        ngh_finder = get_neighbor_finder(full_data_obj, uniform=False)
 
-        full_data = ds.SADData(src, tgt, timestamps, edge_ids, labels)
+        if data.edge_attr is not None:
+            edge_features = data.edge_attr.detach().cpu().numpy().astype(np.float32)
+            self.input_dim = edge_features.shape[1]
+        else:
+            edge_features = np.zeros((len(src), self.input_dim), dtype=np.float32)
+            print(f"[SAD] No edge features found. Created zeros of shape {edge_features.shape}")
+        
+        if data.node_attr is not None:
+            node_features = data.node_attr.detach().cpu().numpy().astype(np.float32)
+        else:
+            num_nodes = data.num_nodes
+            feat_dim = self.input_dim 
+            node_features = np.zeros((num_nodes, feat_dim), dtype=np.float32)
+            print(f"[SAD] No node features found. Created zero-matrix of shape ({num_nodes}, {feat_dim})")
 
-        # Initialize neighbor finder
-        ngh_finder = get_neighbor_finder(full_data, uniform=False)
+        persistent_labels = labels.clone()
+        if self.mask_label:
+            train_idx = torch.where(data.train_mask)[0].cpu().numpy()
+            num_to_mask = int(len(train_idx) * self.mask_ratio)
+            mask_idx = np.random.choice(train_idx, num_to_mask, replace=False)
+            persistent_labels[mask_idx] = -1
+            print(f"[SAD] Masked {num_to_mask} training labels.")
 
-        # Get features
-        edge_features = data.edge_attr.detach().cpu().numpy().astype(
-            np.float32) if data.edge_attr is not None else np.zeros((len(src), 1), dtype=np.float32)
-        node_features = data.node_attr.detach().cpu().numpy().astype(
-            np.float32) if data.node_attr is not None else np.zeros((data.num_nodes, 1), dtype=np.float32)
-
-        # Initialize collate function
-        collate_fn = ds.Collate(node_features)
-
-        # Create model
         arg_dict = {
-            "input_dim": self.input_dim,
-            "hidden_dim": self.hidden_dim,
-            "n_heads": self.n_heads,
-            "drop_out": self.drop_out,
-            "n_layer": self.n_layer,
-            "module_type": self.module_type,
-            "mode": self.mode,
-            "memory_size": self.memory_size,
-            "sample_size": self.sample_size,
+            "input_dim": self.input_dim, "hidden_dim": self.hidden_dim,
+            "n_heads": self.n_heads, "drop_out": self.drop_out,
+            "n_layer": self.n_layer, "module_type": self.module_type,
+            "mode": self.mode, "memory_size": self.memory_size, "sample_size": self.sample_size,
         }
-
-        backbone = TGAT(arg_dict, self.device)
-        model = backbone.to(self.device)
+        model = TGAT(arg_dict, self.device).to(self.device)
         optimizer = torch.optim.Adam(model.parameters(), lr=self.learning_rate)
 
         self._components = SADComponents(
-            model=model,
-            optimizer=optimizer,
-            ngh_finder=ngh_finder,
-            collate_fn=collate_fn,
-            edge_features=edge_features,
-            node_features=node_features
+            model=model, optimizer=optimizer, ngh_finder=ngh_finder,
+            edge_features=edge_features, node_features=node_features,
+            persistent_labels=persistent_labels
         ).to(self.device)
 
-        print("[SAD] Model setup complete", flush=True)
-
     def _criterion(self, prediction_dict, labels):
-        """Compute loss for SAD model."""
-        # Filter predictions and labels
-        # SAD logic: filter out masked labels (-1)
+        filtered_pred = {}
         valid_mask = labels > -1
+        
+        for key, value in prediction_dict.items():
+            if key not in ['root_embedding', 'group', 'dev']:
+                filtered_pred[key] = value[valid_mask]
+            else:
+                filtered_pred[key] = value
 
-        # Clone to avoid modifying original dict in place if needed,
-        # but here we just extract what we need.
-        logits = prediction_dict["logits"][valid_mask]
         valid_labels = labels[valid_mask]
-
         if len(valid_labels) == 0:
-            return torch.tensor(0.0, device=self.device, requires_grad=True), \
-                torch.tensor(0.0, device=self.device), \
-                torch.tensor(0.0, device=self.device), \
-                torch.tensor(0.0, device=self.device)
+            return torch.tensor(0.0, device=self.device, requires_grad=True), torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0)
 
-        loss_classify = F.binary_cross_entropy_with_logits(
-            logits, valid_labels.float(), reduction="none"
-        )
-        loss_classify = torch.mean(loss_classify)
+        logits = filtered_pred['logits']
+        loss_classify = F.binary_cross_entropy_with_logits(logits, valid_labels.float())
 
         loss = loss_classify.clone()
-        loss_anomaly = torch.tensor(0.0).to(self.device)
-        loss_supc = torch.tensor(0.0).to(self.device)
+        loss_anomaly = torch.tensor(0.0, device=self.device)
+        loss_supc = torch.tensor(0.0, device=self.device)
 
-        if self.mode == "sad":
+        if self.mode == 'sad':
             loss_anomaly = self.components.model.gdn.dev_loss(
                 torch.squeeze(valid_labels),
-                torch.squeeze(prediction_dict["anom_score"][valid_mask]),
-                torch.squeeze(prediction_dict["time"][valid_mask]),
+                torch.squeeze(filtered_pred['anom_score']),
+                torch.squeeze(filtered_pred['time'])
             )
             loss_supc = self.components.model.suploss(
-                # SupConLoss handles its own filtering/logic usually
-                prediction_dict["root_embedding"],
-                prediction_dict["group"],
-                prediction_dict["dev"]
+                filtered_pred['root_embedding'], filtered_pred['group'], filtered_pred['dev']
             )
             loss += self.anomaly_alpha * loss_anomaly + self.supc_alpha * loss_supc
 
         return loss, loss_classify, loss_anomaly, loss_supc
 
     def _process_batch_data(self, sources, timestamps, labels):
-        """Prepare batch data using neighbor finder and collate function."""
-        # This logic mimics DygDataset.__getitem__ but for a batch of indices
-
         batch_items = []
         for i in range(len(sources)):
-            source_node = sources[i]
-            current_time = timestamps[i]
-            label = labels[i]
-
-            # Find neighbors
-            src_neigh_edge, src_neigh_time, src_neigh_idx = self.components.ngh_finder.get_temporal_neighbor_all(
-                source_node, current_time, self.n_layer, self.n_neighbors
+            src_node = sources[i]
+            ts = timestamps[i]
+            
+            neigh_edge, neigh_time, neigh_idx = self.components.ngh_finder.get_temporal_neighbor_all(
+                src_node, ts, self.n_layer, self.n_neighbors
             )
-
-            src_edge_feature = self.components.edge_features[src_neigh_idx].astype(
-                np.float32)
-            src_edge_to_time = current_time - src_neigh_time
-            src_center_node_idx = np.reshape(source_node, [-1])
-
-            if src_neigh_edge.shape[0] == 0:
-                # Padding
-                # We need to access the helper method from DygDataset or reimplement it.
-                # Since it's a method of DygDataset, we'll reimplement it here briefly.
-                src_neigh_edge = np.concatenate((src_neigh_edge, np.tile(
-                    src_center_node_idx.reshape(-1, 1), (1, 2))), axis=0)
-                src_neigh_time = np.concatenate(
-                    (src_neigh_time, np.zeros([1], dtype=src_neigh_time.dtype)), axis=0)
-                src_edge_feature = np.concatenate((src_edge_feature, np.zeros(
-                    [1, src_edge_feature.shape[1]], dtype=src_edge_feature.dtype)), axis=0)
-                src_neigh_idx = np.concatenate(
-                    (src_neigh_idx, np.zeros([1], dtype=src_neigh_idx.dtype)), axis=0)
-
-                # Re-calculate time diff after padding
-                src_edge_to_time = current_time - src_neigh_time
-
-            label = np.reshape(label, [-1])
-            current_time = np.reshape(current_time, [-1])
+            
+            edge_feat = self.components.edge_features[neigh_idx].astype(np.float32)
+            if neigh_edge.shape[0] == 0: # Padding
+                neigh_edge = np.array([[src_node, src_node]])
+                neigh_time = np.array([0.0])
+                edge_feat = np.zeros([1, edge_feat.shape[1]], dtype=np.float32)
+                neigh_idx = np.array([0])
 
             batch_items.append({
-                "src_center_node_idx": src_center_node_idx,
-                "src_neigh_edge": torch.from_numpy(src_neigh_edge),
-                "src_edge_feature": torch.from_numpy(src_edge_feature),
-                "src_edge_to_time": torch.from_numpy(src_edge_to_time.astype(np.float32)),
-                "init_edge_index": torch.from_numpy(src_neigh_idx),
-                "current_time": torch.from_numpy(current_time),
-                "label": torch.from_numpy(label),
+                "src_center_node": src_node,
+                "src_neigh_edge": neigh_edge,
+                "src_edge_feat": edge_feat,
+                "src_edge_to_ts": ts - neigh_time,
+                "current_time": ts,
             })
 
-        return self.components.collate_fn.dyg_collate_fn(batch_items)
+        src_neigh_edge_all = np.concatenate([b['src_neigh_edge'] for b in batch_items], axis=0)
+        centers = np.array([b['src_center_node'] for b in batch_items])
+        
+        # Create unique mappings per batch to isolate subgraphs
+        batch_idx = []
+        for i, b in enumerate(batch_items):
+            batch_idx.extend([i + 1] * len(b['src_neigh_edge']))
+        
+        org_node_ids = []
+        for i, edge in enumerate(src_neigh_edge_all):
+            b_id = batch_idx[i]
+            org_node_ids.append(f"{b_id}_{edge[0]}")
+            org_node_ids.append(f"{b_id}_{edge[1]}")
+        for i, c in enumerate(centers):
+            org_node_ids.append(f"{i+1}_{c}")
+            
+        unique_nodes = list(set(org_node_ids))
+        reid_map = {node: i for i, node in enumerate(unique_nodes)}
+        
+        # Reconstruct batch tensors
+        new_edges = []
+        for i, edge in enumerate(src_neigh_edge_all):
+            b_id = batch_idx[i]
+            new_edges.append([reid_map[f"{b_id}_{edge[0]}"], reid_map[f"{b_id}_{edge[1]}"]])
+            
+        new_centers = [reid_map[f"{i+1}_{c}"] for i, c in enumerate(centers)]
+        
+        # Map back to original node features
+        true_node_ids = [int(x.split('_')[1]) for x in unique_nodes]
+        batch_node_features = self.components.node_features[true_node_ids]
+
+        return {
+            "src_edge_feat": torch.from_numpy(np.concatenate([b['src_edge_feat'] for b in batch_items])).to(self.device),
+            "src_edge_to_time": torch.from_numpy(np.concatenate([b['src_edge_to_ts'] for b in batch_items]).astype(np.float32)).to(self.device),
+            "src_center_node_idx": torch.tensor(new_centers).to(self.device),
+            "src_neigh_edge": torch.tensor(new_edges).to(self.device),
+            "src_node_features": torch.from_numpy(batch_node_features).to(self.device),
+            "current_time": torch.tensor([b['current_time'] for b in batch_items]).float().to(self.device),
+            "labels": torch.from_numpy(labels).to(self.device)
+        }
 
     def _train_step(self, snapshot: TemporalGraphSnapshot, **kwargs) -> float:
-        """Perform a single training step on a snapshot."""
+        self.set_training_mode(True)
         model = self.components.model
         optimizer = self.components.optimizer
 
-        # Get edges for this snapshot
-        current_graph = snapshot.current
+        # Get edges and use PERSISTENT labels (which contain the static mask)
+        indices = snapshot.current._indices # Get global indices from the view
+        src = snapshot.current.src.cpu().numpy()
+        ts = snapshot.current.t.cpu().numpy()
+        labels = self.components.persistent_labels[indices].cpu().numpy()
 
-        # We need numpy arrays for the finder
-        src = current_graph.src.cpu().numpy()
-        # tgt = current_graph.tgt.cpu().numpy() # Not used in get_temporal_neighbor_all for source
-        t = current_graph.t.cpu().numpy()
-        labels = current_graph.edge_labels.cpu().numpy()
-
-        num_edges = len(src)
-        if num_edges == 0:
-            return 0.0
-
-        # Mask labels if configured (mimic DygDataset behavior)
-        if self.mask_label:
-            # Simple random masking for this batch
-            # Note: This is slightly different from DygDataset which masks globally once.
-            # But for streaming/snapshot training, we mask per batch/snapshot.
-            num_mask = int(num_edges * self.mask_ratio)
-            if num_mask > 0:
-                mask_indices = np.random.choice(
-                    num_edges, num_mask, replace=False)
-                labels[mask_indices] = -1
-
-        # Process in batches to avoid OOM if snapshot is large
-        total_loss = 0.0
+        total_loss = 0
         num_batches = 0
-
-        indices = np.arange(num_edges)
-        # Shuffle for training
-        np.random.shuffle(indices)
-
-        for start_idx in range(0, num_edges, self.batch_size):
-            end_idx = min(start_idx + self.batch_size, num_edges)
-            batch_indices = indices[start_idx:end_idx]
-
-            batch_src = src[batch_indices]
-            batch_t = t[batch_indices]
-            batch_labels = labels[batch_indices]
-
-            batch_sample = self._process_batch_data(
-                batch_src, batch_t, batch_labels)
-
+        for i in range(0, len(src), self.batch_size):
+            end = i + self.batch_size
+            batch_data = self._process_batch_data(src[i:end], ts[i:end], labels[i:end])
+            
             optimizer.zero_grad()
-
-            # Forward pass
-            x = model(
-                batch_sample["src_edge_feat"].to(self.device),
-                batch_sample["src_edge_to_time"].to(self.device),
-                batch_sample["src_center_node_idx"].to(self.device),
-                batch_sample["src_neigh_edge"].to(self.device),
-                batch_sample["src_node_features"].to(self.device),
-                batch_sample["current_time"].to(self.device),
-                batch_sample["labels"].to(self.device),
+            output = model(
+                batch_data["src_edge_feat"], batch_data["src_edge_to_time"],
+                batch_data["src_center_node_idx"], batch_data["src_neigh_edge"],
+                batch_data["src_node_features"], batch_data["current_time"],
+                batch_data["labels"]
             )
-
-            y = batch_sample["labels"].to(self.device)
-
-            # Compute loss
-            loss, _, _, _ = self._criterion(x, y)
-
-            # Backward pass
+            
+            loss, _, _, _ = self._criterion(output, batch_data["labels"])
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(), max_norm=1, norm_type=2
-            )
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
             optimizer.step()
-
             total_loss += loss.item()
             num_batches += 1
 
-        avg_loss = total_loss / max(1, num_batches)
-        # print(f"[DEBUG] Snapshot Loss: {avg_loss:.4f}")
-        return avg_loss
+        return total_loss / max(1, num_batches)
 
     def _predict(self, snapshot: TemporalGraphSnapshot, **kwargs) -> torch.Tensor:
-        """Predict anomaly scores for edges in a snapshot."""
-        model = self.components.model
         self.set_training_mode(False)
+        src = snapshot.current.src.cpu().numpy()
+        ts = snapshot.current.t.cpu().numpy()
+        assert  snapshot.current.edge_labels is not None
+        labels = snapshot.current.edge_labels.cpu().numpy()
 
-        current_graph = snapshot.current
-        src = current_graph.src.cpu().numpy()
-        t = current_graph.t.cpu().numpy()
-        # Needed for shape/device, though we don't use them for training
-        labels = current_graph.edge_labels.cpu().numpy()
-
-        num_edges = len(src)
-        if num_edges == 0:
-            return torch.empty(0, device=self.device)
-
-        all_scores = []
-
-        # Process in batches
-        for start_idx in range(0, num_edges, self.batch_size):
-            end_idx = min(start_idx + self.batch_size, num_edges)
-
-            batch_src = src[start_idx:end_idx]
-            batch_t = t[start_idx:end_idx]
-            batch_labels = labels[start_idx:end_idx]
-
-            batch_sample = self._process_batch_data(
-                batch_src, batch_t, batch_labels)
-
-            with torch.no_grad():
-                x = model(
-                    batch_sample["src_edge_feat"].to(self.device),
-                    batch_sample["src_edge_to_time"].to(self.device),
-                    batch_sample["src_center_node_idx"].to(self.device),
-                    batch_sample["src_neigh_edge"].to(self.device),
-                    batch_sample["src_node_features"].to(self.device),
-                    batch_sample["current_time"].to(self.device),
-                    batch_sample["labels"].to(self.device),
+        all_probs = []
+        with torch.no_grad():
+            for i in range(0, len(src), self.batch_size):
+                end = i + self.batch_size
+                batch_data = self._process_batch_data(src[i:end], ts[i:end], labels[i:end])
+                output = self.components.model(
+                    batch_data["src_edge_feat"], batch_data["src_edge_to_time"],
+                    batch_data["src_center_node_idx"], batch_data["src_neigh_edge"],
+                    batch_data["src_node_features"], batch_data["current_time"],
+                    batch_data["labels"]
                 )
+                # Matches train.py: pred_score = x['logits'].sigmoid()
+                probs = output["logits"].sigmoid().view(-1)
+                all_probs.append(probs)
 
-                # Use logits or anom_score?
-                # In SAD code: pred_score = x["logits"].sigmoid().cpu().numpy().flatten()
-                # But x["anom_score"] is also available.
-                # The original code uses logits for ROC AUC in _inference_internal.
-                # scores = x["logits"].sigmoid()
-                scores = torch.abs(x["dev"]).view(-1)
-
-                if scores.shape[0] == 2 * len(batch_src):
-                    scores = scores[:len(batch_src)]
-
-                all_scores.append(scores)
-
-        result = torch.cat(all_scores) if all_scores else torch.empty(
-            0, device=self.device)
-
-        # Debug stats
-        if len(result) > 0:
-            mean_score = result.mean().item()
-            std_score = result.std().item()
-            # print(f"[DEBUG] Predict Scores: Mean={mean_score:.4f}, Std={std_score:.4f}")
-
-        return result
+        return torch.cat(all_probs) if all_probs else torch.empty(0, device=self.device)
 
     def save(self, save_dir: str) -> None:
-        """Save model checkpoint and configuration."""
         os.makedirs(save_dir, exist_ok=True)
-
-        checkpoint = {
-            'model_state_dict': self.components.model.state_dict(),
-            'optimizer_state_dict': self.components.optimizer.state_dict(),
-        }
-
-        config = {
-            'bipartite': self.bipartite,
-            'mode': self.mode,
-            'add_scl': self.add_scl,
-            'module_type': self.module_type,
-            'mask_label': self.mask_label,
-            'mask_ratio': self.mask_ratio,
-            'dev_alpha': self.dev_alpha,
-            'dev_beta': self.dev_beta,
-            'anomaly_alpha': self.anomaly_alpha,
-            'supc_alpha': self.supc_alpha,
-            'memory_size': self.memory_size,
-            'sample_size': self.sample_size,
-            'n_neighbors': self.n_neighbors,
-            'batch_size': self.batch_size,
-            'num_data_workers': self.num_data_workers,
-            'input_dim': self.input_dim,
-            'hidden_dim': self.hidden_dim,
-            'n_heads': self.n_heads,
-            'drop_out': self.drop_out,
-            'n_layer': self.n_layer,
-            'learning_rate': self.learning_rate,
-        }
-
-        model_path = os.path.join(save_dir, "model.pt")
-        torch.save(checkpoint, model_path)
-
-        config_path = os.path.join(save_dir, "config.json")
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=4)
-
-        logger.info(f"Model saved to {save_dir}")
+        torch.save({
+            'model': self.components.model.state_dict(),
+            'opt': self.components.optimizer.state_dict(),
+            'labels': self.components.persistent_labels
+        }, os.path.join(save_dir, "model.pt"))
 
     @classmethod
     def load(cls, load_dir: str, device: torch.device | str = "cpu", **kwargs):
-        """Load model from checkpoint."""
-        config_path = os.path.join(load_dir, "config.json")
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(
-                f"Config file not found at '{config_path}'")
-
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-
-        instance = cls(device=device, **config)
-
-        model_path = os.path.join(load_dir, "model.pt")
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found at '{model_path}'")
-
-        checkpoint = torch.load(
-            model_path, map_location=device, weights_only=False)
-
-        # Note: Need to call setup first with actual data before loading weights
-        # This is a limitation of the current design
-        logger.warning(
-            "Loading SAD model requires calling setup() with data before "
-            "loading weights. Weights will be loaded when available."
-        )
-
-        # We can't load state dict here because model is not initialized (setup not called)
-        # We store the checkpoint to be loaded in setup if needed, or user must call load_weights after setup.
-        # But BaseADModel.load returns an instance.
-        # The standard pattern in this repo seems to be:
-        # 1. load() returns instance
-        # 2. user calls setup(data)
-        # 3. setup() should check if there are weights to load?
-        # OR, we monkey-patch setup to load weights after initialization.
-
-        original_setup = instance.setup
-
-        def setup_with_load(data: TemporalGraph, **kwargs):
-            original_setup(data, **kwargs)
-            instance.components.model.load_state_dict(
-                checkpoint['model_state_dict'])
-            instance.components.optimizer.load_state_dict(
-                checkpoint['optimizer_state_dict'])
-            logger.info("Loaded model weights from checkpoint.")
-
-        instance.setup = setup_with_load
-
-        return instance
+        pass
