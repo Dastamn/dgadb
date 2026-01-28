@@ -37,15 +37,10 @@ class AnomalyInjector:
         self.stats_file = os.path.join(self.cache_path, "graph_stats.json")
         self.comm_file = os.path.join(self.cache_path, "communities.npy")
 
-        if self.tg.edge_labels is not None and self.tg.edge_labels.sum() > 0:
-            raise ValueError("Graph already contains anomalies.")
-
         self.seen_edges: set[tuple[int, int]] = set()
         self._build_registry_and_cache()
 
         self._load_or_compute_analysis(max_k)
-
-        # self.dur_map = {"small": 0.001, "medium": 0.01, "large": 0.05}
 
     def _load_or_compute_analysis(self, max_k: int):
         if os.path.exists(self.stats_file) and os.path.exists(self.comm_file):
