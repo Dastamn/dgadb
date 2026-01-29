@@ -205,11 +205,14 @@ def run_experiment(
 
                 if method == Method.sad:
                     from dgadb.preprocessing.anomaly_injection import AnomalyInjector
+                    from dgadb.models.sad_new.sad import SADAD
 
                     data = loader.load(dataset, create_if_not_found=True)
                     ai = AnomalyInjector(data)
                     ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
                     ai.generate_anomalous_samples(at, val_ratio=ar, test_ratio=ar, duration=ad)
+
+                    model = SADAD()
                 else:
                     data = loader.load(dataset, at, anom_val_ratio=ar,
                                    anom_test_ratio=ar, duration=ad, create_if_not_found=True)
