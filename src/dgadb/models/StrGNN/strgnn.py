@@ -311,15 +311,17 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
                                        test_pos_id, test_pos, test_neg_id, test_neg,
                                        val_pos_id, val_pos, val_neg_id, val_neg, **kwargs):
 
-        train_graphs, test_graphs, max_n_label = dyn_links2subgraphs(
+        train_graphs, test_graphs, max_n_label_train_test = dyn_links2subgraphs(
             net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
             test_pos_id, test_pos, test_neg_id, test_neg, **kwargs
         )
 
-        _, val_graphs, _ = dyn_links2subgraphs(
+        _, val_graphs, max_n_label_val = dyn_links2subgraphs(
             net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
             val_pos_id, val_pos, val_neg_id, val_neg, **kwargs
         )
+
+        max_n_label = max(max_n_label_train_test, max_n_label_val)
 
         return train_graphs, test_graphs, val_graphs, max_n_label
 
