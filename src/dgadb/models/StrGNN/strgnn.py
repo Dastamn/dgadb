@@ -58,7 +58,6 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
 
         self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
 
-        # Storage for pre-computed subgraphs
         self._train_graphs = []
         self._test_graphs = []
 
@@ -91,7 +90,6 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         tgt = data.tgt.cpu().numpy()
         timestamps = data.t.cpu().numpy()
 
-        # We assume all edges in the graph provided are positive (Normal)
         train_mask = data.train_mask.cpu().numpy()
         test_mask = data.test_mask.cpu().numpy()
         val_mask = data.val_mask.cpu().numpy() if data.val_mask is not None else None
@@ -106,7 +104,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         print(
             f"Created {num_snapshots} snapshots with {edges_per_snapshot} edges each.")
 
-        # 1. Create adjacency matrices for each snapshot
+        # Create adjacency matrices for each snapshot
         net = []
         A_train_all = ssp.csr_matrix((num_nodes, num_nodes))
         max_train_snap = snapshot_ids[train_mask].max() if any(
@@ -127,24 +125,22 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
                 A_snap = ssp.csr_matrix((num_nodes, num_nodes))
             net.append(A_snap)
 
-        # 2. Node2Vec embeddings
+        # Node2Vec embeddings
         node_information = None
         if self.use_embedding:
             print("Generating Node2Vec embeddings...")
             node_information = generate_node2vec_embeddings(A_train_all, 128)
 
-        # 3. Separate Positive Train Edges
+        # Separate Positive Train Edges
         train_pos_src = src[train_mask]
         train_pos_tgt = tgt[train_mask]
         train_pos_ids = snapshot_ids[train_mask]
 
-        # 4. NEGATIVE SAMPLING (Crucial step)
         print("Sampling negative training links...")
         train_neg_src = []
         train_neg_tgt = []
         train_neg_ids = []
 
-        # For every positive edge at snapshot T, find a pair (u, v) that is NOT connected at T
         for i in range(len(train_pos_ids)):
             snap_id = train_pos_ids[i]
             A_snap = net[snap_id]
@@ -159,7 +155,6 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
                     train_neg_ids.append(snap_id)
                     break
 
-        # Convert to numpy for consistency
         train_neg_src = np.array(train_neg_src)
         train_neg_tgt = np.array(train_neg_tgt)
         train_neg_ids = np.array(train_neg_ids)
@@ -171,14 +166,13 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
             node_information = generate_node2vec_embeddings(
                 A_train_all, 128, True, train_neg=(train_neg_src, train_neg_tgt))
 
-        # 5. Store in data_dict
+        # Store in data_dict
         self.data_dict["train_pos"] = (train_pos_src, train_pos_tgt)
         self.data_dict["train_neg"] = (train_neg_src, train_neg_tgt)
         self.data_dict["train_pos_id"] = train_pos_ids
         self.data_dict["train_neg_id"] = train_neg_ids
 
         # For test, we assume test_mask already contains the anomalies/negatives
-        # (usually provided by the dataset labels)
         edge_labels = data.edge_labels.cpu().numpy()
         self.data_dict["test_pos"] = (
             src[(test_mask) & (edge_labels == 0)], tgt[(test_mask) & (edge_labels == 0)])
@@ -189,65 +183,100 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.data_dict["test_neg_id"] = snapshot_ids[(
             test_mask) & (edge_labels == 1)]
 
+        val_args = {}
         if data.val_mask is not None and data.val_mask.sum():
             val_src = src[data.val_mask]
             val_tgt = tgt[data.val_mask]
             val_snap_ids = snapshot_ids[data.val_mask]
             val_labels = edge_labels[data.val_mask]
 
-            self.data_dict["val_pos"] = (
-                val_src[val_labels == 0], val_tgt[val_labels == 0])
-            self.data_dict["val_neg"] = (
-                val_src[val_labels == 1], val_tgt[val_labels == 1])
-            self.data_dict["val_pos_id"] = val_snap_ids[val_labels == 0]
-            self.data_dict["val_neg_id"] = val_snap_ids[val_labels == 1]
+            val_args = {
+                "val_pos_id": val_snap_ids[val_labels == 0],
+                "val_pos": (val_src[val_labels == 0], val_tgt[val_labels == 0]),
+                "val_neg_id": val_snap_ids[val_labels == 1],
+                "val_neg": (val_src[val_labels == 1], val_tgt[val_labels == 1])
+            }
 
-            # 6. Extract Subgraphs
-            print("Extracting subgraphs with VALIDATION...")
-            train_graphs, test_graphs, val_graphs, max_n_label = self.__dyn_links2subgraphs_with_val(
-                net,
-                self.window_size,
-                self.data_dict["train_pos_id"],
-                self.data_dict["train_pos"],
-                self.data_dict["train_neg_id"],
-                self.data_dict["train_neg"],
-                self.data_dict["test_pos_id"],
-                self.data_dict["test_pos"],
-                self.data_dict["test_neg_id"],
-                self.data_dict["test_neg"],
-                self.data_dict["val_pos_id"],
-                self.data_dict["val_pos"],
-                self.data_dict["val_neg_id"],
-                self.data_dict["val_neg"],
-                h=self.hop,
-                node_information=node_information,
-            )
-            self.data_dict.update(
-                {"train_graphs": train_graphs, "test_graphs": test_graphs, "val_graphs": val_graphs})
+            # self.data_dict["val_pos"] = (
+            #     val_src[val_labels == 0], val_tgt[val_labels == 0])
+            # self.data_dict["val_neg"] = (
+            #     val_src[val_labels == 1], val_tgt[val_labels == 1])
+            # self.data_dict["val_pos_id"] = val_snap_ids[val_labels == 0]
+            # self.data_dict["val_neg_id"] = val_snap_ids[val_labels == 1]
 
-            all_graphs = [g for sublist in (
-                train_graphs + val_graphs + test_graphs) for g in sublist]
-            num_nodes_list = sorted([g.num_nodes for g in all_graphs])
-            k_idx = int(math.ceil(0.6 * len(num_nodes_list))) - 1
-            self.sortpooling_k = max(10, num_nodes_list[k_idx])
-        else:
-            train_graphs, test_graphs, max_n_label = dyn_links2subgraphs(
-                net, self.window_size,
-                self.data_dict["train_pos_id"], self.data_dict["train_pos"],
-                self.data_dict["train_neg_id"], self.data_dict["train_neg"],
-                self.data_dict["test_pos_id"], self.data_dict["test_pos"],
-                self.data_dict["test_neg_id"], self.data_dict["test_neg"],
-                h=self.hop, node_information=node_information
-            )
-            self.data_dict.update(
-                {"train_graphs": train_graphs, "test_graphs": test_graphs})
+            # Extract Subgraphs
+        #     print("Extracting subgraphs with VALIDATION...")
+        #     train_graphs, test_graphs, val_graphs, max_n_label = self.__dyn_links2subgraphs_with_val(
+        #         net,
+        #         self.window_size,
+        #         self.data_dict["train_pos_id"],
+        #         self.data_dict["train_pos"],
+        #         self.data_dict["train_neg_id"],
+        #         self.data_dict["train_neg"],
+        #         self.data_dict["test_pos_id"],
+        #         self.data_dict["test_pos"],
+        #         self.data_dict["test_neg_id"],
+        #         self.data_dict["test_neg"],
+        #         self.data_dict["val_pos_id"],
+        #         self.data_dict["val_pos"],
+        #         self.data_dict["val_neg_id"],
+        #         self.data_dict["val_neg"],
+        #         h=self.hop,
+        #         node_information=node_information,
+        #     )
+        #     self.data_dict.update(
+        #         {"train_graphs": train_graphs, "test_graphs": test_graphs, "val_graphs": val_graphs})
 
-            # 7. Dynamic K and Model Init (Same as previous fix)
-            all_graphs = [g for sublist in (
-                train_graphs + test_graphs) for g in sublist]
-            num_nodes_list = sorted([g.num_nodes for g in all_graphs])
-            k_idx = int(math.ceil(0.6 * len(num_nodes_list))) - 1
-            self.sortpooling_k = max(10, num_nodes_list[k_idx])
+        #     all_graphs = [g for sublist in (
+        #         train_graphs + val_graphs + test_graphs) for g in sublist]
+        #     num_nodes_list = sorted([g.num_nodes for g in all_graphs])
+        #     k_idx = int(math.ceil(0.6 * len(num_nodes_list))) - 1
+        #     self.sortpooling_k = max(10, num_nodes_list[k_idx])
+        # else:
+        #     train_graphs, test_graphs, max_n_label = dyn_links2subgraphs(
+        #         net, self.window_size,
+        #         self.data_dict["train_pos_id"], self.data_dict["train_pos"],
+        #         self.data_dict["train_neg_id"], self.data_dict["train_neg"],
+        #         self.data_dict["test_pos_id"], self.data_dict["test_pos"],
+        #         self.data_dict["test_neg_id"], self.data_dict["test_neg"],
+        #         h=self.hop, node_information=node_information
+        #     )
+        #     self.data_dict.update(
+        #         {"train_graphs": train_graphs, "test_graphs": test_graphs})
+
+        #     # 7. Dynamic K and Model Init (Same as previous fix)
+        #     all_graphs = [g for sublist in (
+        #         train_graphs + test_graphs) for g in sublist]
+        #     num_nodes_list = sorted([g.num_nodes for g in all_graphs])
+        #     k_idx = int(math.ceil(0.6 * len(num_nodes_list))) - 1
+        #     self.sortpooling_k = max(10, num_nodes_list[k_idx])
+
+        train_graphs, val_graphs, test_graphs, max_n_label = dyn_links2subgraphs(
+            net, 
+            self.window_size,
+            self.data_dict["train_pos_id"], self.data_dict["train_pos"],
+            self.data_dict["train_neg_id"], self.data_dict["train_neg"],
+            self.data_dict["test_pos_id"], self.data_dict["test_pos"],
+            self.data_dict["test_neg_id"], self.data_dict["test_neg"],
+            **val_args,
+            h=self.hop,
+            node_information=node_information
+        )
+
+        self.data_dict.update({
+            "train_graphs": train_graphs, 
+            "test_graphs": test_graphs, 
+            "val_graphs": val_graphs
+        })
+
+        all_graphs = [g for sublist in train_graphs for g in sublist] + \
+                     [g for sublist in test_graphs for g in sublist]
+        if val_graphs:
+            all_graphs += [g for sublist in val_graphs for g in sublist]
+
+        num_nodes_list = sorted([g.num_nodes for g in all_graphs])
+        k_idx = int(math.ceil(0.6 * len(num_nodes_list))) - 1
+        self.sortpooling_k = max(10, num_nodes_list[k_idx])
 
         print("sortpooling_k", self.sortpooling_k)
 
@@ -307,23 +336,23 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         
         return f"{base_name}_{split_str}_{params_str}"
 
-    def __dyn_links2subgraphs_with_val(self, net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
-                                       test_pos_id, test_pos, test_neg_id, test_neg,
-                                       val_pos_id, val_pos, val_neg_id, val_neg, **kwargs):
+    # def __dyn_links2subgraphs_with_val(self, net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
+    #                                    test_pos_id, test_pos, test_neg_id, test_neg,
+    #                                    val_pos_id, val_pos, val_neg_id, val_neg, **kwargs):
 
-        train_graphs, test_graphs, max_n_label_train_test = dyn_links2subgraphs(
-            net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
-            test_pos_id, test_pos, test_neg_id, test_neg, **kwargs
-        )
+    #     train_graphs, test_graphs, max_n_label_train_test = dyn_links2subgraphs(
+    #         net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
+    #         test_pos_id, test_pos, test_neg_id, test_neg, **kwargs
+    #     )
 
-        _, val_graphs, max_n_label_val = dyn_links2subgraphs(
-            net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
-            val_pos_id, val_pos, val_neg_id, val_neg, **kwargs
-        )
+    #     _, val_graphs, max_n_label_val = dyn_links2subgraphs(
+    #         net, window_size, train_pos_id, train_pos, train_neg_id, train_neg,
+    #         val_pos_id, val_pos, val_neg_id, val_neg, **kwargs
+    #     )
 
-        max_n_label = max(max_n_label_train_test, max_n_label_val)
+    #     max_n_label = max(max_n_label_train_test, max_n_label_val)
 
-        return train_graphs, test_graphs, val_graphs, max_n_label
+    #     return train_graphs, test_graphs, val_graphs, max_n_label
 
     def train(self, epochs: int, train_loader: TemporalGraphSnapshotLoader, val_loader: TemporalGraphSnapshotLoader | None = None, callbacks: List[ExperimentCallback] | None = None):
         handler = ExperimentCallbackHandler(callbacks)

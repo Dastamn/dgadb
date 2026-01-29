@@ -80,8 +80,58 @@ def sample_neg(net, test_ratio=0.1, train_pos=None, test_pos=None, max_train_num
     test_neg = (neg[0][train_num:], neg[1][train_num:])
     return train_pos, train_neg, test_pos, test_neg
 
-
 def dyn_links2subgraphs(
+    net,
+    window_size,
+    train_pos_id,
+    train_pos,
+    train_neg_id,
+    train_neg,
+    test_pos_id,
+    test_pos,
+    test_neg_id,
+    test_neg,
+    val_pos_id=None,
+    val_pos=None,
+    val_neg_id=None,
+    val_neg=None,
+    h=1,
+    max_nodes_per_hop=None,
+    node_information=None,
+):
+    max_n_label = {"value": 0}
+
+    def helper(net, links, time_ids, g_label, window_size, desc=""):
+        g_list = []
+        # Progress bar with description for clarity
+        for i, j, n in tqdm(list(zip(links[0], links[1], time_ids)), desc=desc):
+            d_list = []
+            for g_id in range(n - window_size + 1, n + 1):
+                g, n_labels, n_features = subgraph_extraction_labeling(
+                    (i, j), net[g_id], h, max_nodes_per_hop, node_information
+                )
+                max_n_label["value"] = max(max(n_labels), max_n_label["value"])
+                d_list.append(GNNGraph(g, g_label, n_labels, n_features))
+            g_list.append(d_list)
+        return g_list
+
+    print("Enclosing subgraph extraction begins...")
+    
+    train_graphs = helper(net, train_pos, train_pos_id, 0, window_size, "Train Pos") + \
+                   helper(net, train_neg, train_neg_id, 1, window_size, "Train Neg")
+    
+    test_graphs = helper(net, test_pos, test_pos_id, 0, window_size, "Test Pos") + \
+                  helper(net, test_neg, test_neg_id, 1, window_size, "Test Neg")
+    
+    val_graphs = None
+    if val_pos is not None and val_neg is not None:
+        val_graphs = helper(net, val_pos, val_pos_id, 0, window_size, "Val Pos") + \
+                     helper(net, val_neg, val_neg_id, 1, window_size, "Val Neg")
+
+    print(f"Max node label found: {max_n_label['value']}")
+    return train_graphs, val_graphs, test_graphs, max_n_label["value"]
+
+def dyn_links2subgraphs_old(
     net,
     window_size,
     train_pos_id,
