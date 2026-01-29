@@ -31,6 +31,104 @@ class negative_sample(nn.Module):
         super(negative_sample, self).__init__()
 
     def forward(self, adj, Adj, snapshot, H, f, arg):
+        # 1. Convert to numpy for sampling logic
+        if arg: # if cuda
+            data = tuple(map(tuple, snapshot.data.cpu().numpy()))
+            D = adj.sum(1).data.cpu().numpy()
+            D_ = Adj.sum(1).data.cpu().numpy()
+            adj_np = adj.data.cpu().numpy()
+        else:
+            data = tuple(map(tuple, np.array(snapshot)))
+            D = np.array(adj.sum(1))
+            D_ = np.array(Adj.sum(1))
+            adj_np = np.array(adj)
+
+        nodes = adj_np.shape[0]
+        
+        # Calculate Threshold (first node with 0 degree in history)
+        zeros = np.argwhere(D == 0)
+        if zeros.size > 0:
+            th = (zeros + 1)[0].item()
+        else:
+            th = nodes + 1 # All nodes have been seen
+
+        n_loss = torch.zeros(len(data))
+        index = 0
+        
+        for i, j in data:
+            # Convert to int for indexing
+            u_idx, v_idx = int(i) - 1, int(j) - 1
+            
+            di = D_[u_idx]
+            dj = D_[v_idx]
+            
+            # Probability precision fix
+            total_d = float(di + dj)
+            if total_d == 0:
+                pi, pj = 0.5, 0.5
+            else:
+                pi = float(di) / total_d
+                pj = 1.0 - pi # Ensure sum is exactly 1.0
+
+            # Initial Negative Sample
+            d = np.random.choice(a=[j, i], size=1, replace=False, p=[pi, pj]).item()
+            
+            def get_negative_node(anchor_node, history_adj, threshold, total_nodes):
+                # Find nodes not connected to anchor in history
+                candidates = np.argwhere(history_adj[int(anchor_node) - 1] == 0) + 1
+                candidates = np.squeeze(candidates)
+                
+                # Filter by threshold (AddGraph sequential logic)
+                pool = candidates[candidates < threshold]
+                # Remove self
+                pool = pool[pool != anchor_node]
+                
+                # If pool is empty, use any non-neighbor
+                if pool.size == 0:
+                    pool = candidates[candidates != anchor_node]
+                
+                # If still empty (node connected to everyone), pick random
+                if pool.size == 0:
+                    res = np.random.randint(1, total_nodes + 1)
+                    while res == anchor_node:
+                        res = np.random.randint(1, total_nodes + 1)
+                    return res
+                
+                return np.random.choice(a=pool, size=1, replace=False).item()
+
+            dn = get_negative_node(d, adj_np, th, nodes)
+            
+            # Order nodes for Score function consistent with original
+            a, b = (dn, d) if d > dn else (d, dn)
+            
+            loss = f(hi=H[int(i)-1], hj=H[int(j)-1]) - f(hi=H[int(a)-1], hj=H[int(b)-1])
+            
+            # Hard Negative Search Loop
+            count = 0
+            while (loss > 0):
+                count += 1
+                if count > nodes or count > 1899: # Safety break
+                    loss = torch.zeros(1, device=H.device)
+                    break
+                
+                # Re-sample anchor
+                d = np.random.choice(a=[j, i], size=1, replace=False, p=[pi, pj]).item()
+                # Re-sample negative neighbor
+                dn = get_negative_node(d, adj_np, th, nodes)
+                
+                a, b = (dn, d) if d > dn else (d, dn)
+                loss = f(hi=H[int(i)-1], hj=H[int(j)-1]) - f(hi=H[int(a)-1], hj=H[int(b)-1])
+
+            n_loss[index] = loss
+            index += 1
+            
+        return n_loss
+    
+class negative_sample_old(nn.Module):
+    def __init__(self):
+        super(negative_sample_old, self).__init__()
+
+    def forward(self, adj, Adj, snapshot, H, f, arg):
         if arg:
             data = tuple(map(tuple, snapshot.data.cpu().numpy()))
             D = adj.sum(1)
@@ -76,6 +174,19 @@ class negative_sample(nn.Module):
             d_ = d_[id1]
             id2 = d_ != d
             d_ = d_[id2]
+
+            if d_.size == 0:
+                # Use any node not connected to d, ignoring the 'th' constraint
+                d_ = d_[d_ != d]
+
+            if d_.size == 0:
+                # Pick a random node ID in the graph that isn't d
+                dn = np.random.randint(1, nodes + 1)
+                while dn == d:
+                    dn = np.random.randint(1, nodes + 1)
+            else:
+                dn = np.random.choice(a=d_pool, size=1, replace=False).item()
+
             dn = np.random.choice(a=d_, size=1, replace=False)
             dn = dn.item()
             if d > dn:
