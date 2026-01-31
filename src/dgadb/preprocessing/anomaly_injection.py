@@ -17,7 +17,7 @@ from scipy.sparse.linalg import eigsh
 from scipy.sparse.csgraph import shortest_path, laplacian
 
 
-_ANOMALY_DURATION_TYPE_MAP = {"small": 0.001, "medium": 0.01, "large": 0.05}
+_ANOMALY_DURATION_TYPE_MAP = {"small": 0.1, "medium": 0.5, "large": 1.0}
 
 class AnomalyInjector:
     def __init__(self, tg: TemporalGraph, max_k: int = 50, cache_dir: str = "processed"):
