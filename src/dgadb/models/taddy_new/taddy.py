@@ -19,7 +19,9 @@ from ..TADDY.codes.DynADModel import DynADModel
 from dgadb.experiment.callbacks import ExperimentCallbackHandler
 from dgadb.storage.temporal_graph import TemporalGraph
 from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
-
+from dgadb.storage.utils import generate_temporal_graph_filename
+from pathlib import Path
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +68,8 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         c: float = 0.15,
         window_size: int = 3,  # Match TADDYModel default (was 2)
         snap_size: int = 2000,
-        device: torch.device | str = "cpu"
+        device: torch.device | str = "cpu",
+        cache_dir: str = "cache"
     ) -> None:
         super().__init__(device)
 
@@ -83,6 +86,8 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         self.c = c
         self.window_size = window_size
         self.snap_size = snap_size
+
+        self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
 
         # Internal state
         self.data_dict: Optional[dict] = None
@@ -101,32 +106,9 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
         logger.info("Setting up TADDY model...")
 
-        # Extract metadata for file paths
-        dataset_name = f"{data.metadata['dataset_name']}_{data.metadata['variant_name']}"
-        if dataset_name is None:
-            dataset_name = data.metadata.get("dataset_name", "default")
-
         # Update snap_size if provided (e.g. from ExperimentRunner)
         if "snap_size" in kwargs and kwargs["snap_size"] is not None:
             self.snap_size = kwargs["snap_size"]
-
-        # Calculate ratios from data if available
-        num_edges = data.num_edges
-        if num_edges > 0:
-            train_ratio = data.train_mask.sum().item() / num_edges
-            val_ratio = data.val_mask.sum().item() / num_edges
-            # For anomaly ratio, we need to check the test set anomalies
-            # test_mask = data.test_mask
-            # test_edges = test_mask.sum().item()
-            # if test_edges > 0:
-            #     test_labels = data.edge_labels[test_mask]
-                # anom_val_ratio = (test_labels == 1).sum().item() / test_edges
-            # else:
-                # anom_val_ratio = kwargs.get("anom_val_ratio", 0.5)
-        # else:
-        #     train_ratio = kwargs.get("train_ratio", 0.6)
-        #     val_ratio = kwargs.get("val_ratio", 0.2)
-            # anom_val_ratio = kwargs.get("anom_val_ratio", 0.5)
 
         # Build training adjacency matrix
         train_mask = data.train_mask
@@ -204,9 +186,11 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
         degrees = np.array([len(x) for x in headtail])
 
+        dataset_id = generate_temporal_graph_filename(data)
+
         # Build adjacency matrices
         adjs, eigen_adjs = self._get_adjs(
-            rows, cols, weis, num_nodes, dataset_name, train_ratio, val_ratio, self.snap_size
+            rows, cols, weis, num_nodes, data.dataset_name, dataset_id, self.snap_size
         )
 
         idx = list(range(num_nodes))
@@ -301,7 +285,9 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         model = self.components.model
         optimizer = self.components.optimizer
 
-        for epoch in range(epochs):
+        pbar = tqdm(range(epochs))
+
+        for epoch in pbar:
             model.train()
             loss_train = 0
             state.epoch = epoch
@@ -372,8 +358,8 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             loss_train /= (len(self.data_dict["snap_train"]
                                ) - self.window_size + 1)
             epoch_time = time.time() - start_neg_time
-            print(
-                f"[TADDY] Epoch {epoch + 1}/{epochs}: Loss={loss_train:.4f}, Time={epoch_time:.1f}s", flush=True)
+            pbar.set_description(
+                f"[TRAIN] Epoch {epoch + 1}/{epochs}: Loss={loss_train:.4f}, Time={epoch_time:.1f}s")
 
             # Validation
             if val_loader:
@@ -426,7 +412,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         else:
             snap_ids = self.data_dict["snap_train"]
 
-        for snap in snap_ids:
+        for snap in tqdm(snap_ids, desc="TEST"):
             int_embedding = self.embeddings["int"][snap]
             hop_embedding = self.embeddings["hop"][snap]
             time_embedding = self.embeddings["time"][snap]
@@ -525,36 +511,35 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         weights: list[np.ndarray],
         nb_nodes: int,
         dataset_name: str,
-        train_ratio: float,
-        val_ratio: float,
+        dataset_id: str,
+        # train_ratio: float,
+        # val_ratio: float,
         # anom_val_ratio: float,
         snap_size: int,
     ) -> tuple[list[torch.Tensor], list[np.ndarray | None]]:
         """Build adjacency matrices and optionally compute/load eigen adjacencies."""
-        base_path = os.environ.get("BASE_PATH", ".")
-        eigen_file_name = (
-            "src/dgadb/models/TADDY/data/eigen/"
-            + dataset_name
-            + "_t"
-            + str(train_ratio)
-            + "_v"
-            + str(val_ratio)
-            # + "_a"
-            # + str(anom_val_ratio)
-            + "_s"
-            + str(snap_size)
-            + ".pkl"
-        )
-        full_eigen_path = os.path.join(base_path, eigen_file_name)
-        os.makedirs(os.path.dirname(full_eigen_path), exist_ok=True)
+        current_cache_dir = self.cache_dir / Path(dataset_name)
+        current_cache_dir.mkdir(parents=True, exist_ok=True)
+        eigen_file_name = current_cache_dir / f"{dataset_id}_s{snap_size}.pkl"
 
-        if not os.path.exists(full_eigen_path):
+        # base_path = os.environ.get("BASE_PATH", ".")
+        # eigen_file_name = (
+        #     "src/dgadb/models/TADDY/data/eigen/"
+        #     + dataset_name
+        #     + "_s"
+        #     + str(snap_size)
+        #     + ".pkl"
+        # )
+        # full_eigen_path = os.path.join(base_path, eigen_file_name)
+        # os.makedirs(os.path.dirname(full_eigen_path), exist_ok=True)
+
+        if not os.path.exists(eigen_file_name):
             generate_eigen = True
             logger.info(f"Generating eigen as: {eigen_file_name}")
         else:
             generate_eigen = False
             logger.info(f"Loading eigen from: {eigen_file_name}")
-            with open(full_eigen_path, "rb") as f:
+            with open(eigen_file_name, "rb") as f:
                 eigen_adjs_sparse = pickle.load(f)
             eigen_adjs = []
             for eigen_adj_sparse in eigen_adjs_sparse:
@@ -567,31 +552,31 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
         total_snapshots = len(rows)
         if generate_eigen:
-            print(
-                f"[TADDY] Computing eigen-adjacencies for {total_snapshots} snapshots...", flush=True)
+            # print(
+            #     f"[TADDY] Computing eigen-adjacencies for {total_snapshots} snapshots...", flush=True)
 
-        for i in range(total_snapshots):
-            adj = sp.csr_matrix(
-                (weights[i], (rows[i], cols[i])),
-                shape=(nb_nodes, nb_nodes),
-                dtype=np.float32
-            )
-            adjs.append(self._preprocess_adj(adj))
-
-            if generate_eigen:
-                from numpy.linalg import inv
-                eigen_adj = self.c * inv(
-                    (sp.eye(adj.shape[0]) - (1 - self.c)
-                     * self._adj_normalize(adj)).toarray()
+            for i in tqdm(range(total_snapshots), desc="[TADDY] Computing eigen-adjacencies"):
+                adj = sp.csr_matrix(
+                    (weights[i], (rows[i], cols[i])),
+                    shape=(nb_nodes, nb_nodes),
+                    dtype=np.float32
                 )
-                for p in range(adj.shape[0]):
-                    eigen_adj[p, p] = 0.0
-                eigen_adj = self._normalize(eigen_adj)
-                eigen_adjs.append(eigen_adj)
-                eigen_adjs_sparse.append(sp.csr_matrix(eigen_adj))
+                adjs.append(self._preprocess_adj(adj))
 
-        if generate_eigen:
-            with open(full_eigen_path, "wb") as f:
+                if generate_eigen:
+                    from numpy.linalg import inv
+                    eigen_adj = self.c * inv(
+                        (sp.eye(adj.shape[0]) - (1 - self.c)
+                        * self._adj_normalize(adj)).toarray()
+                    )
+                    for p in range(adj.shape[0]):
+                        eigen_adj[p, p] = 0.0
+                    eigen_adj = self._normalize(eigen_adj)
+                    eigen_adjs.append(eigen_adj)
+                    eigen_adjs_sparse.append(sp.csr_matrix(eigen_adj))
+
+        # if generate_eigen:
+            with open(eigen_file_name, "wb") as f:
                 pickle.dump(eigen_adjs_sparse, f, pickle.HIGHEST_PROTOCOL)
 
         return adjs, eigen_adjs
