@@ -10,25 +10,36 @@ def generate_temporal_graph_filename(temporal_graph: TemporalGraph):
     meta = temporal_graph.metadata
     dataset_name = meta.get("dataset_name", "unknown-dataset")
 
+    train_splits = meta.get("splits", {})
+    train_ratio = train_splits.get("train_ratio", 0.0)
+    val_ratio = train_splits.get("val_ratio", 0.0)
+    test_ratio = train_splits.get("test_ratio", 0.0)
+
+    fn = f"{dataset_name}_tr{train_ratio}_val{val_ratio}_te{test_ratio}"
+
+    if "variant_name" in meta:
+        return f"{fn}_{meta['variant_name']}"
+
     if meta.get("anomaly_injection", {}).get("is_injected", False):
         anom_meta = meta["anomaly_injection"]
-        type_info = anom_meta.get("type", "anom-type")
+        type_info = anom_meta.get("type", "unknown-anom-type")
 
-        splits_meta = anom_meta.get("splits", {})
-        train_ratio = splits_meta.get("train", {}).get("ratio", 0.0)
-        val_ratio = splits_meta.get("val", {}).get("ratio", 0.0)
-        test_ratio = splits_meta.get("test", {}).get("ratio", 0.0)
-        ratio_str = f"{train_ratio}-{val_ratio}-{test_ratio}"
+        anom_ratios = anom_meta.get("splits", {})
+        anom_train_ratio = anom_ratios.get("train", {}).get("ratio", 0.0)
+        anom_val_ratio = anom_ratios.get("val", {}).get("ratio", 0.0)
+        anom_test_ratio = anom_ratios.get("test", {}).get("ratio", 0.0)
+
+        anom_dur = anom_meta.get("duration_rate", 0.0)
+
+        fn += f"_{type_info}_tr{anom_train_ratio}-v{anom_val_ratio}-te{anom_test_ratio}_{anom_dur}"
 
         gen_params = anom_meta.get("generation_parameters", {})
-        if not gen_params:
-            params_hash = ""
-        else:
+        if gen_params:
             params_str = json.dumps(gen_params, sort_keys=True)
             hasher = hashlib.md5(params_str.encode())
-            params_hash = f"_h-{hasher.hexdigest()[:8]}"
+            fn += f"_h-{hasher.hexdigest()[:8]}"
 
-        return f"{dataset_name}_{type_info}_{ratio_str}{params_hash}"
+        return fn
 
     return dataset_name
 
