@@ -35,8 +35,8 @@ class ResourceMonitor(ExperimentCallback):
             detailed CUDA memory history recording for debugging memory issues.
     """
 
-    def __init__(self, output_dir: str, epoch_interval: int = 1, step_interval: int = 10, enable_memory_history: bool = False) -> None:
-        super().__init__()
+    def __init__(self, output_dir: str, epoch_interval: int = 1, step_interval: int = 10, enable_memory_history: bool = False, verbose: bool = False) -> None:
+        super().__init__(verbose)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.step_interval = step_interval
@@ -94,7 +94,9 @@ class ResourceMonitor(ExperimentCallback):
         save_path = os.path.join(
             self.output_dir, f"resource_usage_{interval_type}.csv")
         df.write_csv(save_path)
-        self.logger.info(f"Resource logs saved to: {save_path}")
+
+        if self.verbose:
+            self.logger.info(f"Resource logs saved to: {save_path}")
 
         plt.figure(figsize=(10, 6))
         plt.plot(df["time_elapsed_sec"], df["cpu_percent"], color="blue")

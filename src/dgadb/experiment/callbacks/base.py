@@ -20,8 +20,9 @@ class ExperimentCallback(ABC):
     methods corresponding to the events you want to handle.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, verbose: bool = False) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.verbose = verbose
 
     def on_train_begin(self, state: TrainingState):
         pass
