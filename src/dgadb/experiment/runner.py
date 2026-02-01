@@ -230,7 +230,7 @@ def run_single_config(
     runner = ExperimentRunner(model, data, output_dir=output_dir)
     runner.run(epochs, snapshot_config, [aim_callback, resource_monitor])
     
-    return f"COMPLETED: {method.value} {at} | ratio:{ar} | dur:{ad}"
+    return f"COMPLETED: {method.value} | {dataset} | {at} | ratio:{ar} | dur:{ad}"
 
 
 @app.command()
