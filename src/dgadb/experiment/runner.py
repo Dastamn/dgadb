@@ -163,9 +163,7 @@ def run_single_config(
     window_size = snapshot_config["window_size"]
 
     logger = logging.getLogger(f"WORKER-{id}")
-    logger.info("==================================================================")
     logger.info(f"LAUNCHING: {method.value} | {at} | ratio:{ar} | dur:{ad} (Cores: {cores_per_worker})")
-    logger.info("==================================================================")
 
     if method == Method.sad:
         from dgadb.preprocessing.anomaly_injection import AnomalyInjector
