@@ -12,6 +12,7 @@ import scipy.sparse as sp
 import torch
 import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
+from scipy.sparse.linalg import splu
 
 from ..base import BaseADModel, BaseADModelComponents, TrainingState
 from ..TADDY.codes.Component import MyConfig
@@ -87,7 +88,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         self.window_size = window_size
         self.snap_size = snap_size
 
-        self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
+        self.cache_dir = Path(cache_dir)
 
         # Internal state
         self.data_dict: Optional[dict] = None
@@ -190,7 +191,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
         # Build adjacency matrices
         adjs, eigen_adjs = self._get_adjs(
-            rows, cols, weis, num_nodes, data.dataset_name, dataset_id, self.snap_size
+            rows, cols, weis, num_nodes, data.dataset_name, dataset_id, # self.snap_size
         )
 
         idx = list(range(num_nodes))
@@ -365,13 +366,9 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             if val_loader:
                 self.set_training_mode(False)
                 val_labels, val_scores = self.run_inference(val_loader)
-                # Only compute ROC AUC if we have both classes
-                if len(torch.unique(val_labels)) > 1:
-                    val_auc = roc_auc_score(
+                val_auc = roc_auc_score(
                         val_labels.cpu().numpy(), val_scores.cpu().numpy())
-                    state.val_metrics = {'roc_auc': val_auc}
-                else:
-                    state.val_metrics = {'roc_auc': float('nan')}
+                self.logger.info(f"Epoch {epoch} Val AUC : {val_auc:.4f}")
 
             handler.on_train_epoch_end(state)
 
@@ -429,12 +426,6 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
         all_labels = torch.cat(labels)
         all_scores = torch.cat(preds)
-
-        # Print results if this is test evaluation
-        if loader.split == "test" and len(torch.unique(all_labels)) > 1:
-            test_auc = roc_auc_score(
-                all_labels.cpu().numpy(), all_scores.cpu().numpy())
-            print(f"[EVAL] Test ROC AUC: {test_auc:.4f}", flush=True)
 
         return all_labels, all_scores
 
@@ -504,7 +495,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         adj_normalized = self._sparse_mx_to_torch_sparse_tensor(adj_normalized)
         return adj_normalized
 
-    def _get_adjs(
+    def _get_adjs_old(
         self,
         rows: list[np.ndarray],
         cols: list[np.ndarray],
@@ -521,17 +512,6 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         current_cache_dir = self.cache_dir / Path(dataset_name)
         current_cache_dir.mkdir(parents=True, exist_ok=True)
         eigen_file_name = current_cache_dir / f"{dataset_id}_s{snap_size}.pkl"
-
-        # base_path = os.environ.get("BASE_PATH", ".")
-        # eigen_file_name = (
-        #     "src/dgadb/models/TADDY/data/eigen/"
-        #     + dataset_name
-        #     + "_s"
-        #     + str(snap_size)
-        #     + ".pkl"
-        # )
-        # full_eigen_path = os.path.join(base_path, eigen_file_name)
-        # os.makedirs(os.path.dirname(full_eigen_path), exist_ok=True)
 
         if not os.path.exists(eigen_file_name):
             generate_eigen = True
@@ -576,6 +556,73 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
                     eigen_adjs_sparse.append(sp.csr_matrix(eigen_adj))
 
         # if generate_eigen:
+            with open(eigen_file_name, "wb") as f:
+                pickle.dump(eigen_adjs_sparse, f, pickle.HIGHEST_PROTOCOL)
+
+        return adjs, eigen_adjs
+
+    def _get_adjs(self, rows, cols, weights, nb_nodes, dataset_name, dataset_id):
+        current_cache_dir = self.cache_dir / Path(dataset_name)
+        current_cache_dir.mkdir(parents=True, exist_ok=True)
+        eigen_file_name = current_cache_dir / f"{dataset_id}_s{len(rows)}.pkl"
+
+        # Precompute identity once
+        I = sp.eye(nb_nodes, format="csr", dtype=np.float32)
+
+        eigen_adjs = None
+        eigen_adjs_sparse = None
+        generate_eigen = False
+
+        if os.path.exists(eigen_file_name):
+            logger.info(f"Loading eigen from: {eigen_file_name}")
+            with open(eigen_file_name, "rb") as f:
+                eigen_adjs_sparse = pickle.load(f)
+
+            eigen_adjs = [ea_sparse.toarray() for ea_sparse in eigen_adjs_sparse]
+        else:
+            generate_eigen = True
+            logger.info(f"Generating eigen as: {eigen_file_name}")
+            eigen_adjs = []
+            eigen_adjs_sparse = []
+
+        adjs = []
+        for i in tqdm(range(len(rows))):
+            # Fast sparse construction
+            # COO is faster to build; convert to CSR for subsequent ops.
+            adj = sp.coo_matrix(
+                (weights[i], (rows[i], cols[i])),
+                shape=(nb_nodes, nb_nodes),
+                dtype=np.float32
+            ).tocsr()
+
+            adjs.append(self._preprocess_adj(adj))
+
+            if generate_eigen:
+                # Original:
+                # eigen_adj = c * inv((I - (1-c) * adj_normalize(adj)).toarray())
+                # Replace with sparse LU solve:
+                #
+                # M = I - (1-c) * adj_normalize(adj)   (sparse)
+                # eigen_adj = c * M^{-1}               (dense output)
+                #
+                # This avoids forming M as dense and avoids np.linalg.inv dense.
+                adj_norm = self._adj_normalize(adj).astype(np.float32)   # sparse
+                M = (I - (1.0 - self.c) * adj_norm).tocsc()             # sparse CSC for LU
+
+                # Sparse LU factorization and solve for identity (gives dense inverse)
+                lu = splu(M)
+                eigen_adj = self.c * lu.solve(np.eye(nb_nodes, dtype=np.float32))  # dense
+
+                np.fill_diagonal(eigen_adj, 0.0)
+
+                # Row-normalize
+                eigen_adj = self._normalize(eigen_adj)
+
+                eigen_adjs.append(eigen_adj)
+                eigen_adjs_sparse.append(sp.csr_matrix(eigen_adj))
+
+        # Save
+        if generate_eigen:
             with open(eigen_file_name, "wb") as f:
                 pickle.dump(eigen_adjs_sparse, f, pickle.HIGHEST_PROTOCOL)
 
