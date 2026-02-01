@@ -56,7 +56,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         self.use_embedding = use_embedding
         self.snap_size = snap_size
 
-        self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
+        self.cache_dir = Path(cache_dir)
 
         self._train_graphs = []
         self._test_graphs = []
@@ -216,8 +216,6 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
         k_idx = int(math.ceil(0.6 * len(num_nodes_list))) - 1
         self.sortpooling_k = max(10, num_nodes_list[k_idx])
 
-        print("sortpooling_k", self.sortpooling_k)
-
         self.feat_dim = max_n_label + 1
         self.attr_dim = node_information.shape[1] if node_information is not None else 0
 
@@ -304,7 +302,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
 
         for epoch in range(epochs):
             self.classifier.train()
-            print(f"EPOCH {epoch}")
+            self.logger.info(f"EPOCH {epoch}")
             np.random.shuffle(train_idxes)
             self.classifier.train()
             avg_loss, labels, preds = loop_dataset(
@@ -314,7 +312,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
 
             # Compute training score
             train_score = roc_auc_score(labels, preds)
-            print(
+            self.logger.info(
                 f"Epoch {epoch}: train loss={avg_loss[0]:.5f}, train score={train_score:.5f}")
 
             if val_graphs is not None:
@@ -323,7 +321,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
                     val_graphs, self.classifier, list(range(len(val_graphs))), bsize=self.batch_size)
                 val_score = roc_auc_score(labels, preds)
                 state.val_metrics = {'roc_auc': val_score}
-                print(f"Epoch {epoch}: val score={val_score:.5f}")
+                self.logger.info(f"Epoch {epoch}: val score={val_score:.5f}")
 
             handler.on_train_epoch_end(state)
 

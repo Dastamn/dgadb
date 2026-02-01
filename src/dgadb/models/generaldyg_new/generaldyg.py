@@ -56,7 +56,7 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         self.k_hop = k_hop
         self.cache_dir = cache_dir
 
-        self.cache_dir = Path(__file__).parent.resolve() / Path(cache_dir)
+        self.cache_dir = Path(cache_dir)
 
         # Internal storage for precomputed subgraph tensors
         self.precomputed_tensors = {}
