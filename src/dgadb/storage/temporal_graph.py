@@ -363,7 +363,7 @@ class TemporalGraphLoaderNew:
             return None
 
         assert dur is not None
-        return f"{anom_type}_tr{tr}_v{v}_te{te}_{dur}"
+        return f"{anom_type}_tr{tr}_v{v}_te{te}_dur{dur}"
 
     def _prepare_json_meta(self, obj: Any) -> Any:
         if isinstance(obj, dict):
