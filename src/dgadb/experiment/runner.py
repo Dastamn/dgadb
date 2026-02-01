@@ -163,7 +163,7 @@ def run_single_config(
     window_size = snapshot_config["window_size"]
 
     logger = logging.getLogger(f"WORKER-{id}")
-    logger.info(f"LAUNCHING: {method.value} | {at} | ratio:{ar} | dur:{ad} (Cores: {cores_per_worker})")
+    logger.info(f"LAUNCHING: {method.value} | {dataset} | {at} | ratio:{ar} | dur:{ad} (Cores: {cores_per_worker})")
 
     if method == Method.sad:
         from dgadb.preprocessing.anomaly_injection import AnomalyInjector
@@ -236,47 +236,48 @@ def run_single_config(
 @app.command()
 def run_experiment(
     method: Annotated[Method, typer.Option(help="Method name")],
-    dataset: Annotated[str, typer.Option(help="Dataset name")] = "bitcoin-alpha",
+    datasets: Annotated[List[str], typer.Option(help="Dataset names")],
     experiment_name: Annotated[str, typer.Option(help="Aim experiment name")] = "dgadb",
-    anom_types: Annotated[List[str], typer.Option(help="Types")] = ["random", "burst", "bridge", "clique", "path"],
-    anom_ratios: Annotated[List[float], typer.Option(help="Ratios")] = [0.1, 0.05, 0.01],
-    anom_durations: Annotated[List[str], typer.Option(help="Durations")] = ["small", "medium", "large"],
-    sad_anom_train_ratio: Annotated[float, typer.Option(help="SAD train ratio")] = 0.01,
+    anom_types: Annotated[List[str], typer.Option(help="Anomaly types")] = ["random", "burst", "bridge", "clique", "path"],
+    anom_rates: Annotated[List[float], typer.Option(help="Anomaly rates")] = [0.1, 0.05, 0.01],
+    anom_durations: Annotated[List[str], typer.Option(help="Anomaly durations")] = ["small", "medium", "large"],
+    sad_anom_train_ratio: Annotated[float, typer.Option(help="SAD anomaly training ratio")] = 0.01,
     epochs: Annotated[int, typer.Option(help="Number of training epochs")] = 10,
-    concurrency: Annotated[int, typer.Option(help="How many experiments to run in parallel")] = 4,
+    concurrency: Annotated[int, typer.Option(help="Number of experiments to run in parallel")] = 4,
     cache_dir: Annotated[str, typer.Option(help="Location of intermediate files")] = "cache"
 ):
-    window_size = 2000 if dataset in ["bitcoin-alpha", "bitcoin-otc", "uc-social"] else 6000
-    include_cumulative = method in [Method.gcn, Method.gat, Method.graphsage]
-    
-    snapshot_config = {
-        "strategy": "window",
-        "window_size": window_size,
-        "include_cumulative": include_cumulative,
-    }
-
     try:
         total_cores = len(os.sched_getaffinity(0))
     except AttributeError:
         total_cores = os.cpu_count() or 1
-        
-    cores_per_worker = max(4, total_cores // concurrency)
 
-    tasks = list(itertools.product(anom_types, anom_ratios, anom_durations))
-    
-    logging.info(f"Starting queue: {len(tasks)} experiments.")
-    logging.info(f"Parallel workers: {concurrency} | Cores per worker: {cores_per_worker}")
+    cores_per_worker = max(1, total_cores // concurrency)
+
+    include_cumulative = method in [Method.gcn, Method.gat, Method.graphsage]
+
+    tasks = []
+    for ds in datasets:
+        window_size = 2000 if ds in ["bitcoin-alpha", "bitcoin-otc", "uc-social"] else 6000
+        snap_config = {
+            "strategy": "window",
+            "window_size": window_size,
+            "include_cumulative": include_cumulative,
+        }
+        
+        combos = list(itertools.product(anom_types, anom_rates, anom_durations))
+        for at, ar, ad in combos:
+            tasks.append((ds, at, ar, ad, snap_config))
 
     ctx = multiprocessing.get_context('spawn')
     with ProcessPoolExecutor(max_workers=concurrency, mp_context=ctx) as executor:
         futures = [
             executor.submit(
                 run_single_config,
-                i, at, ar, ad, method, dataset, 
+                i, at, ar, ad, method, ds, 
                 experiment_name, epochs, sad_anom_train_ratio,
-                snapshot_config, cores_per_worker, cache_dir
+                snap_config, cores_per_worker, cache_dir
             )
-            for i, (at, ar, ad) in enumerate(tasks)
+            for i, (ds, at, ar, ad, snap_config) in enumerate(tasks)
         ]
 
         for future in futures:
