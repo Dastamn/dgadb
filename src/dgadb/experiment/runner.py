@@ -1,14 +1,18 @@
-import logging
 import os
+import sys
+import logging
+import itertools
+import multiprocessing
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, List
+from concurrent.futures import ProcessPoolExecutor
 
 import typer
+import torch
 from dgadb.evaluation import ADEvaluator
 from dgadb.models.base import BaseADModel, BaseADModelComponentsType
 from dgadb.storage import (
     TemporalGraph,
-    TemporalGraphLoader,
     TemporalGraphSnapshotLoader,
     generate_temporal_graph_filename,
 )
@@ -115,9 +119,6 @@ class ExperimentRunner:
         self.logger.info(
             f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}"
         )
-        print(
-            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}"
-        )
         evaluator.save_results()
 
         # Log evaluation metrics to AimCallback if present
@@ -126,133 +127,170 @@ class ExperimentRunner:
                 callback.log_evaluation_metrics(metrics, context="test")
 
 
+def setup_worker_logging(level=logging.INFO):
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] (%(processName)s) %(name)s: %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True 
+    )
+
+
+def run_single_config(
+    id: int,
+    at: str, 
+    ar: float, 
+    ad: str, 
+    method: Method, 
+    dataset: str, 
+    experiment_name: str, 
+    epochs: int, 
+    sad_anom_train_ratio: float, 
+    snapshot_config: dict, 
+    cores_per_worker: int,
+    cache_dir: str
+):
+    setup_worker_logging(logging.INFO)
+
+    cache_dir = os.path.join(cache_dir, method)
+
+    os.environ["OMP_NUM_THREADS"] = str(cores_per_worker)
+    os.environ["MKL_NUM_THREADS"] = str(cores_per_worker)
+    torch.set_num_threads(cores_per_worker)
+
+    from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
+    loader = TemporalGraphLoaderNew()
+    window_size = snapshot_config["window_size"]
+
+    logger = logging.getLogger(f"WORKER-{id}")
+    logger.info("==================================================================")
+    logger.info(f"LAUNCHING: {method.value} | {at} | ratio:{ar} | dur:{ad} (Cores: {cores_per_worker})")
+    logger.info("==================================================================")
+
+    if method == Method.sad:
+        from dgadb.preprocessing.anomaly_injection import AnomalyInjector
+        from dgadb.models.sad_new.sad import SADAD
+        data = loader.load(dataset, create_if_not_found=True)
+        ai = AnomalyInjector(data)
+        ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
+        ai.generate_anomalous_samples(at, val_ratio=ar, test_ratio=ar, duration=ad)
+        model = SADAD()
+    else:
+        data = loader.load(dataset, at, anom_val_ratio=ar, anom_test_ratio=ar, duration=ad, create_if_not_found=True)
+        
+        match method:
+            case Method.taddy:
+                from dgadb.models.taddy_new.taddy import TADDYAD
+                model = TADDYAD(snap_size=window_size, cache_dir=cache_dir)
+            case Method.slade:
+                from dgadb.models.slade_new.slade import SLADEAD
+                model = SLADEAD()
+            case Method.strgnn:
+                from dgadb.models.StrGNN.strgnn import StrGNNAD
+                model = StrGNNAD(snap_size=window_size, cache_dir=cache_dir)
+            case Method.rustgraph:
+                from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
+                model = RustGraphAD()
+            case Method.generaldyg:
+                from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
+                model = GeneralDyGAD(cache_dir=cache_dir)
+            case Method.gcn | Method.gat | Method.graphsage:
+                from dgadb.models.baseline.gnn import GNNAD
+                model = GNNAD(method.value.upper())
+            case Method.addgraph:
+                from dgadb.models.addgraph.addgraph import AddGraphAD
+                model = AddGraphAD()
+            case _:
+                raise ValueError(f"Unknown method {method}")
+
+    aim_callback = AimCallback(
+        experiment_name=experiment_name,
+        run_name=f"{method.value}_{dataset}_{at}_{ar}_{ad}",
+        hparams={
+            "method": method.value,
+            "dataset": dataset,
+            "variant": data.variant_name,
+            "epochs": epochs,
+            **snapshot_config,
+        },
+        tags=[method.value, dataset, at, ad],
+        log_system_metrics=False
+    )
+
+    anom_config = {
+        "anom_type": at,
+        "anom_ratio": ar,
+        "anom_duration": ad
+    }
+
+    aim_callback.log_config(anom_config, name="anom_config")
+    aim_callback.log_config(snapshot_config, name="snapshot_config")
+
+    output_dir = f"experiment-results/{experiment_name}/{method.value}/{data.variant_name}"
+    resource_monitor = ResourceMonitor(output_dir)
+
+    runner = ExperimentRunner(model, data, output_dir=output_dir)
+    runner.run(epochs, snapshot_config, [aim_callback, resource_monitor])
+    
+    return f"COMPLETED: {method.value} {at} | ratio:{ar} | dur:{ad}"
+
+
 @app.command()
 def run_experiment(
     method: Annotated[Method, typer.Option(help="Method name")],
-    dataset: Annotated[str, typer.Option(
-        help="Dataset name")] = "bitcoin-alpha",
-    experiment_name: Annotated[str, typer.Option(
-        help="Aim experiment name")] = "dgadb",
-    anom_types: Annotated[list[str], typer.Option(
-        help="Types of anomalies to inject")] = ["random", "burst", "bridge", "clique", "path"],
-    anom_ratios: Annotated[list[float], typer.Option(
-        help="Anomaly ratios to test")] = [0.1, 0.01, 0.05],
-    anom_durations: Annotated[list[float], typer.Option(
-        help="Anomaly durations to test")] = [0.001, 0.01, 0.1, 0.2, 0.5, 1.0],
-    sad_anom_train_ratio: Annotated[float, typer.Option(
-        help="The anomaly ratio used during SAD training phase")] = 0.01,
+    dataset: Annotated[str, typer.Option(help="Dataset name")] = "bitcoin-alpha",
+    experiment_name: Annotated[str, typer.Option(help="Aim experiment name")] = "dgadb",
+    anom_types: Annotated[List[str], typer.Option(help="Types")] = ["random", "burst", "bridge", "clique", "path"],
+    anom_ratios: Annotated[List[float], typer.Option(help="Ratios")] = [0.1, 0.05, 0.01],
+    anom_durations: Annotated[List[str], typer.Option(help="Durations")] = ["small", "medium", "large"],
+    sad_anom_train_ratio: Annotated[float, typer.Option(help="SAD train ratio")] = 0.01,
     epochs: Annotated[int, typer.Option(help="Number of training epochs")] = 10,
+    concurrency: Annotated[int, typer.Option(help="How many experiments to run in parallel")] = 4,
+    cache_dir: Annotated[str, typer.Option(help="Location of intermediate files")] = "cache"
 ):
-    """Run an anomaly detection experiment with the specified method and dataset."""
-
-    window_size = 6000
-    if dataset in ["bitcoin-alpha", "bitcoin-otc", "uc-social"]:
-        window_size = 2000
-
+    window_size = 2000 if dataset in ["bitcoin-alpha", "bitcoin-otc", "uc-social"] else 6000
+    include_cumulative = method in [Method.gcn, Method.gat, Method.graphsage]
+    
     snapshot_config = {
         "strategy": "window",
         "window_size": window_size,
-        "include_cumulative": True,
+        "include_cumulative": include_cumulative,
     }
 
-    from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
+    try:
+        total_cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        total_cores = os.cpu_count() or 1
+        
+    cores_per_worker = max(4, total_cores // concurrency)
 
-    loader = TemporalGraphLoaderNew()
+    tasks = list(itertools.product(anom_types, anom_ratios, anom_durations))
+    
+    logging.info(f"Starting queue: {len(tasks)} experiments.")
+    logging.info(f"Parallel workers: {concurrency} | Cores per worker: {cores_per_worker}")
 
-    for ar in anom_ratios:
-        for at in anom_types:
-            for ad in anom_durations:
-                print(
-                    f"STARTING: anom_type={at}, anom_ratio={ar}, anom_duration={ad}")
-                
-                match method:
-                    case Method.taddy:
-                        from dgadb.models.taddy_new.taddy import TADDYAD
+    ctx = multiprocessing.get_context('spawn')
+    with ProcessPoolExecutor(max_workers=concurrency, mp_context=ctx) as executor:
+        futures = [
+            executor.submit(
+                run_single_config,
+                i, at, ar, ad, method, dataset, 
+                experiment_name, epochs, sad_anom_train_ratio,
+                snapshot_config, cores_per_worker, cache_dir
+            )
+            for i, (at, ar, ad) in enumerate(tasks)
+        ]
 
-                        model = TADDYAD(snap_size=window_size)
-                    case Method.slade:
-                        from dgadb.models.slade_new.slade import SLADEAD
-
-                        model = SLADEAD()
-                    case Method.strgnn:
-                        from dgadb.models.StrGNN.strgnn import StrGNNAD
-
-                        model = StrGNNAD(snap_size=window_size)
-                    case Method.rustgraph:
-                        from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
-
-                        model = RustGraphAD()
-                    case Method.generaldyg:
-                        from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
-
-                        model = GeneralDyGAD()
-                    case Method.gcn:
-                        from dgadb.models.baseline.gnn import GNNAD
-
-                        model = GNNAD("GCN")
-                    case Method.gat:
-                        from dgadb.models.baseline.gnn import GNNAD
-
-                        model = GNNAD("GAT")
-                    case Method.graphsage:
-                        from dgadb.models.baseline.gnn import GNNAD
-
-                        model = GNNAD("GraphSAGE")
-                    case "addgraph":
-                        from dgadb.models.addgraph.addgraph import AddGraphAD
-
-                        model = AddGraphAD()
-
-                if method == Method.sad:
-                    from dgadb.preprocessing.anomaly_injection import AnomalyInjector
-                    from dgadb.models.sad_new.sad import SADAD
-
-                    data = loader.load(dataset, create_if_not_found=True)
-                    ai = AnomalyInjector(data)
-                    ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
-                    ai.generate_anomalous_samples(at, val_ratio=ar, test_ratio=ar, duration=ad)
-
-                    model = SADAD()
-                else:
-                    data = loader.load(dataset, at, anom_val_ratio=ar,
-                                   anom_test_ratio=ar, duration=ad, create_if_not_found=True)
-                
-                # Configure Aim tracking with comprehensive logging
-                anom_config = {
-                    "anom_type": at,
-                    "anom_ratio": ar,
-                    "anom_duration": ad
-                }
-
-                aim_callback = AimCallback(
-                    experiment_name=experiment_name,
-                    run_name=f"{method.value}_{dataset}",
-                    hparams={
-                        "method": method.value,
-                        "dataset": dataset,
-                        "variant": data.variant_name,
-                        "epochs": epochs,
-                        "anom_duration": ad,
-                        **snapshot_config,
-                    },
-                    tags=[method.value, dataset, at],
-                )
-                aim_callback.log_config(anom_config, name="anom_config")
-                aim_callback.log_config(
-                    snapshot_config, name="snapshot_config")
-
-                output_dir = f"experiment-results/{experiment_name}/{method.value}/{data.variant_name}"
-
-                resource_monitor = ResourceMonitor(output_dir)
-
-                runner = ExperimentRunner(model, data, output_dir=output_dir)
-                
-                runner.run(epochs, snapshot_config, [
-                        aim_callback, resource_monitor])
-
-                print("DONE.")
-                print("========================")
+        for future in futures:
+            try:
+                logging.info(future.result())
+            except Exception as e:
+                logging.error(f"Experiment failed: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [MAIN] %(message)s"
+    )
     app()
