@@ -1,0 +1,12 @@
+{
+  "SLADE": {
+    "error": "No module named 'torch_scatter'"
+  },
+  "GeneralDYG": {
+    "error": "No module named 'pyarrow'"
+  },
+  "Node2Vec": {
+    "status": "skipped",
+    "reason": "N\u00e9cessite preprocessing pipeline"
+  }
+}

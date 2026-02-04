@@ -1,0 +1,20 @@
+{
+  "SLADE": {
+    "error": "No module named 'torch_scatter'"
+  },
+  "GeneralDYG": {
+    "roc_auc": 0.4942151805453206,
+    "precision": 1.0,
+    "recall": 0.00423728813559322,
+    "f1": 0.008438818565400843,
+    "confusion_matrix": [
+      [
+        460,
+        0
+      ],
+      [
+        235,
+        1
+      ]
+    ],
+    "tn": 
