@@ -18,11 +18,13 @@ Usage:
 
 import gc
 import json
+from pathlib import Path
 import os
 import sys
 import time
 from dataclasses import dataclass, asdict
 from typing import Annotated, List
+import datetime
 
 import torch
 import typer
@@ -208,7 +210,7 @@ def run_benchmarks(
 
     if device.type == "cuda":
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
-        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / (1024**3):.1f} GB")
+        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / (1024**3):.1f} GB")
 
     os.makedirs(output_dir, exist_ok=True)
     results: list[BenchmarkResult] = []
@@ -246,13 +248,14 @@ def run_benchmarks(
     # Save results
     results_dicts = [asdict(r) for r in results]
 
-    json_path = os.path.join(output_dir, "benchmark_results.json")
-    with open(json_path, "w") as f:
-        json.dump(results_dicts, f, indent=2, default=str)
+    out_dir = Path(output_dir)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    json_path = out_dir /  f"benchmark_results_{timestamp}.json"
+    json_path.write_text(json.dumps(results_dicts, indent=2, default=str))
     logger.info(f"JSON results saved to {json_path}")
 
     df = pl.DataFrame(results_dicts)
-    csv_path = os.path.join(output_dir, "benchmark_results.csv")
+    csv_path = out_dir / f"benchmark_results_{timestamp}.csv"
     df.write_csv(csv_path)
     logger.info(f"CSV results saved to {csv_path}")
 
