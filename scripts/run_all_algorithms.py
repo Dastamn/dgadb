@@ -392,9 +392,8 @@ def main():
     logger.info(f"🚀 Starting experiments on dataset: {dataset_name}")
     logger.info(f"📊 Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}")
     
-    # Run all algorithms
+    # Run all algorithms (Node2Vec removed - doesn't work with current setup)
     run_slade(dataset_name)
-    run_node2vec(dataset_name)
     run_gat(dataset_name)
     run_graphsage(dataset_name)
     run_netwalk(dataset_name)
