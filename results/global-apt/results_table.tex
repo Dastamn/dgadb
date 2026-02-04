@@ -17,55 +17,14 @@ GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
 \end{tabular}
 \end{table}
 
-% Evaluation Pipeline
-% This diagram shows the complete evaluation workflow we followed:
-% 1) Start with raw JSON data (4632 events)
-% 2) Convert to Parquet format and map IP addresses to numeric IDs
-% 3) Split chronologically into train/validation/test (70/15/15)
-% 4) Run each algorithm on the three splits
-% 5) Calculate final metrics (ROC-AUC, F1-score, etc.)
-\begin{figure}[htbp]
-\centering
-\resizebox{0.9\textwidth}{!}{%
-\begin{tikzpicture}[
-    node distance=1.2cm and 2cm,
-    auto,
-    data/.style={rectangle, rounded corners=3pt, minimum width=2.2cm, minimum height=0.8cm, text centered, draw=black, fill=blue!20, font=\small},
-    process/.style={rectangle, rounded corners=3pt, minimum width=2.2cm, minimum height=0.8cm, text centered, draw=black, fill=green!20, font=\small},
-    result/.style={rectangle, rounded corners=3pt, minimum width=2.2cm, minimum height=0.8cm, text centered, draw=black, fill=red!20, font=\small},
-    arrow/.style={thick,->,>=stealth}
-]
-    % Nodes
-    \node [data] (json) {JSON Dataset\\4632 events};
-    \node [process, below=of json] (prep) {Data Prep\\Parquet + Mapping};
-    \node [process, below=of prep] (split) {Temporal Split\\70/15/15};
-    \node [process, below=of split, xshift=-2.5cm] (train) {Training};
-    \node [process, below=of split] (val) {Validation};
-    \node [process, below=of split, xshift=2.5cm] (test) {Test};
-    \node [process, below=of train, yshift=-0.8cm, xshift=1.25cm] (algo) {Algorithms\\GraphSAGE, SLADE, etc.};
-    \node [result, below=of algo, yshift=-0.3cm] (metrics) {Metrics\\ROC-AUC, F1};
-    
-    % Arrows
-    \draw [arrow] (json) -- (prep);
-    \draw [arrow] (prep) -- (split);
-    \draw [arrow] (split) -- (train);
-    \draw [arrow] (split) -- (val);
-    \draw [arrow] (split) -- (test);
-    \draw [arrow] (train) |- ([yshift=-0.4cm]algo.west);
-    \draw [arrow] (val) -- (algo);
-    \draw [arrow] (test) |- ([yshift=-0.4cm]algo.east);
-    \draw [arrow] (algo) -- (metrics);
-\end{tikzpicture}%
-}
-\caption{Evaluation pipeline: from raw JSON data to final performance metrics. The workflow starts with data preparation (converting to Parquet format and mapping IPs to numeric IDs), then performs a chronological split into training (70\%), validation (15\%), and test (15\%) sets. Each algorithm is trained on the training set, validated on the validation set, and finally evaluated on the test set to produce the metrics shown in Table~\ref{tab:results}.}
-\label{fig:pipeline}
-\end{figure}
+% Evaluation Pipeline Description
+The evaluation pipeline follows a standard workflow for temporal graph anomaly detection. We start with the raw JSON dataset containing 4,632 labeled events. The data is first converted to Parquet format for efficient processing, and IP addresses are mapped to numeric node IDs to enable graph operations. A chronological split is then performed, allocating 70\% of events to training, 15\% to validation, and 15\% to testing, preserving the temporal order of events. Each algorithm is trained on the training set, with hyperparameters tuned using the validation set. Final evaluation is performed on the test set, where we compute ROC-AUC, precision, recall, and F1-score. An important step in our pipeline is automatic threshold optimization, as we found that default thresholds (0.5) lead to poor performance, with most algorithms predicting all events as normal. We optimize thresholds by maximizing F1-score on the validation set, which significantly improves results across all algorithms.
 
 % Commentary on results
-Looking at the results, GraphSAGE clearly stands out with a ROC-AUC of 0.97 and an F1-score of 0.86. What's interesting here is that it manages to catch almost all anomalies (99.3\% recall) while still maintaining decent precision (76.2\%), which is pretty rare on imbalanced datasets like this one.
+The results in Table~\ref{tab:results} show that GraphSAGE achieves the best overall performance with a ROC-AUC of 0.97 and an F1-score of 0.86. Notably, it maintains high recall (99.3\%) while achieving reasonable precision (76.2\%), which is particularly challenging on imbalanced datasets where anomalies represent only 33\% of events.
 
-The other algorithms (SLADE, GAT, NetWalk) all show a similar pattern - they catch almost everything (99-100\% recall) but generate tons of false positives. I guess that's a design choice - better to have too many alerts than miss a real anomaly, especially in network security. Though it can be annoying in production if you have to manually check everything.
+The remaining algorithms (SLADE, GAT, NetWalk) exhibit a similar behavior pattern: they achieve near-perfect recall (99-100\%) but generate a substantial number of false positives, resulting in low precision (33-36\%). This trade-off prioritizes comprehensive anomaly detection over precision, which may be acceptable in security applications where missing an anomaly is more costly than investigating false alarms. However, the high false positive rate could limit practical deployment without additional filtering mechanisms.
 
-GeneralDYG is clearly struggling here. It predicts almost everything as normal, which makes it pretty much useless out of the box. Probably needs some hyperparameter tuning or a different loss function, but we didn't dig deeper into that.
+GeneralDYG performs poorly on this dataset, predicting almost all events as normal. This suggests the model requires significant hyperparameter tuning or may not be well-suited for small, highly centralized graph structures. The model's extreme conservatism (only 1 positive prediction out of 696 test events) indicates a fundamental mismatch between its learning strategy and the dataset characteristics.
 
-One thing we discovered that's worth mentioning: using a default threshold of 0.5 doesn't work at all. We had to automatically optimize thresholds for each algorithm, and that completely changed the results. GraphSAGE works better with a threshold around 0.61, while GAT needs a really low threshold (0.01) to catch all anomalies. This threshold optimization was crucial - without it, most algorithms would just predict everything as normal.
+A key finding from our experiments is the critical importance of threshold optimization. Using default classification thresholds (0.5) resulted in most algorithms predicting all events as normal, rendering them effectively useless. After implementing automatic threshold optimization based on F1-score maximization, we observed dramatic improvements. For instance, GraphSAGE's optimal threshold is 0.61, while GAT requires a much lower threshold of 0.01 to achieve 100\% recall. This threshold optimization step was essential for obtaining meaningful results from all algorithms.
