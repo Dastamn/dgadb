@@ -1,0 +1,62 @@
+% Tableau des résultats - Global-APT Dataset
+\begin{table}[htbp]
+\centering
+\caption{Performance des algorithmes de détection d'anomalies sur le dataset Global-APT}
+\label{tab:results}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Algorithme} & \textbf{ROC-AUC} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
+\midrule
+GraphSAGE & \textbf{0.970} & 0.762 & \textbf{0.993} & \textbf{0.862} \\
+NetWalk & 0.662 & 0.356 & 0.993 & 0.524 \\
+SLADE & 0.556 & 0.344 & 0.996 & 0.511 \\
+GAT & 0.521 & 0.337 & 1.000 & 0.504 \\
+GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Pipeline d'évaluation
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=1.5cm, auto]
+    % Styles
+    \tikzstyle{data} = [rectangle, rounded corners, minimum width=2.5cm, minimum height=1cm, text centered, draw=black, fill=blue!20]
+    \tikzstyle{process} = [rectangle, rounded corners, minimum width=2.5cm, minimum height=1cm, text centered, draw=black, fill=green!20]
+    \tikzstyle{result} = [rectangle, rounded corners, minimum width=2.5cm, minimum height=1cm, text centered, draw=black, fill=red!20]
+    \tikzstyle{arrow} = [thick,->,>=stealth]
+    
+    % Nodes
+    \node [data] (json) {Dataset JSON\\4632 événements};
+    \node [process, below of=json] (prep) {Préparation\\Parquet + Mapping};
+    \node [process, below of=prep] (split) {Split temporel\\70/15/15};
+    \node [process, below of=split, xshift=-3cm] (train) {Entraînement};
+    \node [process, below of=split, xshift=0cm] (val) {Validation};
+    \node [process, below of=split, xshift=3cm] (test) {Test};
+    \node [process, below of=train, yshift=-1cm, xshift=1.5cm] (algo) {Algorithmes\\GraphSAGE, SLADE, etc.};
+    \node [result, below of=algo, yshift=-0.5cm] (metrics) {Métriques\\ROC-AUC, F1};
+    
+    % Arrows
+    \draw [arrow] (json) -- (prep);
+    \draw [arrow] (prep) -- (split);
+    \draw [arrow] (split) -- (train);
+    \draw [arrow] (split) -- (val);
+    \draw [arrow] (split) -- (test);
+    \draw [arrow] (train) |- (algo);
+    \draw [arrow] (val) |- (algo);
+    \draw [arrow] (test) |- (algo);
+    \draw [arrow] (algo) -- (metrics);
+\end{tikzpicture}
+\caption{Pipeline d'évaluation : de la préparation des données aux métriques finales}
+\label{fig:pipeline}
+\end{figure}
+
+% Commentaire sur les résultats
+Les résultats montrent que GraphSAGE surpasse clairement les autres méthodes avec un ROC-AUC de 0.97 et un F1-score de 0.86. Ce qui est intéressant, c'est qu'il arrive à détecter presque toutes les anomalies (99.3\% de recall) tout en gardant une précision correcte (76.2\%), ce qui est rare sur ce type de dataset déséquilibré.
+
+Les autres algorithmes (SLADE, GAT, NetWalk) ont un comportement similaire : ils attrapent presque tout (99-100\% de recall) mais génèrent beaucoup de faux positifs. C'est un choix de design - mieux vaut avoir trop d'alertes que de rater une vraie anomalie, surtout en sécurité réseau. Par contre, ça peut être pénible en production si on doit tout vérifier manuellement.
+
+GeneralDYG est clairement en difficulté ici. Il prédit presque tout comme normal, ce qui le rend inutilisable tel quel. Probablement qu'il faudrait ajuster les hyperparamètres ou changer la fonction de perte, mais on n'a pas creusé plus loin.
+
+Un point important qu'on a découvert : utiliser un seuil de 0.5 par défaut ne marche pas du tout. On a dû optimiser automatiquement les seuils pour chaque algorithme, et ça a complètement changé les résultats. GraphSAGE fonctionne mieux avec un seuil autour de 0.61, tandis que GAT a besoin d'un seuil très bas (0.01) pour détecter toutes les anomalies.
