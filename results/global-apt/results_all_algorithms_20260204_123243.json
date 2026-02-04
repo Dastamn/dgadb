@@ -1,0 +1,110 @@
+{
+  "SLADE": {
+    "roc_auc": 0.5557940309506264,
+    "optimal_threshold": 0.29145872592926025,
+    "median_threshold": 0.3108794391155243,
+    "threshold_used": 0.29145872592926025,
+    "n_positive_predictions": 684,
+    "n_total_predictions": 696,
+    "positive_ratio": 0.9827586206896551,
+    "precision": 0.3435672514619883,
+    "recall": 0.9957627118644068,
+    "f1": 0.5108695652173914,
+    "confusion_matrix": [
+      [
+        11,
+        449
+      ],
+      [
+        1,
+        235
+      ]
+    ],
+    "tn": 11,
+    "fp": 449,
+    "fn": 1,
+    "tp": 235,
+    "inference_time": 0.05376696586608887
+  },
+  "GAT": {
+    "roc_auc": 0.5208058245305165,
+    "optimal_threshold": 0.00955201592296362,
+    "median_threshold": 0.009557602927088737,
+    "threshold_used": 0.00955201592296362,
+    "n_positive_predictions": 421,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.8003802281368821,
+    "precision": 0.33729216152019004,
+    "recall": 1.0,
+    "f1": 0.5044404973357016,
+    "confusion_matrix": [
+      [
+        105,
+        279
+      ],
+      [
+        0,
+        142
+      ]
+    ],
+    "tn": 105,
+    "fp": 279,
+    "fn": 0,
+    "tp": 142,
+    "inference_time": 0.0001709461212158203
+  },
+  "GraphSAGE": {
+    "roc_auc": 0.9699145393192489,
+    "optimal_threshold": 0.6111570000648499,
+    "median_threshold": 0.025309599936008453,
+    "threshold_used": 0.6111570000648499,
+    "n_positive_predictions": 185,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.3517110266159696,
+    "precision": 0.7621621621621621,
+    "recall": 0.9929577464788732,
+    "f1": 0.8623853211009175,
+    "confusion_matrix": [
+      [
+        340,
+        44
+      ],
+      [
+        1,
+        141
+      ]
+    ],
+    "tn": 340,
+    "fp": 44,
+    "fn": 1,
+    "tp": 141,
+    "inference_time": 0.0004241466522216797
+  },
+  "NetWalk": {
+    "roc_auc": 0.6623477846244131,
+    "optimal_threshold": 0.062896644124295,
+    "median_threshold": 0.08098278959366338,
+    "threshold_used": 0.062896644124295,
+    "n_positive_predictions": 396,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.752851711026616,
+    "precision": 0.3560606060606061,
+    "recall": 0.9929577464788732,
+    "f1": 0.5241635687732342,
+    "confusion_matrix": [
+      [
+        129,
+        255
+      ],
+      [
+        1,
+        141
+      ]
+    ],
+    "tn": 129,
+    "fp": 255,
+    "fn": 1,
+    "tp": 141,
+    "inference_time": null
+  }
+}

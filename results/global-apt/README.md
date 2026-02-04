@@ -19,13 +19,13 @@ We tested several anomaly detection algorithms on the **global-apt** dataset - a
 | **NetWalk** | 0.60 | 0.34 | 0.99 | 0.51 | ✅ | High recall, many false positives |
 | **GAT** | 0.52 | 0.34 | 1.00 | 0.50 | ✅ | Perfect recall, low precision |
 | **GeneralDYG** | 0.49 | 1.00 | 0.00 | 0.01 | ✅ | Too conservative - predicts everything as normal |
-| **SLADE** | - | - | - | - | ⚠️ | torch_scatter compatibility issue (needs rebuild) |
+| **SLADE** | 0.56 | 0.34 | 1.00 | 0.51 | ✅ | Excellent recall, many false positives |
 
 ### Key Takeaways
 
 **GraphSAGE is the clear winner** - it achieves near-perfect anomaly detection (99% recall) with good precision (76%). Out of 142 anomalies in the test set, it only missed 1. This is excellent for security applications where missing an anomaly is critical.
 
-**GAT and NetWalk** both catch almost all anomalies (99-100% recall) but generate many false alarms. This might be acceptable if you prefer "better safe than sorry" - detecting everything suspicious even if it means more manual review.
+**SLADE, GAT and NetWalk** all catch almost all anomalies (99-100% recall) but generate many false alarms. This might be acceptable if you prefer "better safe than sorry" - detecting everything suspicious even if it means more manual review.
 
 **GeneralDYG** struggled with this dataset - it's way too conservative and predicted almost everything as normal. This suggests the model needs different hyperparameters or the dataset structure doesn't match what it expects.
 
@@ -125,13 +125,13 @@ Catches everything but generates lots of false alarms. Good if you can't afford 
 
 ### NetWalk
 
-- **ROC-AUC**: 0.5977
-- **Precision**: 0.3398
+- **ROC-AUC**: 0.6623
+- **Precision**: 0.3561
 - **Recall**: 0.9930 (141/142 anomalies)
-- **F1-Score**: 0.5063
-- **Confusion Matrix**: 110 TN, 274 FP, 1 FN, 141 TP
+- **F1-Score**: 0.5242
+- **Confusion Matrix**: 129 TN, 255 FP, 1 FN, 141 TP
 
-Similar to GAT - high recall, lower precision. Uses random walks and clustering.
+Similar to GAT and SLADE - high recall, lower precision. Uses random walks and clustering. Better ROC-AUC than GAT.
 
 ### GeneralDYG
 
@@ -142,6 +142,25 @@ Similar to GAT - high recall, lower precision. Uses random walks and clustering.
 - **Confusion Matrix**: 460 TN, 0 FP, 235 FN, 1 TP
 
 This model needs serious tuning. It's way too conservative and essentially useless as-is.
+
+### SLADE
+
+**Status**: ✅ Completed (fixed torch_scatter compilation issue)
+
+- **ROC-AUC**: 0.5558
+- **Precision**: 0.3436
+- **Recall**: 0.9958 (99.6% - detects almost all anomalies!)
+- **F1-Score**: 0.5109
+- **Confusion Matrix**: 11 TN, 449 FP, 1 FN, 235 TP
+- **Optimal Threshold**: 0.291
+
+**Analysis**:
+- Catches 235 out of 236 anomalies (only 1 missed!)
+- But generates 449 false positives (very low precision)
+- Similar pattern to GAT - excellent for security where you can't miss anything
+- Fixed by compiling torch_scatter from source with `--no-build-isolation` flag
+
+**Note**: SLADE initially had a torch_scatter library loading issue. This was resolved by compiling torch_scatter from source, which ensures compatibility with the installed PyTorch version.
 
 ## Files & Scripts
 
