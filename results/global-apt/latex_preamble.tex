@@ -1,0 +1,55 @@
+% ============================================================================
+% PREAMBLE ADDITIONS FOR RESULTS SECTION
+% ============================================================================
+% Add these packages to your LaTeX document preamble (before \begin{document})
+
+% Tables
+\usepackage{booktabs}        % Professional table formatting
+\usepackage{multirow}        % Multirow cells in tables
+\usepackage{array}           % Enhanced array and tabular environments
+\usepackage{longtable}       % For tables spanning multiple pages
+
+% Figures and graphics
+\usepackage{graphicx}       % Include graphics
+\usepackage{subfigure}      % Subfigures (or use subcaption package)
+\usepackage{tikz}           % For drawing diagrams
+\usepackage{pgfplots}       % For plots and charts
+\pgfplotsset{compat=1.18}   % Set PGFPlots compatibility
+
+% Math and formatting
+\usepackage{siunitx}        % Proper number formatting (e.g., \num{0.97})
+\usepackage{amsmath}        % Advanced math
+\usepackage{amssymb}        % Mathematical symbols
+
+% Colors (optional, for colored tables/diagrams)
+\usepackage{xcolor}
+
+% Hyperlinks (for cross-references)
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+% ============================================================================
+% CUSTOM COMMANDS FOR RESULTS
+% ============================================================================
+
+% Format numbers with consistent decimal places
+\newcommand{\numformat}[1]{\num[round-mode=places, round-precision=3]{#1}}
+
+% Highlight best results in tables
+\newcommand{\best}[1]{\textbf{#1}}
+
+% Format percentages
+\newcommand{\pct}[1]{\SI{#1}{\percent}}
+
+% ============================================================================
+% TABLE STYLING
+% ============================================================================
+
+% Custom table style for results
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
