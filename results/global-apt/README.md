@@ -21,6 +21,60 @@ This document presents the results of anomaly detection experiments performed on
 
 The split is performed **chronologically** (based on timestamps) to respect the temporal nature of the data.
 
+## 📐 Graph Structure
+
+The Global-APT dataset represents a small network with 5 nodes (IP addresses) and 4,632 temporal edges (connections).
+
+### Graph Schema
+
+```mermaid
+graph LR
+    N0["Node 0<br/>172.16.0.100<br/>Out: 384<br/>In: 385"]
+    N1["Node 1<br/>172.16.0.50<br/>Out: 385<br/>In: 3475<br/>⭐ Hub"]
+    N2["Node 2<br/>172.16.20.10<br/>Out: 1026<br/>In: 384"]
+    N3["Node 3<br/>172.16.20.11<br/>Out: 1811<br/>In: 0<br/>🔥 Source"]
+    N4["Node 4<br/>172.16.20.12<br/>Out: 1026<br/>In: 388"]
+    
+    N3 -->|1811 edges| N1
+    N2 -->|1026 edges| N4
+    N4 -->|1026 edges| N1
+    N1 -->|385 edges| N0
+    N0 -->|384 edges| N2
+    N2 -->|1026 edges| N1
+    
+    style N1 fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px,color:#fff
+    style N3 fill:#4ecdc4,stroke:#2d9cdb,stroke-width:2px
+    style N0 fill:#ffe66d
+    style N2 fill:#95e1d3
+    style N4 fill:#95e1d3
+```
+
+### Graph Statistics
+
+| Node ID | IP Address | Out-Degree | In-Degree | Role |
+|---------|------------|------------|-----------|------|
+| 0 | 172.16.0.100 | 384 | 385 | Balanced |
+| 1 | 172.16.0.50 | 385 | **3,475** | **Hub (75% of traffic)** |
+| 2 | 172.16.20.10 | 1,026 | 384 | Source |
+| 3 | 172.16.20.11 | **1,811** | 0 | **Main Source** |
+| 4 | 172.16.20.12 | 1,026 | 388 | Source |
+
+### Key Observations
+
+1. **Highly Centralized Network**: Node 1 (172.16.0.50) acts as a central hub, receiving 75% of all connections
+2. **Unidirectional Flow**: Node 3 (172.16.20.11) only sends traffic (1,811 edges) but never receives
+3. **Small Scale**: Only 5 nodes create a very dense graph with limited structural diversity
+4. **Temporal Patterns**: 4,632 events over time create dynamic connection patterns
+
+### Graph Characteristics Impact on Model Performance
+
+The small, highly centralized graph structure contributes to the model's difficulty in detecting anomalies:
+
+- **Limited Diversity**: With only 5 nodes, most connection patterns are frequent and "normal"
+- **Hub Dominance**: The central hub (Node 1) receives most traffic, making it hard to distinguish anomalies
+- **Sparse Anomaly Patterns**: Anomalies may be subtle structural or temporal deviations that are hard to detect in such a small graph
+- **Frequency Bias**: The model learns that frequent patterns (to Node 1) are normal, missing rare but legitimate anomaly patterns
+
 ## 🔄 Pipeline Architecture
 
 ```mermaid
@@ -107,6 +161,61 @@ Actual Normal   460      0
 - **False Negatives (FN)**: 235
 
 The model shows very high precision (1.0) but extremely low recall (0.42%), indicating it is very conservative in predicting anomalies. It correctly identifies normal events but misses most anomalies. The ROC-AUC of 0.4942 is close to random performance, suggesting the model needs further tuning or the dataset may require different preprocessing.
+
+### Why Low Recall and "Everything Normal" Prediction?
+
+The model's extremely low recall (0.42%) and tendency to predict everything as normal can be explained by several factors:
+
+#### 1. **Graph Structure Characteristics**
+
+The Global-APT dataset has a very small and highly connected graph structure:
+
+- **Only 5 nodes**: This creates a very dense graph where most connections are frequent
+- **Highly skewed degree distribution**: 
+  - Node 1 (172.16.0.50) receives 75% of all connections (3,475 in-degree)
+  - Node 3 (172.16.20.11) sends 39% of all connections (1,811 out-degree)
+- **Limited structural diversity**: With only 5 nodes, the model has limited patterns to learn from
+
+#### 2. **Class Imbalance in Training**
+
+While the overall dataset has 33% anomalies, the temporal split may create imbalanced distributions:
+- The model learns primarily from normal patterns during training
+- Anomalies might be concentrated in specific time periods
+- The model develops a bias toward predicting "normal" as the safe default
+
+#### 3. **Lack of Discriminative Features**
+
+The current setup uses only:
+- **Structural features**: Source and target node IDs
+- **Temporal features**: Timestamps
+- **No edge features**: No additional attributes to distinguish anomalies
+
+Without rich features, the model relies heavily on frequency patterns, which favor the majority class (normal events).
+
+#### 4. **Conservative Learning Strategy**
+
+The model's learning process:
+- Minimizes false positives (high precision = 1.0)
+- But at the cost of missing true anomalies (low recall = 0.42%)
+- This suggests the loss function or threshold favors precision over recall
+- The model learns that predicting "normal" is safer than risking false alarms
+
+#### 5. **Small Dataset Size**
+
+With only 4,632 events:
+- Limited training data (3,242 events)
+- Small test set (695 events) with only 236 anomalies expected
+- The model may overfit to normal patterns
+- Insufficient examples of anomaly patterns to learn from
+
+#### Recommendations to Improve Recall:
+
+1. **Adjust Classification Threshold**: Lower the decision threshold to increase recall
+2. **Class Weighting**: Apply higher weights to anomaly class in loss function
+3. **Feature Engineering**: Add node/edge features (e.g., connection frequency, time patterns)
+4. **Different Loss Function**: Use F1-loss or recall-focused loss instead of standard cross-entropy
+5. **Oversampling**: Use SMOTE or similar techniques to balance anomaly examples
+6. **Ensemble Methods**: Combine multiple models with different thresholds
 
 **Hyperparameters**:
 - Batch size: 32
