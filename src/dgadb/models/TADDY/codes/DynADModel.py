@@ -24,6 +24,8 @@ class DynADModel(BertPreTrainedModel):
 
     def __init__(self, config, args):
         super(DynADModel, self).__init__(config, args)
+        self.all_tied_weights_keys = {}  # Fix for transformers compatibility
+
         self.args = args
         self.config = config
         self.transformer = BaseModel(config)

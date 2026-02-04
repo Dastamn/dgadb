@@ -12,7 +12,7 @@ class BaseModel(BertPreTrainedModel):
     def __init__(self, config):
         super(BaseModel, self).__init__(config)
         self.config = config
-        self.all_tied_weights_keys = []  # Fix for transformers compatibility
+        self.all_tied_weights_keys = {}  # Fix for transformers compatibility
 
         self.embeddings = EdgeEncoding(config)
         self.encoder = TransformerEncoder(config)
