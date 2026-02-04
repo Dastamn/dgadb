@@ -24,13 +24,14 @@ class DynADModel(BertPreTrainedModel):
 
     def __init__(self, config, args):
         super(DynADModel, self).__init__(config, args)
-        self.all_tied_weights_keys = {}  # Fix for transformers compatibility
+        # self.all_tied_weights_keys = {}  # Fix for transformers compatibility
 
         self.args = args
         self.config = config
         self.transformer = BaseModel(config)
         self.cls_y = torch.nn.Linear(config.hidden_size, 1)
         self.weight_decay = config.weight_decay
+        self.post_init()
         self.init_weights()
 
     def forward(self, init_pos_ids, hop_dis_ids, time_dis_ids, idx=None):
