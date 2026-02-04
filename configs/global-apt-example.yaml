@@ -1,0 +1,27 @@
+dataset:
+  name: global-apt
+  paths:
+    raw: null
+    structured: data/global-apt
+    processed: null
+
+pipeline:
+  cache_dir: pipeline_cache/global-apt
+  steps:
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        reindex_nodes: True
+        
+    - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.7
+        val_ratio: 0.15
+
+snapshot_size: 500
+train_ratio: 0.7
+val_ratio: 0.15
+window_size: 500
+anomaly_ratio: 0.33

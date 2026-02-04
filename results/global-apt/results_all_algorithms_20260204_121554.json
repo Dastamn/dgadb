@@ -1,0 +1,89 @@
+{
+  "SLADE": {
+    "error": "Could not load this library: /Users/ie03-research/Desktop/dgadb-main/venv/lib/python3.12/site-packages/torch_scatter/_version_cpu.so"
+  },
+  "Node2Vec": {
+    "error": "'Node2Vec' requires either the 'pyg-lib' or 'torch-cluster' package"
+  },
+  "GAT": {
+    "roc_auc": 0.5207416373239437,
+    "optimal_threshold": 0.02323487401008606,
+    "median_threshold": 0.023252615705132484,
+    "threshold_used": 0.02323487401008606,
+    "n_positive_predictions": 421,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.8003802281368821,
+    "precision": 0.33729216152019004,
+    "recall": 1.0,
+    "f1": 0.5044404973357016,
+    "confusion_matrix": [
+      [
+        105,
+        279
+      ],
+      [
+        0,
+        142
+      ]
+    ],
+    "tn": 105,
+    "fp": 279,
+    "fn": 0,
+    "tp": 142,
+    "inference_time": 0.00013399124145507812
+  },
+  "GraphSAGE": {
+    "roc_auc": 0.9699145393192489,
+    "optimal_threshold": 0.6141780018806458,
+    "median_threshold": 0.020028775557875633,
+    "threshold_used": 0.6141780018806458,
+    "n_positive_predictions": 185,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.3517110266159696,
+    "precision": 0.7621621621621621,
+    "recall": 0.9929577464788732,
+    "f1": 0.8623853211009175,
+    "confusion_matrix": [
+      [
+        340,
+        44
+      ],
+      [
+        1,
+        141
+      ]
+    ],
+    "tn": 340,
+    "fp": 44,
+    "fn": 1,
+    "tp": 141,
+    "inference_time": 0.0002989768981933594
+  },
+  "NetWalk": {
+    "roc_auc": 0.5976654196009389,
+    "optimal_threshold": 0.053190208330012145,
+    "median_threshold": 0.11474577725974204,
+    "threshold_used": 0.053190208330012145,
+    "n_positive_predictions": 415,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.7889733840304183,
+    "precision": 0.3397590361445783,
+    "recall": 0.9929577464788732,
+    "f1": 0.5062836624775583,
+    "confusion_matrix": [
+      [
+        110,
+        274
+      ],
+      [
+        1,
+        141
+      ]
+    ],
+    "tn": 110,
+    "fp": 274,
+    "fn": 1,
+    "tp": 141,
+    "inference_time": -9.5367431640625e-07
+  }
+}

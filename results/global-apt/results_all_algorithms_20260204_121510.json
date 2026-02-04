@@ -1,0 +1,29 @@
+{
+  "SLADE": {
+    "error": "Could not load this library: /Users/ie03-research/Desktop/dgadb-main/venv/lib/python3.12/site-packages/torch_scatter/_version_cpu.so"
+  },
+  "Node2Vec": {
+    "error": "'Node2Vec' requires either the 'pyg-lib' or 'torch-cluster' package"
+  },
+  "GAT": {
+    "roc_auc": 0.5220162118544601,
+    "optimal_threshold": 0.017675353214144707,
+    "median_threshold": 0.017681214958429337,
+    "threshold_used": 0.017675353214144707,
+    "n_positive_predictions": 421,
+    "n_total_predictions": 526,
+    "positive_ratio": 0.8003802281368821,
+    "precision": 0.33729216152019004,
+    "recall": 1.0,
+    "f1": 0.5044404973357016,
+    "confusion_matrix": [
+      [
+        105,
+        279
+      ],
+      [
+        0,
+        142
+      ]
+    ],
+    "tn": 

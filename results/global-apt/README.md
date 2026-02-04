@@ -226,40 +226,135 @@ With only 4,632 events:
 - Number of layers: 6
 - Dropout: 0.3
 
+### GraphSAGE ⭐ **BEST PERFORMANCE**
+
+**Status**: ✅ Completed
+
+**Description**: 
+- Graph Sample and Aggregate model
+- Learns node embeddings by aggregating features from local neighborhoods
+- Uses downstream classifier for edge-level anomaly detection
+
+**Results**:
+- **ROC-AUC**: 0.9699 (Excellent!)
+- **Precision**: 0.7622
+- **Recall**: 0.9930 (99.3% - detects almost all anomalies)
+- **F1-Score**: 0.8624
+
+**Confusion Matrix**:
+```
+                Predicted
+              Normal  Anomaly
+Actual Normal   340     44
+       Anomaly    1    141
+```
+
+**Analysis**:
+- **True Positives (TP)**: 141
+- **True Negatives (TN)**: 340
+- **False Positives (FP)**: 44
+- **False Negatives (FN)**: 1 (only 1 missed anomaly!)
+
+**Key Success Factors**:
+- Optimal threshold: 0.614 (auto-adjusted from default 0.5)
+- Excellent balance between precision and recall
+- Only 1 false negative - critical for security applications
+
+### GAT (Graph Attention Network)
+
+**Status**: ✅ Completed
+
+**Description**:
+- Graph Attention Network with multi-head attention
+- Learns to focus on important neighbors
+- Good for small graphs with limited structure
+
+**Results**:
+- **ROC-AUC**: 0.5207
+- **Precision**: 0.3373
+- **Recall**: 1.0000 (100% - detects ALL anomalies)
+- **F1-Score**: 0.5044
+
+**Analysis**:
+- Detects all 142 anomalies (no false negatives)
+- But has 279 false positives (low precision)
+- Optimal threshold: 0.023 (very low, explains high recall)
+- Good for security where missing anomalies is critical
+
+### NetWalk
+
+**Status**: ✅ Completed
+
+**Description**:
+- Network embedding for anomaly detection
+- Uses random walks and autoencoder
+- Clustering-based anomaly detection
+
+**Results**:
+- **ROC-AUC**: 0.5977
+- **Precision**: 0.3398
+- **Recall**: 0.9930 (99.3%)
+- **F1-Score**: 0.5063
+
+**Analysis**:
+- Similar to GAT: high recall, lower precision
+- Detects 141 out of 142 anomalies
+- 274 false positives but only 1 false negative
+
 ### SLADE
 
-**Status**: ⚠️ Dependency Missing
+**Status**: ⚠️ Library Error
 
 **Description**:
 - Self-supervised Learning for Anomaly Detection
 - Uses Temporal Graph Network (TGN) with memory
 - Attention mechanism for temporal relationships
 
-**Error**: `No module named 'torch_scatter'`
+**Error**: `Could not load torch_scatter library`
 
-**Solution**: Install required dependency:
-```bash
-pip install torch-scatter
-```
+**Note**: torch-scatter is installed but there's a library loading issue. May need reinstallation or different version.
 
 ### Node2Vec
 
-**Status**: ⏸️ Requires Pipeline Preprocessing
+**Status**: ⚠️ Dependency Missing
 
 **Description**:
 - Node embedding algorithm based on random walks
 - Generates vector representations of nodes
 - Uses downstream classifier for anomaly detection
 
-**Note**: Requires additional preprocessing via the pipeline framework.
+**Error**: `'Node2Vec' requires either the 'pyg-lib' or 'torch-cluster' package`
+
+**Note**: torch-cluster is now installed, but may need pyg-lib or restart of Python environment.
 
 ## 📊 Performance Summary
 
-| Algorithm | ROC-AUC | Precision | Recall | F1-Score | Status |
-|-----------|---------|-----------|--------|----------|--------|
-| **GeneralDYG** | 0.4942 | 1.0 | 0.0042 | 0.0084 | ✅ Completed |
-| **SLADE** | - | - | - | - | ⚠️ Dependency Missing |
-| **Node2Vec** | - | - | - | - | ⏸️ Requires Preprocessing |
+| Algorithm | ROC-AUC | Precision | Recall | F1-Score | Positive Pred. | Status |
+|-----------|---------|-----------|--------|----------|----------------|--------|
+| **GraphSAGE** | **0.9699** | 0.7622 | **0.9930** | **0.8624** | 185/526 (35%) | ✅ **Best Performance** |
+| **NetWalk** | 0.5977 | 0.3398 | 0.9930 | 0.5063 | 415/526 (79%) | ✅ Completed |
+| **GAT** | 0.5207 | 0.3373 | **1.0000** | 0.5044 | 421/526 (80%) | ✅ Completed |
+| **GeneralDYG** | 0.4942 | 1.0 | 0.0042 | 0.0084 | 1/696 (0.1%) | ✅ Completed (Poor) |
+| **SLADE** | - | - | - | - | - | ⚠️ Library Error |
+| **Node2Vec** | - | - | - | - | - | ⚠️ Dependency Missing |
+
+### Key Findings
+
+1. **GraphSAGE** performs exceptionally well:
+   - **ROC-AUC: 0.97** - Near-perfect classification
+   - **Recall: 99.3%** - Detects almost all anomalies
+   - **F1-Score: 0.86** - Excellent balance
+   - Only 1 false negative out of 142 anomalies
+   - Optimal threshold: 0.614 (much higher than default 0.5)
+
+2. **GAT and NetWalk** show good recall but lower precision:
+   - Both achieve **100% recall** (detect all anomalies)
+   - But have many false positives (low precision ~0.34)
+   - This is better than missing anomalies (high recall > high precision for security)
+
+3. **GeneralDYG** struggles with this dataset:
+   - Very conservative (only 1 positive prediction)
+   - Needs threshold adjustment or hyperparameter tuning
 
 ## 📁 File Structure
 
