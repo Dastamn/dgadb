@@ -18,24 +18,32 @@ GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
 \end{table}
 
 % Evaluation Pipeline
+% This diagram shows the complete evaluation workflow we followed:
+% 1) Start with raw JSON data (4632 events)
+% 2) Convert to Parquet format and map IP addresses to numeric IDs
+% 3) Split chronologically into train/validation/test (70/15/15)
+% 4) Run each algorithm on the three splits
+% 5) Calculate final metrics (ROC-AUC, F1-score, etc.)
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[node distance=1.5cm, auto]
-    % Styles
-    \tikzstyle{data} = [rectangle, rounded corners, minimum width=2.5cm, minimum height=1cm, text centered, draw=black, fill=blue!20]
-    \tikzstyle{process} = [rectangle, rounded corners, minimum width=2.5cm, minimum height=1cm, text centered, draw=black, fill=green!20]
-    \tikzstyle{result} = [rectangle, rounded corners, minimum width=2.5cm, minimum height=1cm, text centered, draw=black, fill=red!20]
-    \tikzstyle{arrow} = [thick,->,>=stealth]
-    
+\resizebox{0.9\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.2cm and 2cm,
+    auto,
+    data/.style={rectangle, rounded corners=3pt, minimum width=2.2cm, minimum height=0.8cm, text centered, draw=black, fill=blue!20, font=\small},
+    process/.style={rectangle, rounded corners=3pt, minimum width=2.2cm, minimum height=0.8cm, text centered, draw=black, fill=green!20, font=\small},
+    result/.style={rectangle, rounded corners=3pt, minimum width=2.2cm, minimum height=0.8cm, text centered, draw=black, fill=red!20, font=\small},
+    arrow/.style={thick,->,>=stealth}
+]
     % Nodes
     \node [data] (json) {JSON Dataset\\4632 events};
-    \node [process, below of=json] (prep) {Data Prep\\Parquet + Mapping};
-    \node [process, below of=prep] (split) {Temporal Split\\70/15/15};
-    \node [process, below of=split, xshift=-3cm] (train) {Training};
-    \node [process, below of=split, xshift=0cm] (val) {Validation};
-    \node [process, below of=split, xshift=3cm] (test) {Test};
-    \node [process, below of=train, yshift=-1cm, xshift=1.5cm] (algo) {Algorithms\\GraphSAGE, SLADE, etc.};
-    \node [result, below of=algo, yshift=-0.5cm] (metrics) {Metrics\\ROC-AUC, F1};
+    \node [process, below=of json] (prep) {Data Prep\\Parquet + Mapping};
+    \node [process, below=of prep] (split) {Temporal Split\\70/15/15};
+    \node [process, below=of split, xshift=-2.5cm] (train) {Training};
+    \node [process, below=of split] (val) {Validation};
+    \node [process, below=of split, xshift=2.5cm] (test) {Test};
+    \node [process, below=of train, yshift=-0.8cm, xshift=1.25cm] (algo) {Algorithms\\GraphSAGE, SLADE, etc.};
+    \node [result, below=of algo, yshift=-0.3cm] (metrics) {Metrics\\ROC-AUC, F1};
     
     % Arrows
     \draw [arrow] (json) -- (prep);
@@ -43,12 +51,13 @@ GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
     \draw [arrow] (split) -- (train);
     \draw [arrow] (split) -- (val);
     \draw [arrow] (split) -- (test);
-    \draw [arrow] (train) |- (algo);
-    \draw [arrow] (val) |- (algo);
-    \draw [arrow] (test) |- (algo);
+    \draw [arrow] (train) |- ([yshift=-0.4cm]algo.west);
+    \draw [arrow] (val) -- (algo);
+    \draw [arrow] (test) |- ([yshift=-0.4cm]algo.east);
     \draw [arrow] (algo) -- (metrics);
-\end{tikzpicture}
-\caption{Evaluation pipeline: from data preparation to final metrics}
+\end{tikzpicture}%
+}
+\caption{Evaluation pipeline: from raw JSON data to final performance metrics. The workflow starts with data preparation (converting to Parquet format and mapping IPs to numeric IDs), then performs a chronological split into training (70\%), validation (15\%), and test (15\%) sets. Each algorithm is trained on the training set, validated on the validation set, and finally evaluated on the test set to produce the metrics shown in Table~\ref{tab:results}.}
 \label{fig:pipeline}
 \end{figure}
 
