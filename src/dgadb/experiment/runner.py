@@ -148,7 +148,8 @@ def run_single_config(
     sad_anom_train_ratio: float, 
     snapshot_config: dict, 
     cores_per_worker: int,
-    cache_dir: str
+    cache_dir: str,
+    device: str
 ):
     setup_worker_logging(logging.INFO)
 
@@ -176,28 +177,30 @@ def run_single_config(
     else:
         data = loader.load(dataset, at, anom_val_ratio=ar, anom_test_ratio=ar, duration=ad, create_if_not_found=True)
         
+        device = torch.device("cuda") if device == "gpu" else torch.device("cpu")
+
         match method:
             case Method.taddy:
                 from dgadb.models.taddy_new.taddy import TADDYAD
-                model = TADDYAD(snap_size=window_size, cache_dir=cache_dir)
+                model = TADDYAD(snap_size=window_size, cache_dir=cache_dir, device=device)
             case Method.slade:
                 from dgadb.models.slade_new.slade import SLADEAD
-                model = SLADEAD()
+                model = SLADEAD(device=device)
             case Method.strgnn:
                 from dgadb.models.StrGNN.strgnn import StrGNNAD
-                model = StrGNNAD(snap_size=window_size, cache_dir=cache_dir)
+                model = StrGNNAD(snap_size=window_size, cache_dir=cache_dir, device=device)
             case Method.rustgraph:
                 from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
-                model = RustGraphAD()
+                model = RustGraphAD(device=device)
             case Method.generaldyg:
                 from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
-                model = GeneralDyGAD(cache_dir=cache_dir)
+                model = GeneralDyGAD(cache_dir=cache_dir, device=device)
             case Method.gcn | Method.gat | Method.graphsage:
                 from dgadb.models.baseline.gnn import GNNAD
-                model = GNNAD(method.value.upper())
+                model = GNNAD(method.value.upper(), device=device)
             case Method.addgraph:
                 from dgadb.models.addgraph.addgraph import AddGraphAD
-                model = AddGraphAD()
+                model = AddGraphAD(device=device)
             case _:
                 raise ValueError(f"Unknown method {method}")
 
@@ -244,7 +247,8 @@ def run_experiment(
     sad_anom_train_ratio: Annotated[float, typer.Option(help="SAD anomaly training ratio")] = 0.01,
     epochs: Annotated[int, typer.Option(help="Number of training epochs")] = 10,
     concurrency: Annotated[int, typer.Option(help="Number of experiments to run in parallel")] = 4,
-    cache_dir: Annotated[str, typer.Option(help="Location of intermediate files")] = "cache"
+    cache_dir: Annotated[str, typer.Option(help="Location of intermediate files")] = "cache",
+    device: Annotated[str, typer.Option(help="Use GPU if available")] = "cpu"
 ):
     try:
         total_cores = len(os.sched_getaffinity(0))
@@ -275,7 +279,7 @@ def run_experiment(
                 run_single_config,
                 i, at, ar, ad, method, ds, 
                 experiment_name, epochs, sad_anom_train_ratio,
-                snap_config, cores_per_worker, cache_dir
+                snap_config, cores_per_worker, cache_dir, device
             )
             for i, (ds, at, ar, ad, snap_config) in enumerate(tasks)
         ]
