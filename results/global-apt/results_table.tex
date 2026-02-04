@@ -1,12 +1,12 @@
-% Tableau des résultats - Global-APT Dataset
+% Results Table - Global-APT Dataset
 \begin{table}[htbp]
 \centering
-\caption{Performance des algorithmes de détection d'anomalies sur le dataset Global-APT}
+\caption{Performance comparison of anomaly detection algorithms on Global-APT dataset}
 \label{tab:results}
 \small
 \begin{tabular}{lcccc}
 \toprule
-\textbf{Algorithme} & \textbf{ROC-AUC} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} \\
+\textbf{Algorithm} & \textbf{ROC-AUC} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
 \midrule
 GraphSAGE & \textbf{0.970} & 0.762 & \textbf{0.993} & \textbf{0.862} \\
 NetWalk & 0.662 & 0.356 & 0.993 & 0.524 \\
@@ -17,7 +17,7 @@ GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
 \end{tabular}
 \end{table}
 
-% Pipeline d'évaluation
+% Evaluation Pipeline
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[node distance=1.5cm, auto]
@@ -28,14 +28,14 @@ GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
     \tikzstyle{arrow} = [thick,->,>=stealth]
     
     % Nodes
-    \node [data] (json) {Dataset JSON\\4632 événements};
-    \node [process, below of=json] (prep) {Préparation\\Parquet + Mapping};
-    \node [process, below of=prep] (split) {Split temporel\\70/15/15};
-    \node [process, below of=split, xshift=-3cm] (train) {Entraînement};
+    \node [data] (json) {JSON Dataset\\4632 events};
+    \node [process, below of=json] (prep) {Data Prep\\Parquet + Mapping};
+    \node [process, below of=prep] (split) {Temporal Split\\70/15/15};
+    \node [process, below of=split, xshift=-3cm] (train) {Training};
     \node [process, below of=split, xshift=0cm] (val) {Validation};
     \node [process, below of=split, xshift=3cm] (test) {Test};
-    \node [process, below of=train, yshift=-1cm, xshift=1.5cm] (algo) {Algorithmes\\GraphSAGE, SLADE, etc.};
-    \node [result, below of=algo, yshift=-0.5cm] (metrics) {Métriques\\ROC-AUC, F1};
+    \node [process, below of=train, yshift=-1cm, xshift=1.5cm] (algo) {Algorithms\\GraphSAGE, SLADE, etc.};
+    \node [result, below of=algo, yshift=-0.5cm] (metrics) {Metrics\\ROC-AUC, F1};
     
     % Arrows
     \draw [arrow] (json) -- (prep);
@@ -48,15 +48,15 @@ GeneralDYG & 0.494 & 1.000 & 0.004 & 0.008 \\
     \draw [arrow] (test) |- (algo);
     \draw [arrow] (algo) -- (metrics);
 \end{tikzpicture}
-\caption{Pipeline d'évaluation : de la préparation des données aux métriques finales}
+\caption{Evaluation pipeline: from data preparation to final metrics}
 \label{fig:pipeline}
 \end{figure}
 
-% Commentaire sur les résultats
-Les résultats montrent que GraphSAGE surpasse clairement les autres méthodes avec un ROC-AUC de 0.97 et un F1-score de 0.86. Ce qui est intéressant, c'est qu'il arrive à détecter presque toutes les anomalies (99.3\% de recall) tout en gardant une précision correcte (76.2\%), ce qui est rare sur ce type de dataset déséquilibré.
+% Commentary on results
+Looking at the results, GraphSAGE clearly stands out with a ROC-AUC of 0.97 and an F1-score of 0.86. What's interesting here is that it manages to catch almost all anomalies (99.3\% recall) while still maintaining decent precision (76.2\%), which is pretty rare on imbalanced datasets like this one.
 
-Les autres algorithmes (SLADE, GAT, NetWalk) ont un comportement similaire : ils attrapent presque tout (99-100\% de recall) mais génèrent beaucoup de faux positifs. C'est un choix de design - mieux vaut avoir trop d'alertes que de rater une vraie anomalie, surtout en sécurité réseau. Par contre, ça peut être pénible en production si on doit tout vérifier manuellement.
+The other algorithms (SLADE, GAT, NetWalk) all show a similar pattern - they catch almost everything (99-100\% recall) but generate tons of false positives. I guess that's a design choice - better to have too many alerts than miss a real anomaly, especially in network security. Though it can be annoying in production if you have to manually check everything.
 
-GeneralDYG est clairement en difficulté ici. Il prédit presque tout comme normal, ce qui le rend inutilisable tel quel. Probablement qu'il faudrait ajuster les hyperparamètres ou changer la fonction de perte, mais on n'a pas creusé plus loin.
+GeneralDYG is clearly struggling here. It predicts almost everything as normal, which makes it pretty much useless out of the box. Probably needs some hyperparameter tuning or a different loss function, but we didn't dig deeper into that.
 
-Un point important qu'on a découvert : utiliser un seuil de 0.5 par défaut ne marche pas du tout. On a dû optimiser automatiquement les seuils pour chaque algorithme, et ça a complètement changé les résultats. GraphSAGE fonctionne mieux avec un seuil autour de 0.61, tandis que GAT a besoin d'un seuil très bas (0.01) pour détecter toutes les anomalies.
+One thing we discovered that's worth mentioning: using a default threshold of 0.5 doesn't work at all. We had to automatically optimize thresholds for each algorithm, and that completely changed the results. GraphSAGE works better with a threshold around 0.61, while GAT needs a really low threshold (0.01) to catch all anomalies. This threshold optimization was crucial - without it, most algorithms would just predict everything as normal.
