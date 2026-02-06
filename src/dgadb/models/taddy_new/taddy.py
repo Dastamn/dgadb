@@ -332,11 +332,11 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
 
                 # Combine positive and negative
                 int_embedding = torch.vstack(
-                    (int_embedding_pos, int_embedding_neg))
+                    (int_embedding_pos, int_embedding_neg)).to(self.device)
                 hop_embedding = torch.vstack(
-                    (hop_embedding_pos, hop_embedding_neg))
+                    (hop_embedding_pos, hop_embedding_neg)).to(self.device)
                 time_embedding = torch.vstack(
-                    (time_embedding_pos, time_embedding_neg))
+                    (time_embedding_pos, time_embedding_neg)).to(self.device)
                 y = torch.hstack((y_pos, y_neg))
 
                 optimizer.zero_grad()
@@ -410,9 +410,9 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             snap_ids = self.data_dict["snap_train"]
 
         for snap in tqdm(snap_ids, desc="TEST"):
-            int_embedding = self.embeddings["int"][snap]
-            hop_embedding = self.embeddings["hop"][snap]
-            time_embedding = self.embeddings["time"][snap]
+            int_embedding = self.embeddings["int"][snap].to(self.device)
+            hop_embedding = self.embeddings["hop"][snap].to(self.device)
+            time_embedding = self.embeddings["time"][snap].to(self.device)
 
             with torch.no_grad():
                 output = self.components.model.forward(
