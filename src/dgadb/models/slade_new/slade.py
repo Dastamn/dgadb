@@ -260,10 +260,10 @@ class SLADEAD(BaseADModel[SLADEComponents]):
         model = self.components.model
         current_graph = snapshot.current
 
-        sources_batch = current_graph.src
-        destinations_batch = current_graph.tgt
+        sources_batch = current_graph.src.to(self.device)
+        destinations_batch = current_graph.tgt.to(self.device)
         # Ensure timestamps are float32, not long
-        timestamps_batch = current_graph.t.float()
+        timestamps_batch = current_graph.t.float().to(self.device)
 
         # Get neighbors on the fly
         src_neighbors_batch_np, _, src_neighbors_time_batch_np = self.components.train_ngh_finder.get_temporal_neighbor(
@@ -316,9 +316,9 @@ class SLADEAD(BaseADModel[SLADEComponents]):
         model = self.components.model
         current_graph = snapshot.current
 
-        sources_batch = current_graph.src
-        destinations_batch = current_graph.tgt
-        timestamps_batch = current_graph.t.float()
+        sources_batch = current_graph.src.to(self.device)
+        destinations_batch = current_graph.tgt.to(self.device)
+        timestamps_batch = current_graph.t.float().to(self.device)
 
         # Get neighbors on the fly using full_ngh_finder (set in run_inference)
         src_neighbors_batch_np, _, src_neighbors_time_batch_np = self.components.full_ngh_finder.get_temporal_neighbor(
