@@ -322,7 +322,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
                 hop_embedding_pos = self.embeddings["hop"][snap]
                 time_embedding_pos = self.embeddings["time"][snap]
                 # Convert to float like original TADDY
-                y_pos = self.data_dict["y"][snap].float()
+                y_pos = self.data_dict["y"][snap].float().to(self.device)
 
                 # Negative samples
                 int_embedding_neg = int_embeddings_neg[snap]
