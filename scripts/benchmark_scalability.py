@@ -23,7 +23,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, asdict
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 import datetime
 
 import torch
@@ -35,6 +35,8 @@ from loguru import logger
 from dgadb.experiment.runner import Method
 from dgadb.storage.temporal_graph import TemporalGraph, TemporalGraphLoaderNew
 from dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
+from dgadb.experiment.callbacks import ExperimentCallback
+from dgadb.models.base import TrainingState
 
 # Configure loguru: remove default handler, add one with a clean format
 logger.remove()
@@ -57,7 +59,44 @@ class BenchmarkResult:
     peak_ram_mb: float = 0.0
     peak_gpu_mb: float = 0.0
     edges_per_sec: float = 0.0
+    
+    # New metrics
+    inference_time_sec: float = 0.0
+    inference_edges_per_sec: float = 0.0
+    time_to_convergence_sec: float = 0.0
+    best_val_auc: float = 0.0
+    best_epoch: int = -1
+    
     error: str | None = None
+
+
+class ConvergenceMonitor(ExperimentCallback):
+    """Tracks training progress to find time-to-convergence."""
+    def __init__(self):
+        super().__init__()
+        self.start_time = 0.0
+        self.best_val_auc = -1.0
+        self.best_epoch = -1
+        self.time_to_best = 0.0
+        self.history = []
+
+    def on_train_begin(self, state: TrainingState):
+        self.start_time = time.perf_counter()
+
+    def on_train_epoch_end(self, state: TrainingState):
+        elapsed = time.perf_counter() - self.start_time
+        val_auc = state.val_metrics.get('roc_auc', 0.0)
+        
+        self.history.append({
+            'epoch': state.epoch,
+            'time': elapsed,
+            'val_auc': val_auc
+        })
+
+        if val_auc > self.best_val_auc:
+            self.best_val_auc = val_auc
+            self.best_epoch = state.epoch
+            self.time_to_best = elapsed
 
 
 def get_peak_gpu_memory_mb() -> float:
@@ -125,7 +164,7 @@ def benchmark_single(
     device: torch.device,
     cache_dir: str,
 ) -> BenchmarkResult:
-    """Run a single benchmark: setup + train, recording time and memory."""
+    """Run a single benchmark: setup + train + inference, recording time and memory."""
     window_size = 2000 if dataset_name in ["bitcoin-alpha", "bitcoin-otc", "uc-social"] else 6000
     include_cumulative = method in [Method.gcn, Method.gat, Method.graphsage]
 
@@ -161,20 +200,40 @@ def benchmark_single(
         # --- Training phase ---
         train_loader = TemporalGraphSnapshotLoader(data, split="train", **snap_config)
         val_loader = TemporalGraphSnapshotLoader(data, split="val", **snap_config)
+        
+        monitor = ConvergenceMonitor()
 
         t_train_start = time.perf_counter()
-        model.train(epochs, train_loader, val_loader)
+        model.train(epochs, train_loader, val_loader, callbacks=[monitor])
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t_train_end = time.perf_counter()
 
         result.train_time_sec = t_train_end - t_train_start
         result.total_time_sec = result.setup_time_sec + result.train_time_sec
+        result.time_to_convergence_sec = monitor.time_to_best
+        result.best_val_auc = monitor.best_val_auc
+        result.best_epoch = monitor.best_epoch
 
         # Throughput: edges processed during training
         train_edges = int(data.train_mask.sum().item())
         total_edges_processed = train_edges * epochs
         result.edges_per_sec = total_edges_processed / max(result.train_time_sec, 1e-9)
+
+        # --- Inference Phase ---
+        logger.info(f"    Running inference...")
+        test_loader = TemporalGraphSnapshotLoader(data, split="test", **snap_config)
+        t_inf_start = time.perf_counter()
+        model.run_inference(test_loader)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t_inf_end = time.perf_counter()
+        
+        result.inference_time_sec = t_inf_end - t_inf_start
+        
+        # Inference throughput
+        test_edges = int(data.test_mask.sum().item())
+        result.inference_edges_per_sec = test_edges / max(result.inference_time_sec, 1e-9)
 
     except Exception as e:
         logger.opt(exception=True).error(f"Error benchmarking {method.value} on {dataset_name}: {e}")
@@ -241,6 +300,7 @@ def run_benchmarks(
             logger.info(
                 f"    {status} | setup={result.setup_time_sec:.1f}s "
                 f"train={result.train_time_sec:.1f}s "
+                f"inf={result.inference_time_sec:.1f}s "
                 f"edges/s={result.edges_per_sec:.0f} "
                 f"RAM={result.peak_ram_mb:.0f}MB GPU={result.peak_gpu_mb:.0f}MB"
             )
@@ -260,25 +320,30 @@ def run_benchmarks(
     logger.info(f"CSV results saved to {csv_path}")
 
     # Print summary table
-    print("\n" + "=" * 100)
+    print("\n" + "=" * 140)  # Extended line length
     print("SCALABILITY BENCHMARK RESULTS")
-    print("=" * 100)
+    print("=" * 140)
 
     summary_cols = ["method", "dataset", "num_nodes", "num_edges",
-                    "setup_time_sec", "train_time_sec", "edges_per_sec",
-                    "peak_ram_mb", "peak_gpu_mb", "error"]
+                    "setup_time_sec", "train_time_sec", "inference_time_sec", 
+                    "time_to_convergence_sec", "best_val_auc",
+                    "edges_per_sec", "peak_ram_mb", "peak_gpu_mb", "error"]
     available_cols = [c for c in summary_cols if c in df.columns]
     summary = df.select(available_cols)
 
     # Format numeric columns
-    for col in ["setup_time_sec", "train_time_sec", "peak_ram_mb", "peak_gpu_mb"]:
+    for col in ["setup_time_sec", "train_time_sec", "inference_time_sec", "time_to_convergence_sec", "peak_ram_mb", "peak_gpu_mb"]:
         if col in summary.columns:
             summary = summary.with_columns(pl.col(col).round(1))
+    
+    if "best_val_auc" in summary.columns:
+        summary = summary.with_columns(pl.col("best_val_auc").round(4))
+
     if "edges_per_sec" in summary.columns:
         summary = summary.with_columns(pl.col("edges_per_sec").round(0))
 
     print(summary)
-    print("=" * 100)
+    print("=" * 140)
 
 
 @app.command()
