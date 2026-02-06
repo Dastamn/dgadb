@@ -117,56 +117,6 @@ def _(sns):
 def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
     exp_1_data = complete_df.filter(pl.col("method").is_in(method_names))
 
-
-
-    # for ax, an_type in zip(axes, anomaly_types):
-
-    #     ax.set_ylim(0, 1)
-
-    #     # Filter data for this anomaly type
-    #     df_filtered = complete_df.filter(
-    #         pl.col("anomaly_type") == an_type,
-    #     pl.col("method").is_in(method_names))
-
-    #     # Create plot using axes-level seaborn function
-    #     # Replace with your preferred plot type (barplot, boxplot, pointplot, etc.)
-    #     sns.lineplot(
-    #         data=df_filtered,
-    #         x='anomaly_rate',
-    #         y='roc_auc',
-    #         hue='method',  # You can use: dataset, duration, anomaly_rate, etc.
-    #         palette=palette,  # For the hue variable, can be any seaborn palette
-    #         ax=ax,
-    #         errorbar='ci',
-    #     )
-
-    #     # Apply consistent method colors if x is 'method'
-    #     # Instead, map colors manually if needed:
-    #     if 'method' in [ax.get_xlabel()]:
-    #         # Get current bars and recolor
-    #         for i, bar in enumerate(ax.patches):
-    #             method_name = bar.get_label()
-    #             if method_name in method_colors:
-    #                 bar.set_color(method_colors[method_name])
-
-    #     # Formatting
-    #     # ax.set_title(f'Anomaly Type: {an_type}', fontsize=12, fontweight='bold')
-    #     ax.set_xlabel('Anomaly Rate', fontsize=14)
-    #     ax.set_ylabel('ROC AUC', fontsize=14)
-    #     ax.tick_params(axis='both', labelsize=12)
-
-
-    #     # Customize legend
-    #     if ax == axes[0]:  # Keep legend only on first plot
-    #         ax.legend(title='Method', fontsize=14, title_fontsize=16)
-    #     else:
-    #         legend = ax.get_legend()
-    #         if legend:
-    #             legend.remove()
-
-    # plt.tight_layout()
-    # fig.savefig('paper_figures/figure_results.pdf', dpi=600, bbox_inches='tight', format='pdf')
-
     def plot_exp_1():
         fig = plt.figure(figsize=(18, 8))
 
