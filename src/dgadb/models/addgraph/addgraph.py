@@ -62,8 +62,8 @@ class AddGraphAD(BaseADModel[AddGraphComponents]):
             lr=self.lr
         )
 
-        h_list = torch.zeros((1, nodes, self.hidden))
-        global_adj = torch.zeros((nodes, nodes))
+        h_list = torch.zeros((1, nodes, self.hidden), device=self.device)
+        global_adj = torch.zeros((nodes, nodes), device=self.device)
 
         self._components = AddGraphComponents(
             net1_gcn=net1, net2_hca=net2, net3_gru=net3, net4_score=net4,

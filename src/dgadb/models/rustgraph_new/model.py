@@ -63,7 +63,7 @@ class Graph_GRU(nn.Module):
                 self.weight_hh.append(GConv(hidden_size, hidden_size, device=device, bias=bias))
 
     def forward(self, x, edge_index, h):
-        h_out = torch.zeros(h.size()).to(self.device)
+        h_out = torch.zeros_like(h)
         for i in range(self.layer_num):
             if i == 0:
                 z_g = torch.sigmoid(self.weight_xz[i](x, edge_index) + self.weight_hz[i](h[i], edge_index))
@@ -112,7 +112,7 @@ class Generative(nn.Module):
         return (prior_x_mean, prior_x_std), (enc_x_mean, enc_x_std), z, h_out
 
     def random_sample(self, mean, std):
-        eps1 = torch.FloatTensor(std.size()).normal_().to(self.device)
+        eps1 = torch.randn(std.size(), device=self.device)
         return eps1.mul(std).add_(mean)
 
 
@@ -188,10 +188,10 @@ class Model(nn.Module):
             edge_index = data.edge_index
             node_index = data.node_index
             if h_t == None:
-                h_t = torch.zeros(self.layer_num, x.size(0), self.h_dim).to(self.device)
+                h_t = torch.zeros(self.layer_num, x.size(0), self.h_dim, device=self.device)
             ev = self._compute_ev(data, is_undirected=True)
             if t == 0:
-                diff = torch.zeros(x.size(0), 1).to(self.device)
+                diff = torch.zeros(x.size(0), 1, device=self.device)
             else:
                 diff = torch.abs(torch.sub(ev, pre_ev)).to(self.device)
             pre_ev = ev

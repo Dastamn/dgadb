@@ -101,7 +101,7 @@ class BaseADModelComponents:
     def to(self, device: torch.device | str):
         for field in fields(self):
             attr = getattr(self, field.name)
-            if isinstance(attr, torch.nn.Module) or (isinstance(attr, torch.Tensor) and attr.is_floating_point()):
+            if isinstance(attr, torch.nn.Module) or isinstance(attr, torch.Tensor):
                 setattr(self, field.name, attr.to(device))
             elif isinstance(attr, torch.optim.Optimizer):
                 for state in attr.state.values():

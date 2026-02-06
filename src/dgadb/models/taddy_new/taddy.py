@@ -328,7 +328,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
                 int_embedding_neg = int_embeddings_neg[snap]
                 hop_embedding_neg = hop_embeddings_neg[snap]
                 time_embedding_neg = time_embeddings_neg[snap]
-                y_neg = torch.ones(int_embedding_neg.size()[0])
+                y_neg = torch.ones(int_embedding_neg.size()[0], device=self.device)
 
                 # Combine positive and negative
                 int_embedding = torch.vstack(
@@ -486,7 +486,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
         )
         values = torch.from_numpy(sparse_mx.data)
         shape = torch.Size(sparse_mx.shape)
-        return torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float)
+        return torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float, device=self.device)
 
     def _preprocess_adj(self, adj: sp.spmatrix) -> torch.Tensor:
         """Preprocessing of adjacency matrix for GCN and conversion to torch tensor."""

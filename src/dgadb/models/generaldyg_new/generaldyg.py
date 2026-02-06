@@ -411,8 +411,8 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
 
         # Prepare padded tensor for Transformer
         e_pad = torch.zeros(batch_size, self.max_edges_all,
-                            self.input_dim).to(self.device)
-        mask_edge = torch.ones(batch_size, self.max_edges_all).to(self.device)
+                            self.input_dim, device=self.device)
+        mask_edge = torch.ones(batch_size, self.max_edges_all, device=self.device)
 
         for i, idx in enumerate(batch_indices):
             feat = self.precomputed_tensors['e_feat'][idx]

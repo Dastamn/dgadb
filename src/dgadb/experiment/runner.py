@@ -166,6 +166,8 @@ def run_single_config(
     logger = logging.getLogger(f"WORKER-{id}")
     logger.info(f"LAUNCHING: {method.value} | {dataset} | {at} | ratio:{ar} | dur:{ad} (Cores: {cores_per_worker})")
 
+    device = torch.device("cuda") if device == "gpu" else torch.device("cpu")
+
     if method == Method.sad:
         from dgadb.preprocessing.anomaly_injection import AnomalyInjector
         from dgadb.models.sad_new.sad import SADAD
@@ -173,11 +175,9 @@ def run_single_config(
         ai = AnomalyInjector(data)
         ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
         ai.generate_anomalous_samples(at, val_ratio=ar, test_ratio=ar, duration=ad)
-        model = SADAD()
+        model = SADAD(device=device)
     else:
         data = loader.load(dataset, at, anom_val_ratio=ar, anom_test_ratio=ar, duration=ad, create_if_not_found=True)
-        
-        device = torch.device("cuda") if device == "gpu" else torch.device("cpu")
 
         match method:
             case Method.taddy:

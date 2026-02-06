@@ -162,18 +162,18 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
         # Structural Change (Spectral Diff)
         ev = self._compute_snapshot_ev(curr)
         if self.pre_ev is None:
-            diff = torch.zeros(ev.size(0), 1).to(self.device)
+            diff = torch.zeros(ev.size(0), 1, device=self.device)
         else:
             # Handle potential node size changes if graph grows
             min_size = min(ev.size(0), self.pre_ev.size(0))
-            diff = torch.zeros(ev.size(0), 1).to(self.device)
+            diff = torch.zeros(ev.size(0), 1, device=self.device)
             diff[:min_size] = torch.abs(ev[:min_size] - self.pre_ev[:min_size])
         self.pre_ev = ev
 
         # Setup Features and Hidden State
         x = self._get_node_features(curr)
         if self.h_t is None:
-            self.h_t = torch.zeros(self.config["layer_num"], x.size(0), self.config["h_dim"]).to(self.device)
+            self.h_t = torch.zeros(self.config["layer_num"], x.size(0), self.config["h_dim"], device=self.device)
 
         # Forward VGRNN
         # Original: (prior_params), (enc_params), z_t, h_t
@@ -233,12 +233,12 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
         # Ensure hidden state exists (important for inference-only runs)
         x = self._get_node_features(curr)
         if self.h_t is None:
-            self.h_t = torch.zeros(self.config["layer_num"], x.size(0), self.config["h_dim"]).to(self.device)
-            diff = torch.zeros(x.size(0), 1).to(self.device)
+            self.h_t = torch.zeros(self.config["layer_num"], x.size(0), self.config["h_dim"], device=self.device)
+            diff = torch.zeros(x.size(0), 1, device=self.device)
         else:
             ev = self._compute_snapshot_ev(curr)
             min_size = min(ev.size(0), self.pre_ev.size(0))
-            diff = torch.zeros(ev.size(0), 1).to(self.device)
+            diff = torch.zeros(ev.size(0), 1, device=self.device)
             diff[:min_size] = torch.abs(ev[:min_size] - self.pre_ev[:min_size])
             self.pre_ev = ev
 

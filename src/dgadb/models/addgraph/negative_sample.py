@@ -15,7 +15,7 @@ import torch.nn as nn
 #         adj[i - 1][j - 1] = adj[i - 1][j - 1] + 1  # Convert to 0-based index.
 #     return adj
 def update_adj(adj, snapshot, nodes):
-    Adj = torch.zeros((nodes, nodes))
+    Adj = torch.zeros((nodes, nodes), device=adj.device)
     for edge in snapshot:
         adj[edge[0].item() - 1][edge[1].item() - 1] = adj[edge[0].item() - 1][
                                                           edge[1].item() - 1] + 1  # Convert to 0-based index.
@@ -52,9 +52,9 @@ class negative_sample(nn.Module):
         else:
             th = nodes + 1 # All nodes have been seen
 
-        n_loss = torch.zeros(len(data))
+        n_loss = torch.zeros(len(data), device=H.device)
         index = 0
-        
+
         for i, j in data:
             # Convert to int for indexing
             u_idx, v_idx = int(i) - 1, int(j) - 1
