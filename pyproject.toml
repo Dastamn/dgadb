@@ -16,7 +16,7 @@ build-backend = "hatchling.build"
 packages = ["src/dgadb"]
 
 [tool.pixi.workspace]
-channels = ["conda-forge"]
+channels = ["conda-forge", "nvidia"]
 platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
@@ -44,5 +44,15 @@ ty = "*"
 ruff = ">=0.14.13"
 loguru = ">=0.7.3"
 
+[tool.pixi.feature.cuda]
+platforms = ["linux-64"]
+
+[tool.pixi.feature.cuda.dependencies]
+cuda-version = "12.*"
+
+[tool.pixi.feature.cuda.system-requirements]
+cuda = "12"
+
 [tool.pixi.environments]
 dev = ["dev"]
+cuda = ["cuda"]
