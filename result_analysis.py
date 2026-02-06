@@ -117,41 +117,40 @@ def _(sns):
 def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
     exp_1_data = complete_df.filter(pl.col("method").is_in(method_names))
 
+
     def plot_exp_1():
-        fig = plt.figure(figsize=(18, 8))
+        fig = plt.figure(figsize=(18, 4))
 
         subfigs_top = fig.subfigures(1, 3, wspace=0.15)
         axes_top = [subfig.subplots(1, 1) for subfig in subfigs_top]
-    
+
         subfigs_bottom = fig.subfigures(1, 3, wspace=0.15)
-    
+
         # Create figure-level grid specification for centering
         gs = fig.add_gridspec(2, 3)
-    
+
         # Clear and use a simpler approach with gridspec
         plt.close("all")  # Close previous figure
-    
-        fig = plt.figure(figsize=(18, 10))
+
+        fig = plt.figure(figsize=(18, 4))
         gs = fig.add_gridspec(2, 3)
-    
+
         # Row 1: 3 plots (columns 0, 1, 2)
         axes_row1 = [fig.add_subplot(gs[0, i]) for i in range(3)]
-    
+
         # Row 2: 2 plots centered (columns 0 and 1)
         axes_row2 = [fig.add_subplot(gs[1, i]) for i in range(2)]
-    
+
         axes = axes_row1 + axes_row2
-    
+
         for idx, ax in enumerate(axes):
-            fig_single = plt.figure(figsize=(5, 4))
+            fig_single = plt.figure(figsize=(5, 3))
             ax_single = fig_single.add_subplot(111)
-    
+
             # Plot the same data
             an_type = anomaly_types[idx]
-            df_filtered = complete_df.filter(
-                pl.col("anomaly_type") == an_type, pl.col("method").is_in(method_names)
-            )
-    
+            df_filtered = exp_1_data.filter(pl.col("anomaly_type") == an_type)
+
             sns.lineplot(
                 data=df_filtered,
                 x="anomaly_rate",
@@ -161,31 +160,34 @@ def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
                 ax=ax_single,
                 errorbar="ci",
                 marker="o",
-                markersize=10
+                markersize=10,
             )
-    
+
             if idx == 0:  # Keep legend only on first plot
-                ax_single.legend(title='Method', fontsize=14, title_fontsize=16)
+                ax_single.legend(title="Method", fontsize=14, title_fontsize=16)
             else:
                 legend = ax_single.get_legend()
                 if legend:
                     legend.remove()
-    
+
             # Apply the same global y-limits
             ax_single.set_ylim(0, 1)
             ax_single.set_xlabel("$\mathcal{R}$", fontsize=14)
             ax_single.set_ylabel("ROC AUC", fontsize=14)
-            ax_single.tick_params(axis='both', labelsize=12)
+            ax_single.tick_params(axis="both", labelsize=12)
             # ax_single.set_title(
             #     f"{an_type}".capitalize(), fontsize=14, fontweight="bold"
             # )
-    
+
             # NO label text added here either - LaTeX subcaption will handle it
-    
+
             fig_single.savefig(
-                f"paper_figures/subplot_{chr(97 + idx)}_clean.pdf", dpi=300, bbox_inches="tight"
+                f"paper_figures/exp_1_{chr(97 + idx)}_{an_type}.pdf",
+                dpi=300,
+                bbox_inches="tight",
             )
             plt.close(fig_single)
+
 
     plot_exp_1()
     return
@@ -219,16 +221,88 @@ def _(complete_df, pl, sns):
     return
 
 
-@app.cell
-def _(complete_df):
-    complete_df
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Experiment 2
+    """)
     return
 
 
 @app.cell
-def _(mo):
-    experiment_2_visual = mo.ui.radio(["point", "bar", "box", "violin", "boxen", "strip", "swarm"])
-    experiment_2_visual
+def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
+    exp_2_data = complete_df.filter(pl.col("method").is_in(method_names),
+                                   pl.col("anomaly_rate") == 0.05,
+                                   pl.col("duration").is_in([0.1, 1.0]))
+
+    label_offset = 5
+
+    def plot_exp_2():
+        fig = plt.figure(figsize=(18, 8))
+
+        subfigs_top = fig.subfigures(1, 3, wspace=0.15)
+        axes_top = [subfig.subplots(1, 1) for subfig in subfigs_top]
+    
+        subfigs_bottom = fig.subfigures(1, 3, wspace=0.15)
+    
+        # Create figure-level grid specification for centering
+        gs = fig.add_gridspec(2, 3)
+    
+        # Clear and use a simpler approach with gridspec
+        plt.close("all")  # Close previous figure
+    
+        fig = plt.figure(figsize=(18, 10))
+        gs = fig.add_gridspec(2, 3)
+    
+        # Row 1: 3 plots (columns 0, 1, 2)
+        axes_row1 = [fig.add_subplot(gs[0, i]) for i in range(3)]
+    
+        # Row 2: 2 plots centered (columns 0 and 1)
+        axes_row2 = [fig.add_subplot(gs[1, i]) for i in range(2)]
+    
+        axes = axes_row1 + axes_row2
+    
+        for idx, ax in enumerate(axes):
+            fig_single = plt.figure(figsize=(5, 4))
+            ax_single = fig_single.add_subplot(111)
+    
+            # Plot the same data
+            an_type = anomaly_types[idx]
+            df_filtered = exp_2_data.filter(pl.col("anomaly_type") == an_type)
+    
+            sns.lineplot(
+                data=df_filtered,
+                x="duration",
+                y="roc_auc",
+                hue="method",  # You can use: dataset, duration, anomaly_rate, etc.
+                palette=palette,  # For the hue variable, can be any seaborn palette
+                ax=ax_single,
+                errorbar="ci",
+                marker="o",
+                markersize=10
+            )
+    
+            legend = ax_single.get_legend()
+            if legend:
+                legend.remove()
+
+            # Apply the same global y-limits
+            ax_single.set_ylim(0, 1)
+            ax_single.set_xlabel("$\mathcal{T}$", fontsize=14)
+            ax_single.set_ylabel("ROC AUC", fontsize=14)
+            ax_single.tick_params(axis='both', labelsize=12)
+            # ax_single.set_title(
+            #     f"{an_type}".capitalize(), fontsize=14, fontweight="bold"
+            # )
+    
+            # NO label text added here either - LaTeX subcaption will handle it
+    
+            fig_single.savefig(
+                f"paper_figures/exp_2_{chr(97 + idx)}_{an_type}.pdf", dpi=300, bbox_inches="tight"
+            )
+            plt.close(fig_single)
+
+    plot_exp_2()
     return
 
 
@@ -255,6 +329,33 @@ def _(complete_df, pl, sns):
     new_exp_2_plot.savefig("paper_figures/new_experiment_2_temporal_span", dpi=900)
 
     new_exp_2_plot
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Experiment 3
+    """)
+    return
+
+
+@app.cell
+def _(complete_df, method_names, pl, plt, sns):
+    exp_3_data = complete_df.filter(pl.col("method").is_in(method_names),
+                                   pl.col("anomaly_rate") == 0.05)
+
+    fig = plt.figure(figsize=(12, 6))
+    ax = fig.add_subplot()
+    g = sns.catplot(
+        data = exp_3_data,
+        x="anomaly_type",
+        kind="box",
+        y="roc_auc",
+        ax=ax
+    )
+
+    g
     return
 
 
