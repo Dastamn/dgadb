@@ -254,8 +254,7 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
             mode="gpu" if "cuda" in str(self.device) else "cpu"
         )
 
-        if "cuda" in str(self.device):
-            self.classifier = self.classifier.cuda()
+        self.classifier = self.classifier.to(self.device)
 
         self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=self.learning_rate)
         

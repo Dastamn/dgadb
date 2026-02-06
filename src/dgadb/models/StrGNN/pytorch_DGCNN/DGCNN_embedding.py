@@ -81,16 +81,14 @@ class DGCNN(nn.Module):
 
         n2n_sp, e2n_sp, subg_sp = GNNLIB.PrepareSparseMatrices(graph_list)
 
-        if torch.cuda.is_available() and isinstance(node_feat, torch.cuda.FloatTensor):
-            n2n_sp = n2n_sp.cuda()
-            e2n_sp = e2n_sp.cuda()
-            subg_sp = subg_sp.cuda()
-            node_degs = node_degs.cuda()
+        device = node_feat.device
+        n2n_sp = n2n_sp.to(device)
+        e2n_sp = e2n_sp.to(device)
+        subg_sp = subg_sp.to(device)
+        node_degs = node_degs.to(device)
         node_feat = Variable(node_feat)
         if edge_feat is not None:
-            edge_feat = Variable(edge_feat)
-            if torch.cuda.is_available() and isinstance(node_feat, torch.cuda.FloatTensor):
-                edge_feat = edge_feat.cuda()
+            edge_feat = Variable(edge_feat.to(device))
         n2n_sp = Variable(n2n_sp)
         e2n_sp = Variable(e2n_sp)
         subg_sp = Variable(subg_sp)
@@ -124,9 +122,7 @@ class DGCNN(nn.Module):
 
         """ sortpooling layer """
         sort_channel = cur_message_layer[:, -1]
-        batch_sortpooling_graphs = torch.zeros(len(graph_sizes), self.k, self.total_latent_dim)
-        if torch.cuda.is_available() and isinstance(node_feat.data, torch.cuda.FloatTensor):
-            batch_sortpooling_graphs = batch_sortpooling_graphs.cuda()
+        batch_sortpooling_graphs = torch.zeros(len(graph_sizes), self.k, self.total_latent_dim, device=node_feat.device)
 
         batch_sortpooling_graphs = Variable(batch_sortpooling_graphs)
         accum_count = 0
@@ -137,11 +133,7 @@ class DGCNN(nn.Module):
             topk_indices += accum_count
             sortpooling_graph = cur_message_layer.index_select(0, topk_indices)
             if k < self.k:
-                to_pad = torch.zeros(self.k - k, self.total_latent_dim)
-                if torch.cuda.is_available() and isinstance(node_feat.data, torch.cuda.FloatTensor):
-                    to_pad = to_pad.cuda()
-
-                to_pad = Variable(to_pad)
+                to_pad = Variable(torch.zeros(self.k - k, self.total_latent_dim, device=node_feat.device))
                 sortpooling_graph = torch.cat((sortpooling_graph, to_pad), 0)
             batch_sortpooling_graphs[i] = sortpooling_graph
             accum_count += graph_sizes[i]

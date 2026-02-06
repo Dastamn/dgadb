@@ -50,6 +50,7 @@ class Classifier(nn.Module):
         self.num_class = num_class
         self.dropout = dropout
         self.mode = mode
+        self.device = torch.device("cuda") if mode == "gpu" else torch.device("cpu")
         self.regression = regression
 
         if self.gm == "DGCNN":
@@ -139,10 +140,10 @@ class Classifier(nn.Module):
             edge_feat = torch.cat(concat_edge_feat, 0)
 
         if self.mode == "gpu":
-            node_feat = node_feat.cuda()
-            labels = labels.cuda()
+            node_feat = node_feat.to(self.device)
+            labels = labels.to(self.device)
             if edge_feat_flag == True:
-                edge_feat = edge_feat.cuda()
+                edge_feat = edge_feat.to(self.device)
 
         if edge_feat_flag == True:
             return node_feat, edge_feat, labels
@@ -160,10 +161,7 @@ class Classifier(nn.Module):
             node_feat, edge_feat, labels = feature_label
         embed = self.gnn(batch, node_feat, edge_feat)
         labels = [labels[i] for i in range(0, labels.shape[0], 5)]
-        if self.mode == "gpu":
-            labels = torch.LongTensor(labels).cuda()
-        else:
-            labels = torch.LongTensor(labels).cpu()
+        labels = torch.LongTensor(labels).to(self.device)
 
         return self.mlp(embed, labels)
 
