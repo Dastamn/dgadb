@@ -17,7 +17,7 @@ class CombinedModel(torch.nn.Module):
         # 通过第一个模型
         output = self.GNN(H_v, H_e, adj_e, adj_v, T)
         pad_output = torch.zeros(
-            (H_e_pad.shape[0], H_e_pad.shape[1], H_e_pad.shape[2]))  # .to('cuda')
+            (H_e_pad.shape[0], H_e_pad.shape[1], H_e_pad.shape[2]), device=H_e_pad.device)
         for i in range(H_e_pad.shape[0]):
             length = output[i].shape[0]
             pad_output[i, :length, :] = output[i]

@@ -51,11 +51,9 @@ class GraphConvolution(Module):
             # multiplier1 = torch.spmm(T, torch.diag((H_e @ self.p.t()).t()[0])) @ T.to_dense().t()
             multiplier1 = torch.spmm(T, torch.diag(
                 (H_e @ self.p.t()).t()[0])) @ T.t()
-            mask1 = torch.eye(multiplier1.shape[0])
-            mask1 = mask1  # .to('cuda')
-            # M1 = mask1 * torch.ones(multiplier1.shape[0]).to('cuda') + (1. - mask1)*multiplier1
+            mask1 = torch.eye(multiplier1.shape[0], device=H_v.device)
             M1 = mask1 * \
-                torch.ones(multiplier1.shape[0]) + (1. - mask1)*multiplier1
+                torch.ones(multiplier1.shape[0], device=H_v.device) + (1. - mask1)*multiplier1
             # adjusted_A = torch.mul(M1, adj_v.to_dense())
             adjusted_A = torch.mul(M1, adj_v)
             # to avoid missing feature's influence, we don't normalize the A
@@ -68,11 +66,9 @@ class GraphConvolution(Module):
             # multiplier2 = torch.spmm(T.t(), torch.diag((H_v @ self.p.t()).t()[0])) @ T.to_dense()
             multiplier2 = torch.spmm(
                 T.t(), torch.diag((H_v @ self.p.t()).t()[0])) @ T
-            mask2 = torch.eye(multiplier2.shape[0])
-            mask2 = mask2  # .to('cuda')
-            # M3 = mask2 * torch.ones(multiplier2.shape[0]).to('cuda') + (1. - mask2)*multiplier2
+            mask2 = torch.eye(multiplier2.shape[0], device=H_v.device)
             M3 = mask2 * \
-                torch.ones(multiplier2.shape[0]) + (1. - mask2)*multiplier2
+                torch.ones(multiplier2.shape[0], device=H_v.device) + (1. - mask2)*multiplier2
             # adjusted_A = torch.mul(M3, adj_e.to_dense())
             adjusted_A = torch.mul(M3, adj_e)
             normalized_adjusted_A = adjusted_A / \
