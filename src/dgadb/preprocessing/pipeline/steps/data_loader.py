@@ -119,17 +119,17 @@ class DataLoader(PipelineStep):
             self.logger.debug(f"Nodes loaded with columns: {node_df.columns}")
 
         return GraphDataContainer(
-            edge_df,
-            node_df,
-            self.e_src_col,
-            self.e_tgt_col,
-            self.e_time_col,
-            self.e_id_col,
-            self.n_time_col,
-            self.n_id_col,
-            self.feat_id_col,
-            self.feat_val_col,
-            self.feat_col_prefix
+            edges=edge_df,
+            nodes=node_df,
+            e_src_col=self.e_src_col,
+            e_tgt_col=self.e_tgt_col,
+            e_time_col=self.e_time_col,
+            e_id_col=self.e_id_col,
+            n_time_col=self.n_time_col,
+            n_id_col=self.n_id_col,
+            feat_id_col=self.feat_id_col,
+            feat_val_col=self.feat_val_col,
+            feat_col_prefix=self.feat_col_prefix,
         )
 
     def update_metadata(self, data: GraphDataContainer) -> None:
