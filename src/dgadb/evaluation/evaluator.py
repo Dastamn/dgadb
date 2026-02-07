@@ -65,7 +65,7 @@ def compute_group_metrics(
 
 
 def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor, group_ids: Optional[torch.Tensor] = None) -> dict:
-    y_true = y_true.cpu()
+    y_true = (y_true != 0).cpu()
     y_scores = y_scores.cpu()
 
     max_f1, best_threshold, max_precision, max_recall = metrics.max_f1_score(
@@ -186,6 +186,7 @@ class ADEvaluator:
 
 @check_matching_device
 def evaluate(y_true: torch.Tensor, y_scores: torch.Tensor, anomaly_as_0: bool = False):
+    y_true = (y_true != 0).long()
     if anomaly_as_0:
         y_true = 1 - y_true
         y_scores = 1 - y_scores

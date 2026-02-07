@@ -209,8 +209,9 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
             if val_loader:
                 self.set_training_mode(False)
                 val_labels, val_probs = self.run_inference(val_loader)
+                val_labels_binary = (val_labels != 0).cpu().numpy()
                 val_auc = roc_auc_score(
-                    val_labels.cpu().numpy(), val_probs.cpu().numpy())
+                    val_labels_binary, val_probs.cpu().numpy())
                 state.val_metrics = {'roc_auc': val_auc}
                 print(val_auc)
 

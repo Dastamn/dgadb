@@ -294,6 +294,9 @@ class AnomalyInjector:
         if self.tg.edge_labels is None:
             self.tg.edge_labels = torch.zeros(
                 self.tg.num_edges - num_new, dtype=torch.long, device=device)
+        else:
+            # Binarize native labels: any non-zero label is anomalous (1)
+            self.tg.edge_labels = (self.tg.edge_labels != 0).long()
 
         self.tg.edge_labels = torch.cat(
             [self.tg.edge_labels, torch.ones(num_new, dtype=torch.long, device=device)])
