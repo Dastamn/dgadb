@@ -164,7 +164,10 @@ def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
             )
 
             if idx == 0:  # Keep legend only on first plot
-                ax_single.legend(title="Method", fontsize=14, title_fontsize=16)
+                wanted = ["strgnn", "sad", "rustgraph", "taddy", "addgraph"]  
+                handles, labels = ax_single.get_legend_handles_labels()
+                order_map = {label: idx for idx, label in enumerate(labels)}
+                ax_single.legend([handles[order_map[l]] for l in wanted], wanted, title="Method", fontsize=14, title_fontsize=16, ncol=2)
             else:
                 legend = ax_single.get_legend()
                 if legend:
@@ -172,15 +175,15 @@ def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
 
             # Apply the same global y-limits
             ax_single.set_ylim(0, 1)
-            ax_single.set_xlabel("$\mathcal{R}$", fontsize=14)
-            ax_single.set_ylabel("ROC AUC", fontsize=14)
-            ax_single.tick_params(axis="both", labelsize=12)
+            ax_single.set_xlabel("$\mathcal{R}$", fontsize=20)
+            ax_single.set_ylabel("ROC AUC", fontsize=20)
+            ax_single.tick_params(axis="both", labelsize=18)
             # ax_single.set_title(
             #     f"{an_type}".capitalize(), fontsize=14, fontweight="bold"
             # )
 
             # NO label text added here either - LaTeX subcaption will handle it
-
+            # plt.tight_layout()
             fig_single.savefig(
                 f"paper_figures/exp_1_{chr(97 + idx)}_{an_type}.pdf",
                 dpi=300,
@@ -196,7 +199,7 @@ def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
 @app.cell
 def _(complete_df, pl, sns):
     new_exp_1_data = (complete_df
-                  .filter(pl.col("method").is_in(["strgnn", "taddy", "sad", "addgraph", "rustgraph"]))
+                  .filter(pl.col("method").is_in(["strgnn", "sad", "taddy", "rustgraph", "addgraph"]))
                  )
 
     new_exp_1_plot = sns.relplot(
@@ -238,38 +241,38 @@ def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
     label_offset = 5
 
     def plot_exp_2():
-        fig = plt.figure(figsize=(18, 8))
+        fig = plt.figure(figsize=(18, 4))
 
         subfigs_top = fig.subfigures(1, 3, wspace=0.15)
         axes_top = [subfig.subplots(1, 1) for subfig in subfigs_top]
-    
+
         subfigs_bottom = fig.subfigures(1, 3, wspace=0.15)
-    
+
         # Create figure-level grid specification for centering
         gs = fig.add_gridspec(2, 3)
-    
+
         # Clear and use a simpler approach with gridspec
         plt.close("all")  # Close previous figure
-    
-        fig = plt.figure(figsize=(18, 10))
+
+        fig = plt.figure(figsize=(18, 4))
         gs = fig.add_gridspec(2, 3)
-    
+
         # Row 1: 3 plots (columns 0, 1, 2)
         axes_row1 = [fig.add_subplot(gs[0, i]) for i in range(3)]
-    
+
         # Row 2: 2 plots centered (columns 0 and 1)
         axes_row2 = [fig.add_subplot(gs[1, i]) for i in range(2)]
-    
+
         axes = axes_row1 + axes_row2
-    
+
         for idx, ax in enumerate(axes):
-            fig_single = plt.figure(figsize=(5, 4))
+            fig_single = plt.figure(figsize=(5, 3))
             ax_single = fig_single.add_subplot(111)
-    
+
             # Plot the same data
             an_type = anomaly_types[idx]
             df_filtered = exp_2_data.filter(pl.col("anomaly_type") == an_type)
-    
+
             sns.lineplot(
                 data=df_filtered,
                 x="duration",
@@ -281,22 +284,22 @@ def _(anomaly_types, complete_df, method_names, palette, pl, plt, sns):
                 marker="o",
                 markersize=10
             )
-    
+
             legend = ax_single.get_legend()
             if legend:
                 legend.remove()
 
             # Apply the same global y-limits
             ax_single.set_ylim(0, 1)
-            ax_single.set_xlabel("$\mathcal{T}$", fontsize=14)
-            ax_single.set_ylabel("ROC AUC", fontsize=14)
-            ax_single.tick_params(axis='both', labelsize=12)
+            ax_single.set_xlabel("$\mathcal{T}$", fontsize=20)
+            ax_single.set_ylabel("ROC AUC", fontsize=20)
+            ax_single.tick_params(axis='both', labelsize=18)
             # ax_single.set_title(
             #     f"{an_type}".capitalize(), fontsize=14, fontweight="bold"
             # )
-    
+
             # NO label text added here either - LaTeX subcaption will handle it
-    
+            # plt.tight_layout()
             fig_single.savefig(
                 f"paper_figures/exp_2_{chr(97 + idx)}_{an_type}.pdf", dpi=300, bbox_inches="tight"
             )
@@ -347,8 +350,8 @@ def _(complete_df, method_names, pl, plt, sns):
     ordered_types = ["clique", "burst", "path", "bridge", "random"]
 
     def plot_exp_3():
-        fig = plt.figure(figsize=(12, 4.5))
-    
+        fig = plt.figure(figsize=(10, 3))
+
         ax = sns.boxplot(
             data=exp_3_data,
             x="anomaly_type",
@@ -357,8 +360,8 @@ def _(complete_df, method_names, pl, plt, sns):
             color="#6c7a89",
             boxprops=dict(alpha=.45)
         )
-    
-    
+
+
         g = sns.stripplot(
             data=exp_3_data,
             x="anomaly_type",
@@ -370,7 +373,7 @@ def _(complete_df, method_names, pl, plt, sns):
             jitter=True,
             dodge=True
         )
-    
+
         ax.set_ylim(0, 1)
         ax.set_ylabel("ROC AUC", fontsize=14)
         ax.set_xlabel("", fontsize=14)
@@ -392,55 +395,131 @@ def _(mo):
 
 
 @app.cell
-def _(complete_df, pl, sns):
-    exp4_data = (complete_df
-        .filter(pl.col("anomaly_rate") == 0.05)
+def _(complete_df, method_names, palette, pl, plt, sns):
+    exp4_data = (
+        complete_df.filter(pl.col("anomaly_rate") == 0.05)
         .filter(pl.col("duration") == 0.5)
         .filter(pl.col("anomaly_type").is_in(["path", "random", "bridge"]))
-        .filter(pl.col("method").is_in(["strgnn", "taddy", "sad", "addgraph", "rustgraph"]))
-                  # .group_by(["method", "anom_type", "anom_ratio", "anom_duration"]).agg(pl.mean("roc_auc"))
+        .filter(pl.col("method").is_in(method_names))
     )
 
-    exp4_plot = sns.catplot(
-        data=exp4_data,
-        kind=f"bar",
-        x="anomaly_type",
-        y="roc_auc",
-        hue="method",
-        col="dataset"
+    exp4_ordered_types = ["random", "path", "bridge"]
+    exp4_datasets = (
+        exp4_data.select("dataset").unique().sort("dataset").to_series().to_list()
     )
 
 
-    exp4_plot.savefig("paper_figures/experiment_4_simple_anomalies", dpi=600)
+    def plot_exp_4():
+        for idx, dataset in enumerate(exp4_datasets):
+            fig_single = plt.figure(figsize=(5, 3))
+            ax = fig_single.add_subplot(111)
 
-    exp4_plot
+            df_filtered = exp4_data.filter(pl.col("dataset") == dataset)
+
+            sns.barplot(
+                data=df_filtered,
+                x="anomaly_type",
+                y="roc_auc",
+                hue="method",
+                order=exp4_ordered_types,
+                palette=palette,
+                ax=ax,
+                errorbar="ci",
+            )
+
+            if idx == 0:  # Keep legend only on first plot
+                wanted = ["strgnn", "sad", "rustgraph", "taddy", "addgraph"]
+                handles, labels = ax.get_legend_handles_labels()
+                order_map = {label: idx for idx, label in enumerate(labels)}
+                ax.legend(
+                    [handles[order_map[l]] for l in wanted],
+                    wanted,
+                    title="Method",
+                    fontsize=14,
+                    loc="lower center",
+                    title_fontsize=16,
+                    ncol=2,
+                )
+            else:
+                legend = ax.get_legend()
+                if legend:
+                    legend.remove()
+            # if idx == 0:
+            #     ax.legend(title="Method", fontsize=10, title_fontsize=12)
+            # else:
+            #     legend = ax.get_legend()
+            #     if legend:
+            #         legend.remove()
+
+            ax.set_ylim(0, 1)
+            ax.set_xlabel("", fontsize=14)
+            ax.set_ylabel("ROC AUC", fontsize=20)
+            ax.set_xticklabels([t.capitalize() for t in exp4_ordered_types])
+            ax.tick_params(axis="both", labelsize=20)
+
+            fig_single.savefig(
+                f"paper_figures/exp_4_{chr(97 + idx)}_{dataset}.pdf",
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close(fig_single)
+
+
+    plot_exp_4()
     return
 
 
 @app.cell
-def _(complete_df, pl, sns):
+def _(complete_df, method_names, palette, pl, plt, sns):
     exp5_data = (complete_df
         .filter(pl.col("anomaly_rate") == 0.05)
         .filter(pl.col("duration") == 1.0)
         .filter(pl.col("anomaly_type").is_in(["burst", "clique"]))
-        .filter(pl.col("method").is_in(["strgnn", "taddy", "sad", "addgraph", "rustgraph"]))
-                  # .group_by(["method", "anom_type", "anom_ratio", "anom_duration"]).agg(pl.mean("roc_auc"))
+        .filter(pl.col("method").is_in(method_names))
     )
 
-    exp5_plot = sns.catplot(
-        data=exp5_data,
-        kind="bar",
-        x="anomaly_type",
-        y="roc_auc",
-        hue="method",
-        col="dataset"
-    )
+    exp5_ordered_types = ["burst", "clique"]
+    exp5_datasets = exp5_data.select("dataset").unique().sort("dataset").to_series().to_list()
 
+    def plot_exp_5():
+        for idx, dataset in enumerate(exp5_datasets):
+            fig_single = plt.figure(figsize=(5, 3))
+            ax = fig_single.add_subplot(111)
 
+            df_filtered = exp5_data.filter(pl.col("dataset") == dataset)
 
-    exp5_plot.savefig("paper_figures/experiment_5_complex_anomalies", dpi=600)
+            sns.barplot(
+                data=df_filtered,
+                x="anomaly_type",
+                y="roc_auc",
+                hue="method",
+                order=exp5_ordered_types,
+                palette=palette,
+                ax=ax,
+                errorbar="ci",
+            )
 
-    exp5_plot
+            # if idx == 0:
+            #     ax.legend(title="Method", fontsize=10, title_fontsize=12)
+            # else:
+            legend = ax.get_legend()
+            if legend:
+                legend.remove()
+
+            ax.set_ylim(0, 1)
+            ax.set_xlabel("", fontsize=14)
+            ax.set_ylabel("ROC AUC", fontsize=20)
+            ax.set_xticklabels([t.capitalize() for t in exp5_ordered_types])
+            ax.tick_params(axis="both", labelsize=20)
+
+            fig_single.savefig(
+                f"paper_figures/exp_5_{chr(97 + idx)}_{dataset}.pdf",
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close(fig_single)
+
+    plot_exp_5()
     return
 
 
