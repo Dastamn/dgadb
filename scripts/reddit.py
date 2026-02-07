@@ -60,7 +60,7 @@ df_edges.write_parquet(file_path_edges)
 file_path_edge_labels = os.path.join(dataset_dir, "edge_labels.parquet")
 df_edge_labels.write_parquet(file_path_edge_labels)
 
-file_path_edge_features = os.path.join(dataset_dir, "edge_features.parquet")
+file_path_edge_features = os.path.join(dataset_dir, "edge_features_num.parquet")
 df_edge_features.write_parquet(file_path_edge_features)
 
 file_path_node_types = os.path.join(dataset_dir, "node_types.parquet")
