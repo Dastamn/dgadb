@@ -6,7 +6,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/bitcoin-otc
+        dataset_dir: data/bitcoin-otc
     - name: StructureNormalizer
       params:
         directionality: canonical

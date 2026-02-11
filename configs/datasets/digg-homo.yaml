@@ -6,7 +6,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/digg-homo
+        dataset_dir: data/digg-homo
     - name: StructureNormalizer
       params:
         directionality: canonical

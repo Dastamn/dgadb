@@ -6,7 +6,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/as-topology
+        dataset_dir: data/as-topology
     - name: StructureNormalizer
       params:
         directionality: canonical

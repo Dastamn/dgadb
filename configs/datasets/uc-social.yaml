@@ -6,7 +6,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/uc-social
+        dataset_dir: data/uc-social
     - name: StructureNormalizer
       params:
         directionality: canonical

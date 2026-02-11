@@ -6,7 +6,7 @@ pipeline:
   steps:
     - name: DataLoader
       params:
-        dataset_dir: /mnt/disk2/nazim/dgadb/data/email-dnc
+        dataset_dir: data/email-dnc
     - name: StructureNormalizer
       params:
         directionality: canonical

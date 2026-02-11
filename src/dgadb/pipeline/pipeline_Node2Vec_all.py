@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     device = torch.device("cpu")
 
-    loader = TemporalGraphLoader(base_directory="/home/tomoller/dgadb")
+    loader = TemporalGraphLoader()
     tg = loader.load(
         dataset_name,
         anom_type="s",
