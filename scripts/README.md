@@ -11,7 +11,6 @@ This README focuses on the analysis scripts.
 
 ```bash
 pixi install && pixi shell
-export BASE_PATH=$(pwd)
 ```
 
 All analysis scripts use [Typer](https://typer.tiangolo.com/) for CLI and support `--help`.

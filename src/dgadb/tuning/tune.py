@@ -31,7 +31,9 @@ from dgadb.models.SAD.main_SAD import SADModel
 from dgadb.models.RustGraph.main_RustGraph import RustGraphModel
 
 
-_BASE_PATH = os.environ["BASE_PATH"]
+from dgadb.utils.paths import get_project_root
+
+_BASE_PATH = get_project_root()
 
 _MODELS = {
     "rustgraph": RustGraphModel,

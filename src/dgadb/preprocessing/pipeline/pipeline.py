@@ -10,7 +10,9 @@ from .steps.base import PipelineStep
 from .steps import DataLoader
 from . import steps
 
-_BASE_PATH = os.environ["BASE_PATH"]
+from dgadb.utils.paths import get_project_root
+
+_BASE_PATH = get_project_root()
 # TODO @Dastamn: Update to config/dataset
 _CONFIG_PATH = os.path.join(_BASE_PATH, "configs")
 

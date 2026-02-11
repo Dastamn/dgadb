@@ -42,7 +42,7 @@ class RustGraphModel:
         # runtime
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
-        self.base_path = os.environ["BASE_PATH"]
+        self.base_path = os.getcwd()  # legacy; unused
 
         # meta
         self.dataset_name: str = meta_dict["dataset_name"]
@@ -92,7 +92,8 @@ class RustGraphModel:
         edges_np = edge_index_train.t().cpu().numpy()
         epoch_num = 50
 
-        base_path = os.environ["BASE_PATH"]
+        from dgadb.utils.paths import get_project_root
+        base_path = get_project_root()
         dataset_dir = os.path.dirname(
             f"{base_path}/src/dgadb/models/RustGraph/n2v_data/")
         if not os.path.exists(dataset_dir):

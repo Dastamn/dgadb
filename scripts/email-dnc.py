@@ -15,7 +15,7 @@ import os
 print("Email-DNC")
 dataset_name = "email-dnc"
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 dataset_dir = os.path.dirname(f"{data_path}/data/{dataset_name}/")
 if not os.path.exists(dataset_dir):
     os.makedirs(dataset_dir)

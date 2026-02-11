@@ -34,7 +34,7 @@ class SADModel:
         # runtime
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
-        self.base_path = os.environ["BASE_PATH"]
+        self.base_path = os.getcwd()  # legacy; unused
 
         # meta
         # self.dataset_name: str = meta_dict["dataset_name"]

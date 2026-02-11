@@ -14,7 +14,7 @@ import os
 
 print("Wiki")
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 # overlapping ids for src and target, need to fix!
 
 dataset_dir = os.path.dirname(f"{data_path}/data/wiki/")

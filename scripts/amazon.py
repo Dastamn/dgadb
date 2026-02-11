@@ -14,7 +14,7 @@ import gzip
 
 print("Amazon")
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 
 # TODO create labels from fraction of helpful-to-total votes anomaly if <0.25, paper filters out >0.75 as well
 

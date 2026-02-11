@@ -28,9 +28,10 @@ from dgadb.models.SAD.main_SAD import SADModel
 from dgadb.models.SLADE.SLADE_main import SLADEModel
 
 import argparse
+from dgadb.utils.paths import get_project_root
 
 
-_BASE_PATH = os.environ["BASE_PATH"]
+_BASE_PATH = get_project_root()
 _CONFIG_PATH = os.path.join(_BASE_PATH, "configs")
 
 _MODELS = {
@@ -161,7 +162,7 @@ class Experiment():
             else:
                 # ray checkpoint
                 checkpoint_dir = os.path.join(
-                    os.environ["BASE_PATH"],
+                    _BASE_PATH,
                     f"model_checkpoint/{self.method_name}",
                     self.dataset_name,
                     tune.get_context().get_trial_id(),

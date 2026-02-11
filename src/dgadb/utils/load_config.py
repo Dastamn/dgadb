@@ -1,11 +1,13 @@
 import os
 import yaml
 import logging
+from dgadb.utils.paths import get_project_root
+
 logger = logging.getLogger(__name__)
 
 
 def load_config(name: str) -> dict:
-    base_path = os.environ["BASE_PATH"]
+    base_path = get_project_root()
     yaml_path = os.path.join(base_path, "configs", f"{name}.yaml")
 
     logger.info(f"Loading config: {yaml_path}")

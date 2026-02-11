@@ -14,7 +14,7 @@ import os
 
 print("Bitcoin")
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 
 for t in ("alpha", "otc"):
     dataset_dir = os.path.dirname(f"{data_path}/data/bitcoin-{t}/")

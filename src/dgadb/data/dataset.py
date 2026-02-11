@@ -2,12 +2,13 @@ import polars as pl
 from typing import Dict
 import os
 import logging
+from dgadb.utils.paths import get_project_root
 
 logger = logging.getLogger(__name__)
 
 
 def load_df(name: str) -> Dict[str, pl.DataFrame]:
-    base_path = os.environ["BASE_PATH"]
+    base_path = get_project_root()
     ds_dir_path = os.path.join(base_path, "data", name)
     logger.info(f"Loading dataset '{name}' from {ds_dir_path}")
 

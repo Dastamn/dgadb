@@ -6,13 +6,13 @@ Measures wall-clock training time, peak GPU/RAM memory, and throughput
 
 Usage:
     # Single method, multiple datasets (ascending size order)
-    BASE_PATH=$PWD python -m scripts.benchmark_scalability \
+    python -m scripts.benchmark_scalability \
         --methods sad slade rustgraph \
         --datasets bitcoin-alpha bitcoin-otc wiki mooc reddit \
         --epochs 3
 
     # Quick smoke test
-    BASE_PATH=$PWD python -m scripts.benchmark_scalability \
+    python -m scripts.benchmark_scalability \
         --methods gcn --datasets bitcoin-alpha --epochs 1
 """
 

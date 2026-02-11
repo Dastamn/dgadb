@@ -13,7 +13,7 @@ import os
 print("DGraph")
 dataset_name = "dgraph"
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 req_dir = os.path.dirname(f"{data_path}/raw/dgraph/")
 dataset_dir = os.path.dirname(f"{data_path}/data/dgraph/")
 if not os.path.exists(dataset_dir):

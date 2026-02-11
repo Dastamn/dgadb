@@ -10,7 +10,7 @@ import os
 
 print("Yelp Zip")
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 req_path = os.path.join(data_path, "raw/yelp-zip/yelpzip.csv")
 
 if not os.path.exists(req_path):

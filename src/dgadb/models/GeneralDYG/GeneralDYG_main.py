@@ -281,7 +281,8 @@ class GeneralDYGModel:
         # runtime
         self.device = device
         self.epoch_evaluation_metric = epoch_evaluation_metric
-        base_path = os.environ["BASE_PATH"]
+        from dgadb.utils.paths import get_project_root
+        base_path = get_project_root()
         dataset_dir = os.path.dirname(
             f"{base_path}/src/dgadb/models/GeneralDYG/data/{self.dataset_name}/")
         self.dir_data: str = os.path.join(base_path, dataset_dir)

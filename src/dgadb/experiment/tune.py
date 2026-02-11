@@ -15,9 +15,10 @@ from .runner import ExperimentRunner
 from .callbacks import ResourceMonitor, TuneReporter
 from dgadb.models import BaseADModel
 from dgadb.storage import TemporalGraph, TemporalGraphLoader, generate_temporal_graph_filename
+from dgadb.utils.paths import get_project_root
 
 
-_BASE_PATH = os.environ["BASE_PATH"]
+_BASE_PATH = get_project_root()
 
 
 def trainable_function(

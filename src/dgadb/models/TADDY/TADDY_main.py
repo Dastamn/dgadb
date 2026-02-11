@@ -419,7 +419,8 @@ class TADDYModel:
         weights: list[np.ndarray],
         nb_nodes: int,
     ) -> tuple[list[torch.Tensor], list[np.ndarray | None]]:
-        base_path = os.environ["BASE_PATH"]
+        from dgadb.utils.paths import get_project_root
+        base_path = get_project_root()
         eigen_file_name = (
             "src/dgadb/models/TADDY/data/eigen/"
             + self.dataset_name

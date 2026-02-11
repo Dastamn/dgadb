@@ -15,7 +15,7 @@ import requests
 print("Trace & Theia")
 dataset_name = "dgraph"
 
-data_path = os.environ["DATA_PATH"]
+data_path = os.environ.get("DATA_PATH", os.getcwd())
 
 
 print("Downloading...")
