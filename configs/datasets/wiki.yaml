@@ -1,21 +1,12 @@
-# snapshot_size: 1000
-# train_ratio: 0.70
-# val_ratio: 0.10
-# anomaly_ratio: 0.01
-
 dataset:
   name: wiki
-  paths:
-    raw: null
-    structured: data/wiki
-    processed: null
 
 pipeline:
   cache_dir: pipeline_cache/wiki
   steps:
     - name: DataLoader
       params:
-        dataset_dir: data/wiki
+        dataset_dir: /mnt/disk2/nazim/dgadb/data/wiki
     - name: StructureNormalizer
       params:
         directionality: canonical
@@ -27,6 +18,6 @@ pipeline:
 
     - name: TemporalSplitter
       params:
-        train_ratio: 0.7
-        val_ratio: 0.1
+        train_ratio: 0.5
+        val_ratio: 0.25
 
