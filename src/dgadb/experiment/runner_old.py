@@ -138,16 +138,19 @@ def setup_worker_logging(level=logging.INFO):
 
 def run_single_config(
     id: int,
+    at: str, 
+    ar: float, 
+    ad: str, 
     method: Method, 
     dataset: str, 
     experiment_name: str, 
     epochs: int, 
+    sad_anom_train_ratio: float, 
     snapshot_config: dict, 
     cores_per_worker: int,
     cache_dir: str,
     device: str
 ):
-    
     setup_worker_logging(logging.INFO)
 
     cache_dir = os.path.join(cache_dir, method)
@@ -161,92 +164,89 @@ def run_single_config(
     window_size = snapshot_config["window_size"]
 
     logger = logging.getLogger(f"WORKER-{id}")
-    logger.info(f"LAUNCHING: {method.value} | {dataset} (Cores: {cores_per_worker})")
+    logger.info(f"LAUNCHING: {method.value} | {dataset} | {at} | ratio:{ar} | dur:{ad} (Cores: {cores_per_worker})")
 
     device = torch.device("cuda") if device == "gpu" else torch.device("cpu")
 
-    data = loader.load(dataset, create_if_not_found=True)
-    print(data.edge_index.shape)
+    if method == Method.sad:
+        from dgadb.preprocessing.anomaly_injection import AnomalyInjector
+        from dgadb.models.sad_new.sad import SADAD
+        data = loader.load(dataset, create_if_not_found=True)
+        ai = AnomalyInjector(data)
+        ai.generate_anomalous_samples("random", train_ratio=sad_anom_train_ratio, duration=1.0)
+        ai.generate_anomalous_samples(at, val_ratio=ar, test_ratio=ar, duration=ad)
+        model = SADAD(device=device)
+    else:
+        data = loader.load(dataset, at, anom_val_ratio=ar, anom_test_ratio=ar, duration=ad, create_if_not_found=True)
 
-    labels = data.edge_labels
-    assert labels is not None
-    assert data.val_mask is not None
-
-    print("train", labels[data.train_mask].sum())
-    print("val", labels[data.val_mask].sum() if data.val_mask is not None else None)
-    print("test", labels[data.test_mask].sum())
-
-    match method:
-        case Method.sad:
-            from dgadb.models.sad_new.sad import SADAD
-            model = SADAD(device=device)
-        case Method.taddy:
-            from dgadb.models.taddy_new.taddy import TADDYAD
-            model = TADDYAD(snap_size=window_size, cache_dir=cache_dir, device=device)
-        case Method.slade:
-            from dgadb.models.slade_new.slade import SLADEAD
-            model = SLADEAD(device=device)
-        case Method.strgnn:
-            from dgadb.models.StrGNN.strgnn import StrGNNAD
-            model = StrGNNAD(snap_size=window_size, cache_dir=cache_dir, device=device)
-        case Method.rustgraph:
-            from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
-            model = RustGraphAD(device=device)
-        case Method.generaldyg:
-            from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
-            model = GeneralDyGAD(cache_dir=cache_dir, device=device)
-        case Method.gcn | Method.gat | Method.graphsage:
-            from dgadb.models.baseline.gnn import GNNAD
-            model = GNNAD(method.value.upper(), device=device)
-        case Method.addgraph:
-            from dgadb.models.addgraph.addgraph import AddGraphAD
-            model = AddGraphAD(device=device)
-        case _:
-            raise ValueError(f"Unknown method {method}")
+        match method:
+            case Method.taddy:
+                from dgadb.models.taddy_new.taddy import TADDYAD
+                model = TADDYAD(snap_size=window_size, cache_dir=cache_dir, device=device)
+            case Method.slade:
+                from dgadb.models.slade_new.slade import SLADEAD
+                model = SLADEAD(device=device)
+            case Method.strgnn:
+                from dgadb.models.StrGNN.strgnn import StrGNNAD
+                model = StrGNNAD(snap_size=window_size, cache_dir=cache_dir, device=device)
+            case Method.rustgraph:
+                from dgadb.models.rustgraph_new.rustgraph import RustGraphAD
+                model = RustGraphAD(device=device)
+            case Method.generaldyg:
+                from dgadb.models.generaldyg_new.generaldyg import GeneralDyGAD
+                model = GeneralDyGAD(cache_dir=cache_dir, device=device)
+            case Method.gcn | Method.gat | Method.graphsage:
+                from dgadb.models.baseline.gnn import GNNAD
+                model = GNNAD(method.value.upper(), device=device)
+            case Method.addgraph:
+                from dgadb.models.addgraph.addgraph import AddGraphAD
+                model = AddGraphAD(device=device)
+            case _:
+                raise ValueError(f"Unknown method {method}")
 
     aim_callback = AimCallback(
         experiment_name=experiment_name,
-        run_name=f"{method.value}_{dataset}",
+        run_name=f"{method.value}_{dataset}_{at}_{ar}_{ad}",
         hparams={
             "method": method.value,
             "dataset": dataset,
-            # "variant": data.variant_name,
+            "variant": data.variant_name,
             "epochs": epochs,
             **snapshot_config,
         },
-        tags=[method.value, dataset],
+        tags=[method.value, dataset, at, ad],
         log_system_metrics=False
     )
 
-    # anom_config = {
-    #     "anom_type": at,
-    #     "anom_ratio": ar,
-    #     "anom_duration": ad
-    # }
+    anom_config = {
+        "anom_type": at,
+        "anom_ratio": ar,
+        "anom_duration": ad
+    }
 
-    # aim_callback.log_config(anom_config, name="anom_config")
+    aim_callback.log_config(anom_config, name="anom_config")
     aim_callback.log_config(snapshot_config, name="snapshot_config")
 
-    output_dir = f"experiment-results/{experiment_name}/{method.value}/{dataset}"
+    output_dir = f"experiment-results/{experiment_name}/{method.value}/{data.variant_name}"
     resource_monitor = ResourceMonitor(output_dir)
 
     runner = ExperimentRunner(model, data, output_dir=output_dir)
     runner.run(epochs, snapshot_config, [aim_callback, resource_monitor])
     
-    return f"COMPLETED: {method.value} | {dataset}"
+    return f"COMPLETED: {method.value} | {dataset} | {at} | ratio:{ar} | dur:{ad}"
 
 
 @app.command()
 def run_experiment(
     method: Annotated[Method, typer.Option(help="Method name")],
     datasets: Annotated[List[str], typer.Option(help="Dataset names")],
-    experiment_name: Annotated[str, typer.Option(help="Aim experiment name")] = "dgadb-labeled",
-    # anom_types: Annotated[List[str], typer.Option(help="Anomaly types")] = ["random", "burst", "bridge", "clique", "path"],
-    # anom_rates: Annotated[List[float], typer.Option(help="Anomaly rates")] = [0.1, 0.05, 0.01],
-    # anom_durations: Annotated[List[str], typer.Option(help="Anomaly durations")] = ["small", "medium", "large"],
-    # sad_anom_train_ratio: Annotated[float, typer.Option(help="SAD anomaly training ratio")] = 0.01,
+    experiment_name: Annotated[str, typer.Option(help="Aim experiment name")] = "dgadb",
+    anom_types: Annotated[List[str], typer.Option(help="Anomaly types")] = ["random", "burst", "bridge", "clique", "path"],
+    anom_rates: Annotated[List[float], typer.Option(help="Anomaly rates")] = [0.1, 0.05, 0.01],
+    anom_durations: Annotated[List[str], typer.Option(help="Anomaly durations")] = ["small", "medium", "large"],
+    sad_anom_train_ratio: Annotated[float, typer.Option(help="SAD anomaly training ratio")] = 0.01,
     epochs: Annotated[int, typer.Option(help="Number of training epochs")] = 10,
-    concurrency: Annotated[int, typer.Option(help="Number of experiments to run in parallel")] = 1,
+    concurrency: Annotated[int, typer.Option(help="Number of experiments to run in parallel")] = 4,
     cache_dir: Annotated[str, typer.Option(help="Location of intermediate files")] = "cache",
     device: Annotated[str, typer.Option(help="Use GPU if available")] = "cpu"
 ):
@@ -258,8 +258,6 @@ def run_experiment(
     cores_per_worker = max(1, total_cores // concurrency)
 
     include_cumulative = method in [Method.gcn, Method.gat, Method.graphsage]
-    # print(include_cumulative)
-    # return
 
     tasks = []
     for ds in datasets:
@@ -270,29 +268,20 @@ def run_experiment(
             "include_cumulative": include_cumulative,
         }
         
-        # combos = list(itertools.product(anom_types, anom_rates, anom_durations))
-        # for at, ar, ad in combos:
-        #     tasks.append((ds, at, ar, ad, snap_config))
-        tasks.append((ds, snap_config))
-
-    # for i, (ds, snap_config) in enumerate(tasks):
-    #     run_single_config(
-    #     i, method, datasets[0], 
-    #                 experiment_name, epochs,
-    #                 snap_config, cores_per_worker, cache_dir, device
-    #     )
-    #     break
+        combos = list(itertools.product(anom_types, anom_rates, anom_durations))
+        for at, ar, ad in combos:
+            tasks.append((ds, at, ar, ad, snap_config))
 
     ctx = multiprocessing.get_context('spawn')
     with ProcessPoolExecutor(max_workers=concurrency, mp_context=ctx) as executor:
         futures = [
             executor.submit(
                 run_single_config,
-                i, method, ds, 
-                experiment_name, epochs,
+                i, at, ar, ad, method, ds, 
+                experiment_name, epochs, sad_anom_train_ratio,
                 snap_config, cores_per_worker, cache_dir, device
             )
-            for i, (ds, snap_config) in enumerate(tasks)
+            for i, (ds, at, ar, ad, snap_config) in enumerate(tasks)
         ]
 
         for future in futures:
@@ -308,15 +297,3 @@ if __name__ == "__main__":
         format="%(asctime)s [MAIN] %(message)s"
     )
     app()
-
-    # import polars as pl
-
-    # df = pl.read_parquet("data/mooc/edge_labels.parquet")
-    # n_total = df.height
-    # n_anom = df.filter(pl.col("label") == 1).height
-    # n_norm = df.filter(pl.col("label") == 0).height
-
-    # print(f"Total: {n_total}")
-    # print(f"Normal: {n_norm} ({n_norm / n_total:.2%})")
-    # print(f"Anomalous: {n_anom} ({n_anom / n_total:.2%})")
-    # print(f"Ratio (normal:anomalous): {n_norm / n_anom:.2f}:1")
