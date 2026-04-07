@@ -13,6 +13,7 @@ Tasks 9 and 10 add the plot commands; this file currently exposes only
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -79,6 +80,42 @@ def tier_a_table(
     lines.append("\\end{tabular}")
 
     output.write_text("\n".join(lines) + "\n")
+    typer.echo(f"Wrote {output}")
+
+
+@app.command()
+def latency_cdf(
+    sidecar_glob: Annotated[str, typer.Option(help="Glob pattern for sidecar JSONs")],
+    output: Annotated[Path, typer.Option(help="Output PDF path")] = Path("tier_b_latency_cdf.pdf"),
+) -> None:
+    """Plot per-snapshot latency CDFs, one curve per (method, dataset) pair."""
+    import glob
+
+    import matplotlib.pyplot as plt
+
+    paths = sorted(glob.glob(sidecar_glob))
+    if not paths:
+        raise typer.BadParameter(f"No sidecars matched {sidecar_glob}")
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for p in paths:
+        slug = Path(p).stem  # method__dataset
+        data = json.loads(Path(p).read_text())
+        latencies = sorted(data["per_snapshot_latency_ms"])
+        if not latencies:
+            continue
+        n = len(latencies)
+        ys = [(i + 1) / n for i in range(n)]
+        ax.plot(latencies, ys, label=slug)
+
+    ax.set_xscale("log")
+    ax.set_xlabel("Per-snapshot latency (ms, log scale)")
+    ax.set_ylabel("Cumulative fraction of snapshots")
+    ax.axhline(0.95, linestyle="--", color="grey", linewidth=0.8)
+    ax.axhline(0.99, linestyle=":", color="grey", linewidth=0.8)
+    ax.legend(fontsize=7, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(output)
     typer.echo(f"Wrote {output}")
 
 
