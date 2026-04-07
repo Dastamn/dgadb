@@ -26,11 +26,15 @@ class StreamingProfiler:
             for the throughput / latency measurement to be considered
             reliable. ``summary()`` reports ``insufficient_batches=True``
             when this floor is not met.
+        window_sec: Width of the throughput window used by ``to_sidecar``,
+            in seconds. Each snapshot's edges are attributed to the window
+            in which the snapshot ends.
     """
 
     warmup_min: int = 5
     warmup_frac: float = 0.1
     min_post_warmup: int = 20
+    window_sec: float = 1.0
     _edges: list[int] = field(default_factory=list)
     _mean_degrees: list[float] = field(default_factory=list)
     _elapsed: list[float] = field(default_factory=list)
@@ -119,4 +123,52 @@ class StreamingProfiler:
             "latency_p99_ms": p99,
             "latency_p99_over_p50": ratio,
             "insufficient_batches": n_after < self.min_post_warmup,
+        }
+
+    def to_sidecar(self) -> dict[str, Any]:
+        """Return per-snapshot arrays and a windowed throughput series.
+
+        Windowed throughput is computed by walking the snapshot timeline
+        (each snapshot's edges are attributed to the window in which it
+        ends) and dividing edges-in-window by ``window_sec``. The result
+        is intended to be persisted as a JSON sidecar alongside the main
+        benchmark results, so the appendix figures can be regenerated
+        without re-running inference.
+
+        Keys:
+            - ``per_snapshot_latency_ms`` (list[float]): every recorded
+              snapshot's latency in milliseconds, in arrival order.
+            - ``per_snapshot_edges`` (list[int]): edge count per snapshot.
+            - ``per_snapshot_mean_degree`` (list[float]): mean edge degree
+              per snapshot, in the same order.
+            - ``windowed_throughput`` (list[float]): edges scored per
+              ``window_sec``-wide bucket, in chronological order.
+        """
+        latencies_ms = [s * 1000.0 for s in self._elapsed]
+
+        from math import ceil
+
+        windows: list[float] = []
+        edges_in_window = 0
+        cumulative = 0.0
+        window_idx = 0
+        for edges, dur in zip(self._edges, self._elapsed):
+            cumulative += dur
+            # Snapshot belongs to window ceil(cumulative / window_sec) - 1,
+            # so a snapshot ending exactly at the boundary (e.g. 1.0) belongs
+            # to window 0 (0..1], not window 1 (1..2].
+            target_window = ceil(cumulative / self.window_sec) - 1
+            while window_idx < target_window:
+                windows.append(edges_in_window / self.window_sec)
+                edges_in_window = 0
+                window_idx += 1
+            edges_in_window += edges
+        if edges_in_window > 0:
+            windows.append(edges_in_window / self.window_sec)
+
+        return {
+            "per_snapshot_latency_ms": latencies_ms,
+            "per_snapshot_edges": list(self._edges),
+            "per_snapshot_mean_degree": list(self._mean_degrees),
+            "windowed_throughput": windows,
         }
