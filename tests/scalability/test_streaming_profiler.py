@@ -32,3 +32,23 @@ def test_profiler_reports_latency_percentiles_and_ratio():
     assert summary["latency_p99_ms"] == pytest.approx(99.01, rel=1e-3)
     assert summary["latency_mean_ms"] == pytest.approx(50.5, rel=1e-3)
     assert summary["latency_p99_over_p50"] == pytest.approx(99.01 / 50.5, rel=1e-3)
+
+
+def test_profiler_flags_insufficient_batches_after_warmup():
+    profiler = StreamingProfiler(warmup_min=5, warmup_frac=0.1, min_post_warmup=20)
+    # Only 22 snapshots total, warmup discards 5, leaving 17 — below the floor of 20.
+    for _ in range(22):
+        profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=0.001)
+
+    summary = profiler.summary()
+    assert summary["insufficient_batches"] is True
+    assert summary["snapshots_after_warmup"] == 17
+
+
+def test_profiler_clears_insufficient_flag_when_enough_snapshots():
+    profiler = StreamingProfiler(warmup_min=5, warmup_frac=0.1, min_post_warmup=20)
+    for _ in range(30):
+        profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=0.001)
+
+    summary = profiler.summary()
+    assert summary["insufficient_batches"] is False
