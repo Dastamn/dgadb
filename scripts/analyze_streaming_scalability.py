@@ -119,5 +119,54 @@ def latency_cdf(
     typer.echo(f"Wrote {output}")
 
 
+@app.command()
+def cost_curve(
+    sidecar_glob: Annotated[str, typer.Option(help="Glob pattern for sidecar JSONs")],
+    output: Annotated[Path, typer.Option(help="Output PDF path")] = Path("tier_b_cost_curve.pdf"),
+) -> None:
+    """Plot per-snapshot latency vs. mean edge degree, one color per method.
+
+    Linear-scaling methods (RustGraph, GraphSAGE) should appear flat; per-edge-
+    subgraph methods (StrGNN) should be superlinear in mean degree. This is
+    the figure that turns section 4.5's categorical compute-bound label into
+    a quantitative cost mechanism.
+    """
+    import glob
+    from collections import defaultdict
+
+    import matplotlib.pyplot as plt
+
+    paths = sorted(glob.glob(sidecar_glob))
+    if not paths:
+        raise typer.BadParameter(f"No sidecars matched {sidecar_glob}")
+
+    by_method: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for p in paths:
+        slug = Path(p).stem  # method__dataset
+        method = slug.split("__")[0]
+        data = json.loads(Path(p).read_text())
+        for lat, deg in zip(
+            data["per_snapshot_latency_ms"], data["per_snapshot_mean_degree"]
+        ):
+            by_method[method].append((deg, lat))
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for method, points in sorted(by_method.items()):
+        if not points:
+            continue
+        points.sort()
+        xs = [d for d, _ in points]
+        ys = [latency for _, latency in points]
+        ax.scatter(xs, ys, s=8, alpha=0.5, label=method)
+
+    ax.set_xlabel("Mean edge degree in snapshot")
+    ax.set_ylabel("Per-snapshot latency (ms)")
+    ax.set_yscale("log")
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output)
+    typer.echo(f"Wrote {output}")
+
+
 if __name__ == "__main__":
     app()
