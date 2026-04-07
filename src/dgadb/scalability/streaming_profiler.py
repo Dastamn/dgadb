@@ -22,10 +22,15 @@ class StreamingProfiler:
         warmup_min: Minimum number of snapshots to discard as warmup.
         warmup_frac: Additional fraction of total snapshots to discard
             (the effective warmup is ``max(warmup_min, ceil(warmup_frac * N))``).
+        min_post_warmup: Minimum number of snapshots required after warmup
+            for the throughput / latency measurement to be considered
+            reliable. ``summary()`` reports ``insufficient_batches=True``
+            when this floor is not met.
     """
 
     warmup_min: int = 5
     warmup_frac: float = 0.1
+    min_post_warmup: int = 20
     _edges: list[int] = field(default_factory=list)
     _mean_degrees: list[float] = field(default_factory=list)
     _elapsed: list[float] = field(default_factory=list)
@@ -70,6 +75,9 @@ class StreamingProfiler:
             - ``latency_p99_ms`` (float): 99th percentile latency, ms.
             - ``latency_p99_over_p50`` (float): tail-to-median ratio, a single
               number describing how predictable the per-snapshot cost is.
+            - ``insufficient_batches`` (bool): True when the post-warmup
+              snapshot count is below ``min_post_warmup``; the throughput
+              and latency numbers should be treated with caution.
         """
         import statistics
 
@@ -110,4 +118,5 @@ class StreamingProfiler:
             "latency_p95_ms": p95,
             "latency_p99_ms": p99,
             "latency_p99_over_p50": ratio,
+            "insufficient_batches": n_after < self.min_post_warmup,
         }
