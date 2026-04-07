@@ -31,19 +31,40 @@ class StreamingProfiler:
     _elapsed: list[float] = field(default_factory=list)
 
     def record(self, *, num_edges: int, mean_degree: float, elapsed_sec: float) -> None:
-        """Append one snapshot's measurements."""
+        """Record one snapshot's inference timing.
+
+        Args:
+            num_edges: Number of edges scored in this snapshot.
+            mean_degree: Mean degree of the snapshot's edges.
+            elapsed_sec: Wall-clock elapsed time, in seconds, for scoring this snapshot.
+        """
         self._edges.append(int(num_edges))
         self._mean_degrees.append(float(mean_degree))
         self._elapsed.append(float(elapsed_sec))
 
     def _warmup_count(self) -> int:
+        """Return the number of leading snapshots to discard as warmup.
+
+        Effective warmup is ``min(n, max(warmup_min, ceil(warmup_frac * n)))``,
+        where ``n`` is the total number of recorded snapshots. The outer
+        ``min(n, ...)`` ensures the warmup never exceeds the total snapshot
+        count when very few snapshots have been recorded.
+        """
         from math import ceil
 
         n = len(self._elapsed)
         return min(n, max(self.warmup_min, ceil(self.warmup_frac * n)))
 
     def summary(self) -> dict[str, Any]:
-        """Return a flat dict of warmup-excluded streaming metrics."""
+        """Return warmup-excluded streaming metrics as a flat dict.
+
+        Keys (all measured after the warmup window has been discarded):
+            - ``warmup_snapshots`` (int): number of snapshots discarded.
+            - ``snapshots_after_warmup`` (int): number of snapshots measured.
+            - ``edges_after_warmup`` (int): total edges scored.
+            - ``elapsed_after_warmup_sec`` (float): total wall-clock seconds.
+            - ``throughput_warmup_excluded`` (float): edges scored per second.
+        """
         w = self._warmup_count()
         edges = self._edges[w:]
         elapsed = self._elapsed[w:]
