@@ -52,3 +52,18 @@ def test_profiler_clears_insufficient_flag_when_enough_snapshots():
 
     summary = profiler.summary()
     assert summary["insufficient_batches"] is False
+
+
+def test_profiler_emits_sidecar_with_per_snapshot_arrays_and_windows():
+    profiler = StreamingProfiler(warmup_min=0, warmup_frac=0.0, window_sec=1.0)
+    # 5 snapshots: 0.4s + 0.4s + 0.4s + 0.4s + 0.4s (2.0s total), 100 edges each.
+    # Window 1 (0.0..1.0s) contains snapshots ending at 0.4 and 0.8 -> 200 edges.
+    # Window 2 (1.0..2.0s) contains snapshots ending at 1.2, 1.6, 2.0 -> 300 edges.
+    for _ in range(5):
+        profiler.record(num_edges=100, mean_degree=2.0, elapsed_sec=0.4)
+
+    sidecar = profiler.to_sidecar()
+    assert sidecar["per_snapshot_latency_ms"] == [400.0, 400.0, 400.0, 400.0, 400.0]
+    assert sidecar["per_snapshot_edges"] == [100, 100, 100, 100, 100]
+    assert sidecar["per_snapshot_mean_degree"] == [2.0, 2.0, 2.0, 2.0, 2.0]
+    assert sidecar["windowed_throughput"] == [200.0, 300.0]
