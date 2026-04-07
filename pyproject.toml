@@ -33,7 +33,7 @@ lint = "ruff check ."
 format = "ruff format ."
 typecheck = "pyrefly check ."
 check = { depends-on = ["lint", "typecheck"] }
-pytest = "pytest"
+pytest = "python -m pytest"
 
 [tool.pixi.dependencies]
 aim = ">=3.17.0"
