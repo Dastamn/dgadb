@@ -64,7 +64,15 @@ class StreamingProfiler:
             - ``edges_after_warmup`` (int): total edges scored.
             - ``elapsed_after_warmup_sec`` (float): total wall-clock seconds.
             - ``throughput_warmup_excluded`` (float): edges scored per second.
+            - ``latency_mean_ms`` (float): mean per-snapshot latency, ms.
+            - ``latency_p50_ms`` (float): 50th percentile (median) latency, ms.
+            - ``latency_p95_ms`` (float): 95th percentile latency, ms.
+            - ``latency_p99_ms`` (float): 99th percentile latency, ms.
+            - ``latency_p99_over_p50`` (float): tail-to-median ratio, a single
+              number describing how predictable the per-snapshot cost is.
         """
+        import statistics
+
         w = self._warmup_count()
         edges = self._edges[w:]
         elapsed = self._elapsed[w:]
@@ -72,10 +80,34 @@ class StreamingProfiler:
         total_edges = sum(edges)
         total_elapsed = sum(elapsed)
         throughput = total_edges / total_elapsed if total_elapsed > 0 else 0.0
+
+        latencies_ms = sorted(s * 1000.0 for s in elapsed)
+
+        def pct(p: float) -> float:
+            if not latencies_ms:
+                return 0.0
+            # Linear interpolation between order statistics.
+            k = (len(latencies_ms) - 1) * p
+            lo = int(k)
+            hi = min(lo + 1, len(latencies_ms) - 1)
+            frac = k - lo
+            return latencies_ms[lo] * (1 - frac) + latencies_ms[hi] * frac
+
+        p50 = pct(0.50)
+        p95 = pct(0.95)
+        p99 = pct(0.99)
+        mean = statistics.fmean(latencies_ms) if latencies_ms else 0.0
+        ratio = (p99 / p50) if p50 > 0 else 0.0
+
         return {
             "warmup_snapshots": w,
             "snapshots_after_warmup": n_after,
             "edges_after_warmup": total_edges,
             "elapsed_after_warmup_sec": total_elapsed,
             "throughput_warmup_excluded": throughput,
+            "latency_mean_ms": mean,
+            "latency_p50_ms": p50,
+            "latency_p95_ms": p95,
+            "latency_p99_ms": p99,
+            "latency_p99_over_p50": ratio,
         }
