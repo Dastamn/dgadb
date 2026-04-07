@@ -26,6 +26,7 @@ dgadb = { path = ".", editable = true }
 experiment = "python -m dgadb.experiment.runner"
 tune = "python -m dgadb.experiment.tune"
 aim = "aim up"
+pytest = "pytest"
 download-data = "uv run scripts/bitcoin.py && uv run scripts/uc-social.py && uv run scripts/email-dnc.py && uv run scripts/digg-homo.py && uv run scripts/as-topology.py && uv run scripts/enron.py && uv run scripts/epinions.py && uv run scripts/mooc.py && uv run scripts/reddit.py && uv run scripts/wiki.py && uv run scripts/amazon.py"
 
 [tool.pixi.feature.dev.tasks]
@@ -37,6 +38,7 @@ check = { depends-on = ["lint", "typecheck"] }
 [tool.pixi.dependencies]
 aim = ">=3.17.0"
 ipython = ">=9.7.0"
+pytest = ">=8.0.0"
 python = "3.12.*"
 tqdm = ">=4.67.1"
 scikit-learn = ">=1.7.2"
