@@ -63,6 +63,17 @@ class BenchmarkResult:
     # New metrics
     inference_time_sec: float = 0.0
     inference_edges_per_sec: float = 0.0
+
+    # Streaming metrics (warmup-excluded)
+    throughput_warmup_excluded: float = 0.0
+    latency_mean_ms: float = 0.0
+    latency_p50_ms: float = 0.0
+    latency_p95_ms: float = 0.0
+    latency_p99_ms: float = 0.0
+    latency_p99_over_p50: float = 0.0
+    snapshots_after_warmup: int = 0
+    insufficient_batches: bool = False
+
     time_to_convergence_sec: float = 0.0
     best_val_auc: float = 0.0
     best_epoch: int = -1
@@ -221,19 +232,36 @@ def benchmark_single(
         result.edges_per_sec = total_edges_processed / max(result.train_time_sec, 1e-9)
 
         # --- Inference Phase ---
-        logger.info(f"    Running inference...")
+        logger.info("    Running inference...")
+        from dgadb.scalability.streaming_profiler import StreamingProfiler
+        profiler = StreamingProfiler()
+
         test_loader = TemporalGraphSnapshotLoader(data, split="test", **snap_config)
         t_inf_start = time.perf_counter()
-        model.run_inference(test_loader)
+        model.run_inference(test_loader, profiler=profiler)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t_inf_end = time.perf_counter()
-        
+
         result.inference_time_sec = t_inf_end - t_inf_start
-        
-        # Inference throughput
+
+        # Legacy whole-test-set ratio, kept for backwards compatibility.
         test_edges = int(data.test_mask.sum().item())
         result.inference_edges_per_sec = test_edges / max(result.inference_time_sec, 1e-9)
+
+        # Streaming metrics (warmup-excluded).
+        summary = profiler.summary()
+        result.throughput_warmup_excluded = summary["throughput_warmup_excluded"]
+        result.latency_mean_ms = summary["latency_mean_ms"]
+        result.latency_p50_ms = summary["latency_p50_ms"]
+        result.latency_p95_ms = summary["latency_p95_ms"]
+        result.latency_p99_ms = summary["latency_p99_ms"]
+        result.latency_p99_over_p50 = summary["latency_p99_over_p50"]
+        result.snapshots_after_warmup = summary["snapshots_after_warmup"]
+        result.insufficient_batches = summary["insufficient_batches"]
+
+        # Stash sidecar on the result for the writer phase.
+        result._sidecar = profiler.to_sidecar()  # type: ignore[attr-defined]
 
     except Exception as e:
         logger.opt(exception=True).error(f"Error benchmarking {method.value} on {dataset_name}: {e}")
@@ -305,12 +333,29 @@ def run_benchmarks(
                 f"RAM={result.peak_ram_mb:.0f}MB GPU={result.peak_gpu_mb:.0f}MB"
             )
 
+    out_dir = Path(output_dir)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Per-run sidecars (windowed throughput series, per-snapshot arrays).
+    sidecar_dir = out_dir / f"sidecars_{timestamp}"
+    sidecar_dir.mkdir(parents=True, exist_ok=True)
+    for r in results:
+        sidecar = getattr(r, "_sidecar", None)
+        if sidecar is None:
+            continue
+        slug = f"{r.method}__{r.dataset}".replace("/", "_")
+        (sidecar_dir / f"{slug}.json").write_text(json.dumps(sidecar))
+    logger.info(f"Sidecars saved to {sidecar_dir}")
+
+    # Strip the private sidecar attribute so asdict() doesn't see it.
+    for r in results:
+        if hasattr(r, "_sidecar"):
+            delattr(r, "_sidecar")
+
     # Save results
     results_dicts = [asdict(r) for r in results]
 
-    out_dir = Path(output_dir)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    json_path = out_dir /  f"benchmark_results_{timestamp}.json"
+    json_path = out_dir / f"benchmark_results_{timestamp}.json"
     json_path.write_text(json.dumps(results_dicts, indent=2, default=str))
     logger.info(f"JSON results saved to {json_path}")
 
