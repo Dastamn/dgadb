@@ -77,9 +77,15 @@ with tarfile.open(fileobj=io.BytesIO(r.content), mode="r:gz") as tar:
             columns=[0, 1],
         )
         df_edge_labels = df_edge_labels.rename({"ACTIONID": "edge_id", "LABEL": "label"})
-        df_edge_labels = df_edge_labels.with_columns(
-            (1 - pl.col("label")).alias("label")
-        )
+        # df_edge_labels = df_edge_labels.with_columns(
+        #     (1 - pl.col("label")).alias("label")
+        # )
+
+df_edges = df_edges.join(
+    df_edge_labels.select("edge_id"),
+    on="edge_id",
+    how="inner"
+)
 
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 df_edges.write_parquet(file_path_edges)
