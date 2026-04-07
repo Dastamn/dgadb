@@ -128,7 +128,8 @@ class StructureNormalizer(PipelineStep):
             self.logger.info(
                 f"Removed {n_before - len(data.edges)} duplicates.")
 
-        else:
+        elif self.directionality not in ["directed",
+                                "canonical", "undirected"]:
             raise NotImplementedError(
                 f"Unknown directionality '{self.directionality}'")
         
