@@ -4,7 +4,10 @@ import logging
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields, field
-from typing import Generic, Optional, Self, TypeVar
+from typing import TYPE_CHECKING, Generic, Optional, Self, TypeVar
+
+if TYPE_CHECKING:
+    from dgadb.scalability.streaming_profiler import StreamingProfiler
 
 import torch
 from tqdm import tqdm
@@ -166,20 +169,53 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
             if isinstance(attr, torch.nn.Module):
                 attr.train() if is_training else attr.eval()
 
-    def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[torch.Tensor, torch.Tensor]:
+    def run_inference(
+        self,
+        loader: TemporalGraphSnapshotLoader,
+        profiler: StreamingProfiler | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run the model in eval mode over a snapshot loader and collect labels and scores.
 
         Args:
             loader: Snapshot loader covering the desired split (typically test).
+            profiler: Optional ``StreamingProfiler``. When supplied, each
+                snapshot's wall-clock latency, edge count, and mean degree
+                are recorded for streaming-scalability analysis. CUDA
+                synchronization brackets each scoring call so the timings
+                are not biased by asynchronous kernel launches.
 
         Returns:
             Tuple of (all_labels, all_scores) concatenated across all snapshots.
         """
+        import time
+
         all_scores = []
         all_labels = []
         for snapshot in tqdm(loader, desc="TEST"):
             current_graph = snapshot.current
+            if profiler is not None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
             edge_scores = self._predict(snapshot)
+            if profiler is not None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                elapsed = time.perf_counter() - t0
+                num_edges = int(current_graph.edge_labels.shape[0])
+                # Mean degree of the snapshot, computed cheaply: every edge
+                # contributes to two endpoints, so the mean of the degree
+                # distribution equals 2 * num_edges / num_nodes.
+                num_nodes = getattr(current_graph, "num_nodes", 0) or 0
+                if num_nodes > 0:
+                    mean_degree = (2.0 * num_edges) / float(num_nodes)
+                else:
+                    mean_degree = 0.0
+                profiler.record(
+                    num_edges=num_edges,
+                    mean_degree=mean_degree,
+                    elapsed_sec=elapsed,
+                )
             edge_labels = current_graph.edge_labels
             all_scores.append(edge_scores)
             all_labels.append(edge_labels)
