@@ -18,3 +18,17 @@ def test_profiler_records_snapshots_and_reports_throughput():
     assert summary["edges_after_warmup"] == 300
     assert summary["elapsed_after_warmup_sec"] == pytest.approx(0.03, rel=1e-6)
     assert summary["throughput_warmup_excluded"] == pytest.approx(10000.0, rel=1e-6)
+
+
+def test_profiler_reports_latency_percentiles_and_ratio():
+    profiler = StreamingProfiler(warmup_min=0, warmup_frac=0.0)
+    # 100 snapshots with deterministic latencies 1..100 ms.
+    for i in range(1, 101):
+        profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=i / 1000.0)
+
+    summary = profiler.summary()
+    assert summary["latency_p50_ms"] == pytest.approx(50.5, rel=1e-3)
+    assert summary["latency_p95_ms"] == pytest.approx(95.05, rel=1e-3)
+    assert summary["latency_p99_ms"] == pytest.approx(99.01, rel=1e-3)
+    assert summary["latency_mean_ms"] == pytest.approx(50.5, rel=1e-3)
+    assert summary["latency_p99_over_p50"] == pytest.approx(99.01 / 50.5, rel=1e-3)
