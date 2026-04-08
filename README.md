@@ -78,12 +78,79 @@ Logged metrics include per-step loss, per-epoch validation ROC-AUC/AP, and final
 
 ## Scalability Profiling
 
+`scripts/benchmark_scalability.py` measures setup, training, and inference
+cost for each (method, dataset) pair. The inference loop is instrumented
+with a `StreamingProfiler` (`src/dgadb/scalability/streaming_profiler.py`)
+that records per-snapshot wall-clock latency, excludes a warmup window,
+and writes streaming metrics into the result CSV plus a per-run JSON
+sidecar.
+
+### Run a single configuration
+
 ```bash
-python -m scripts.benchmark_scalability \
-    --methods sad slade rustgraph \
-    --datasets bitcoin-alpha bitcoin-otc wiki mooc reddit \
-    --epochs 3
+pixi run -e dev python -m scripts.benchmark_scalability \
+    --methods graphsage \
+    --datasets bitcoin-alpha \
+    --epochs 1 \
+    --device gpu \
+    --output-dir benchmark-results/smoke
 ```
+
+Outputs in `--output-dir`:
+
+- `benchmark_results_<timestamp>.csv` — one row per (method, dataset) with
+  legacy columns (`inference_edges_per_sec`, `peak_ram_mb`, ...) plus
+  streaming columns (`throughput_warmup_excluded`, `latency_p50_ms`,
+  `latency_p95_ms`, `latency_p99_ms`, `latency_p99_over_p50`,
+  `snapshots_after_warmup`, `insufficient_batches`).
+- `benchmark_results_<timestamp>.json` — the same rows as JSON.
+- `sidecars_<timestamp>/<method>__<dataset>.json` — per-run payload with
+  `per_snapshot_latency_ms`, `per_snapshot_edges`,
+  `per_snapshot_mean_degree`, and `windowed_throughput` (1 s windows).
+
+`insufficient_batches=True` means the test split produced fewer
+post-warmup snapshots than the profiler's floor (default
+`min_post_warmup=20`). Treat throughput/latency numbers in that row as
+unreliable — the dataset is too small for streaming measurements.
+
+### Run the full Tier A sweep
+
+To reproduce the appendix table for the rebuttal, use the dispatch
+script:
+
+```bash
+./scripts/run_scalability_sweep.sh
+```
+
+This runs every (method, dataset) pair one at a time, skipping cells that
+§4.5 of the paper already established as `OOM (compute-bound)` or
+`OOM (memory-bound)`. Results accumulate in `benchmark-results/tier_a/`
+with a per-run log under `benchmark-results/tier_a/logs/`. The script is
+idempotent: already-completed cells are detected by the presence of their
+log file and skipped on re-runs.
+
+### Generate the appendix artifacts
+
+After the sweep finishes, use `scripts/analyze_streaming_scalability.py`
+to produce the table and figures:
+
+```bash
+pixi run -e dev python -m scripts.analyze_streaming_scalability tier-a-table \
+    --csv-glob 'benchmark-results/tier_a/benchmark_results_*.csv' \
+    --output benchmark-results/tier_a/tier_a_table.tex
+
+pixi run -e dev python -m scripts.analyze_streaming_scalability latency-cdf \
+    --sidecar-glob 'benchmark-results/tier_a/sidecars_*/*.json' \
+    --output benchmark-results/tier_a/latency_cdf.pdf
+
+pixi run -e dev python -m scripts.analyze_streaming_scalability cost-curve \
+    --sidecar-glob 'benchmark-results/tier_a/sidecars_*/*.json' \
+    --output benchmark-results/tier_a/cost_curve.pdf
+```
+
+The `KNOWN_OOM` map inside `analyze_streaming_scalability.py` is the
+single source of truth for which cells are inherited from §4.5; extend
+it if the sweep reveals additional ceilings.
 
 ## Code Quality
 
