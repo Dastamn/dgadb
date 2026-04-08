@@ -88,8 +88,8 @@ class SADAD(BaseADModel[SADComponents]):
         full_data_obj = ds.SADData(src, tgt, ts, edge_ids, labels)
         ngh_finder = get_neighbor_finder(full_data_obj, uniform=False)
 
-        if data.edge_attr is not None:
-            edge_features = data.edge_attr.detach().cpu().numpy().astype(np.float32)
+        if data.msg is not None and data.msg.numel() > 0:
+            edge_features = data.msg.detach().cpu().numpy().astype(np.float32)
             self.input_dim = edge_features.shape[1]
         else:
             edge_features = np.zeros((len(src), self.input_dim), dtype=np.float32)
