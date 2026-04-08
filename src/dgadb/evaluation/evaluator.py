@@ -32,6 +32,22 @@ def compute_group_metrics(
     group_ids: torch.Tensor,
     threshold: float
 ) -> dict:
+    """Compute per-anomaly-group detection coverage statistics.
+
+    Each group corresponds to a set of injected anomalous edges sharing the
+    same ``group_id``. Edges with ``group_id == 0`` are treated as normal.
+
+    Args:
+        y_scores: Anomaly scores for all test edges.
+        group_ids: Integer group assignment per edge; 0 means normal.
+        threshold: Decision threshold for declaring an edge anomalous.
+
+    Returns:
+        Dict with ``mean_group_coverage``, ``median_group_coverage``,
+        ``min_group_coverage``, ``max_group_coverage``, and
+        ``avg_score_within_groups``. Returns an empty dict if no anomaly
+        groups are present.
+    """
     mask = group_ids > 0
     anom_scores = y_scores[mask]
     anom_groups = group_ids[mask]
@@ -65,6 +81,19 @@ def compute_group_metrics(
 
 
 def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor, group_ids: Optional[torch.Tensor] = None) -> dict:
+    """Compute a standard suite of anomaly detection metrics.
+
+    Args:
+        y_true: Ground truth labels (0 = normal, non-zero = anomalous).
+        y_scores: Predicted anomaly scores; higher values indicate anomalies.
+        group_ids: Optional per-edge group IDs for group-level coverage stats.
+
+    Returns:
+        Dict containing ``max_f1``, ``best_threshold``, ``roc_auc``,
+        ``average_precision``, ``accuracy``, ``balanced_accuracy``,
+        ``max_precision``, ``max_recall``, and (if ``group_ids`` is provided)
+        the metrics from :func:`compute_group_metrics`.
+    """
     y_true = (y_true != 0).cpu()
     y_scores = y_scores.cpu()
 
@@ -186,6 +215,19 @@ class ADEvaluator:
 
 @check_matching_device
 def evaluate(y_true: torch.Tensor, y_scores: torch.Tensor, anomaly_as_0: bool = False):
+    """Legacy evaluation helper; compute a full metrics dict from raw predictions.
+
+    Args:
+        y_true: Ground truth binary labels.
+        y_scores: Predicted anomaly scores.
+        anomaly_as_0: If ``True``, treat 0 as the anomalous class and flip
+            labels and scores before computing metrics.
+
+    Returns:
+        Dict with ``best_f1``, ``best_threshold``, ``roc_auc``,
+        ``average_precision``, ``mrr``, ``accuracy``, ``precision``,
+        ``recall``, and precision/recall at k=10, 50, 100 if available.
+    """
     y_true = (y_true != 0).long()
     if anomaly_as_0:
         y_true = 1 - y_true
@@ -216,6 +258,19 @@ def evaluate(y_true: torch.Tensor, y_scores: torch.Tensor, anomaly_as_0: bool = 
 
 
 class Evaluator:
+    """Legacy evaluator; wraps the module-level :func:`evaluate` function.
+
+    Use :class:`ADEvaluator` for new code. This class is retained for
+    compatibility with older experiment scripts.
+
+    Args:
+        dataset_name: Name of the dataset being evaluated.
+        method_name: Name of the model/method being evaluated.
+        anomaly_as_0: If ``True``, treat 0 as the anomalous class.
+        output_dir: Directory where ``metrics.json`` will be written.
+        round_digits: Decimal places for rounding saved metrics.
+    """
+
     def __init__(
         self,
         dataset_name: str,
@@ -237,16 +292,33 @@ class Evaluator:
         self.output_dir = output_dir
 
     def evaluate(self, y_true: torch.Tensor, y_scores: torch.Tensor) -> None:
+        """Compute metrics and store them in ``self.results``.
+
+        Args:
+            y_true: Ground truth binary labels.
+            y_scores: Predicted anomaly scores.
+        """
         self.results = evaluate(y_true, y_scores)
 
     def save(self, save_dir: str, as_dataframe: bool = False) -> None:
+        """Placeholder; not yet implemented."""
         pass
 
     def eval_preds(self, y_true: torch.Tensor, y_scores: torch.Tensor):
+        """Compute metrics (respecting ``anomaly_as_0``) and return the result dict.
+
+        Args:
+            y_true: Ground truth labels.
+            y_scores: Predicted anomaly scores.
+
+        Returns:
+            Dict of computed metrics.
+        """
         self.results = evaluate(y_true, y_scores, self.anomaly_as_0)
         return self.results
 
     def log_roc(self) -> None:
+        """Log the ROC-AUC score to the logger and stdout."""
         if not self.results:
             self.logger.warning("No results to print!")
             return
@@ -258,6 +330,7 @@ class Evaluator:
                 f"AUC on test set with best hyperparams: {auc:4f}")
 
     def save_results(self, **kwargs):
+        """Save computed metrics to ``metrics.json`` under the output directory."""
         if not self.results:
             self.logger.warning("No results to save!")
             return
