@@ -10,12 +10,22 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SplitData:
+    """Edge and node DataFrames for a single train/val/test split."""
+
     edges: pl.DataFrame
     nodes: Optional[pl.DataFrame]
 
 
 @dataclass
 class GraphDataContainer:
+    """Polars-backed container shuttled between :class:`PipelineStep` instances.
+
+    Holds the working edge and node DataFrames plus column-name conventions
+    and a free-form ``metadata`` dict. Pipeline steps mutate this container
+    (or return a new one) and downstream code converts it to a
+    :class:`TemporalGraph` via :meth:`to_temporal_graph`.
+    """
+
     edges: pl.DataFrame
     nodes: Optional[pl.DataFrame]
 
@@ -58,22 +68,27 @@ class GraphDataContainer:
 
     @property
     def train_data(self) -> SplitData:
+        """Return edges (and optionally nodes) for the training split."""
         return self._get_split_data("train")
 
     @property
     def val_data(self) -> SplitData:
+        """Return edges (and optionally nodes) for the validation split."""
         return self._get_split_data("val")
 
     @property
     def test_data(self) -> SplitData:
+        """Return edges (and optionally nodes) for the test split."""
         return self._get_split_data("test")
 
     @property
     def edge_timestamps(self) -> pl.Series:
+        """The timestamp series for all edges."""
         return self.edges[self.e_time_col]
 
     @property
     def node_timestamps(self) -> Optional[pl.Series]:
+        """The timestamp series for all nodes, or ``None`` if absent."""
         return (
             self.nodes[self.n_time_col]
             if self.nodes is not None and self.n_time_col in self.nodes.columns
@@ -81,9 +96,11 @@ class GraphDataContainer:
         )
 
     def update_metadata(self, metadata: dict):
+        """Merge ``metadata`` into the container's metadata dict."""
         self.metadata.update(metadata)
 
     def describe(self) -> None:
+        """Print a human-readable summary of the container to stdout."""
         print("--- GraphDataContainer Summary ---")
         print(f"Edges DataFrame of shape {self.edges.shape}")
         if self.nodes is not None:
@@ -104,6 +121,18 @@ class GraphDataContainer:
         print("---------------------------------")
 
     def to_temporal_graph(self) -> TemporalGraph:
+        """Materialise this container into a :class:`TemporalGraph`.
+
+        Sorts edges chronologically, builds train/val/test masks, packs node
+        and edge features into tensors, and forwards relevant metadata.
+
+        Returns:
+            A fully-populated :class:`TemporalGraph`.
+
+        Raises:
+            RuntimeError: If the data has not been split or node IDs are not
+                contiguous after re-indexing.
+        """
         if not self.is_split or not self.split_col:
             raise RuntimeError(
                 "Data has not been split. Cannot create train/val/test masks.")

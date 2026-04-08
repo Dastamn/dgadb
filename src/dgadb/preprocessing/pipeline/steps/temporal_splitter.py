@@ -6,6 +6,20 @@ from .base import PipelineStep
 
 
 class TemporalSplitter(PipelineStep):
+    """Pipeline step that adds a chronological train/val/test split column.
+
+    Edges are partitioned by timestamp quantiles so that train precedes val
+    precedes test in time, preventing temporal leakage.
+
+    Args:
+        train_ratio: Fraction of edges (by timestamp quantile) for training.
+        val_ratio: Fraction for validation; defaults to ``0.0``.
+        split_col: Name of the column to add to ``edges`` holding split labels.
+
+    Raises:
+        ValueError: If the supplied ratios are out of range.
+    """
+
     def __init__(self, train_ratio: float = 0.7, val_ratio: Optional[float] = None, split_col: str = "split") -> None:
         super().__init__()
         if val_ratio is None:
@@ -20,6 +34,15 @@ class TemporalSplitter(PipelineStep):
         self.split_col = split_col
 
     def validate(self, data: GraphDataContainer | None) -> None:
+        """Check that the container exists and has a numeric/temporal timestamp column.
+
+        Args:
+            data: The container from the previous step.
+
+        Raises:
+            ValueError: If ``data`` is ``None`` or the timestamp column has
+                an unsupported dtype.
+        """
         if data is None:
             raise ValueError("Input data is None.")
 
@@ -30,6 +53,11 @@ class TemporalSplitter(PipelineStep):
             )
 
     def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
+        """Add a ``split`` column to edges using chronological quantile cutoffs.
+
+        Returns:
+            The container with a new split label column on the edges DataFrame.
+        """
         assert data is not None
         self.logger.info(f"Total edges: {len(data.edges)}")
         self.logger.info(
@@ -63,6 +91,7 @@ class TemporalSplitter(PipelineStep):
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
+        """Mark the container as split and record split ratios in metadata."""
         data.is_split = True
         data.split_col = self.split_col
         data.splits = {"train_ratio": self.train_ratio,

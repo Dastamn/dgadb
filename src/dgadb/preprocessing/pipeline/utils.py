@@ -9,6 +9,12 @@ logging.basicConfig(level=logging.INFO)
 
 
 def load_custom_dataset(data_dir: str, src_col: str = "src", tgt_col: str = "tgt", time_col: str = "t", label_col: str = "label") -> GraphDataContainer:
+    """Load a CSV-based custom dataset into a :class:`GraphDataContainer`.
+
+    Reads ``train.csv`` and ``test.csv`` from ``data_dir``, concatenates them
+    with a generated ``split`` column and returns a container with metadata
+    flags set so the standard pipeline can run on it.
+    """
     data_path = Path(data_dir)
 
     df_train = pl.read_csv(data_path / "train.csv")

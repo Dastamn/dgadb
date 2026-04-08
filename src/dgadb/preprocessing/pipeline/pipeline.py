@@ -23,12 +23,36 @@ def _get_pipeline_steps_hash(steps: list[PipelineStep], length: int = 8) -> str:
 
 
 class Pipeline:
+    """Sequentially executes a list of :class:`PipelineStep` objects.
+
+    Each step receives the :class:`GraphDataContainer` produced by the
+    previous step and returns an updated container. Optional callbacks
+    (e.g. :class:`Cache`) can short-circuit step execution by returning a
+    cached result.
+
+    Args:
+        steps: Ordered preprocessing steps.
+        callbacks: Optional callbacks invoked around each step.
+    """
+
     def __init__(self, steps: list[PipelineStep], callbacks: list[Callback] | None = None) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.steps = steps
         self.callbacks = callbacks or []
 
     def run(self, initial_data: GraphDataContainer | None = None) -> GraphDataContainer:
+        """Execute every step in order and return the final container.
+
+        Args:
+            initial_data: Optional starting container. When ``None`` the first
+                step is expected to construct one (typically a ``DataLoader``).
+
+        Returns:
+            The container produced by the last step.
+
+        Raises:
+            Exception: Re-raises any exception thrown by a step.
+        """
         data = initial_data
         pipeline_start_time = time.time()
         self.logger.info(">>> ---- Starting data pipeline ----")
@@ -78,6 +102,19 @@ class Pipeline:
 
     @classmethod
     def from_config(cls, config_name: str, force_rerun: bool = False):
+        """Build a :class:`Pipeline` from a YAML dataset config.
+
+        Reads ``configs/datasets/<config_name>.yaml``, instantiates each
+        ``pipeline.steps`` entry, and (optionally) attaches a :class:`Cache`
+        callback when ``pipeline.cache_dir`` is set.
+
+        Args:
+            config_name: Dataset config filename (with or without ``.yaml``).
+            force_rerun: If ``True``, ignore cached step results.
+
+        Returns:
+            A configured :class:`Pipeline` ready for :meth:`run`.
+        """
         logger = logging.getLogger(cls.__name__)
         if not config_name.endswith(".yaml"):
             config_name += ".yaml"
@@ -179,6 +216,7 @@ class Pipeline:
         return Pipeline(pipeline_steps, pipeline_callbacks)
 
     def add_step(self, step: PipelineStep) -> None:
+        """Append ``step`` to the pipeline, replacing any existing step of the same type."""
         step_type = type(step)
         for i, s in enumerate(self.steps):
             if isinstance(s, step_type):

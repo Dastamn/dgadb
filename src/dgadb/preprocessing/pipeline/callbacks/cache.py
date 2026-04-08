@@ -7,7 +7,14 @@ from ..steps.base import PipelineStep
 
 
 class Cache(Callback):
-    """A callback that saves and loads intermediate pipeline results to/from a cache directory."""
+    """A callback that saves and loads intermediate pipeline results to/from a cache directory.
+
+    Args:
+        cache_dir: Directory where per-step pickle files are stored.
+            Created automatically if it does not exist.
+        force_rerun: If ``True``, existing cache files are ignored and
+            every step is re-executed.
+    """
 
     def __init__(self, cache_dir: str, force_rerun: bool = False):
         self.cache_dir = cache_dir

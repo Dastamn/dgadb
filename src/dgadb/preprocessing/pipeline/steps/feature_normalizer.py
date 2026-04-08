@@ -6,6 +6,18 @@ from ...normalization import prepare_normalizer
 
 
 class FeatureNormalizer(PipelineStep):
+    """Pipeline step that fits and applies feature normalizers.
+
+    Each normalizer is fitted on the training split only and then applied
+    to the full edge or node DataFrame, preventing leakage from val/test.
+
+    Args:
+        normalizer_configs: List of dict configs converted to specs via
+            :func:`prepare_normalizer`.
+        normalizer_specs: Pre-built normalizer specs ``(normalizer, columns,
+            target)`` to apply directly.
+    """
+
     def __init__(
         self, normalizer_configs: Optional[list[dict]] = None, normalizer_specs: Optional[list[_NormalizerSpec]] = None
     ) -> None:
@@ -14,6 +26,15 @@ class FeatureNormalizer(PipelineStep):
         self.normalizer_specs = normalizer_specs if normalizer_specs is not None else []
 
     def validate(self, data: GraphDataContainer | None) -> None:
+        """Verify that the data exists, has been split, and normalizers are configured.
+
+        Args:
+            data: The container from the previous step.
+
+        Raises:
+            ValueError: If ``data`` is ``None``, not yet split, or no normalizer
+                specs have been provided.
+        """
         if data is None:
             raise ValueError("Input data is None.")
 
@@ -24,6 +45,11 @@ class FeatureNormalizer(PipelineStep):
             raise ValueError("No normalizers provided.")
 
     def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
+        """Fit each normalizer on the train split and apply it to the full DataFrame.
+
+        Returns:
+            The container with normalised edge and/or node feature columns.
+        """
         assert data is not None
         self.logger.info(
             "Starting feature normalization for nodes and edges...")
@@ -69,4 +95,5 @@ class FeatureNormalizer(PipelineStep):
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
+        """Set ``is_feature_normalized = True`` in container metadata."""
         data.is_feature_normalized = True

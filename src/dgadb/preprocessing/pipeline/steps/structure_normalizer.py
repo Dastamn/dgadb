@@ -5,6 +5,20 @@ from ..container import GraphDataContainer
 
 
 class StructureNormalizer(PipelineStep):
+    """Pipeline step normalising graph structure (direction, dedup, reindex).
+
+    Optionally removes self-loops, converts edges to ``"directed"``,
+    ``"canonical"`` (``src < dst``) or ``"undirected"`` form, deduplicates
+    by ``(src, tgt, t)``, and re-indexes node IDs to a contiguous
+    ``0..N-1`` range.
+
+    Args:
+        directionality: Edge directionality target.
+        reindex_nodes: Whether to re-index node IDs after dedup.
+        remove_self_loops: Whether to drop ``src == tgt`` edges.
+        remove_duplicates: Whether to drop duplicate edges in the directed case.
+    """
+
     def __init__(
         self,
         directionality: Literal["directed",
@@ -77,10 +91,24 @@ class StructureNormalizer(PipelineStep):
         return remapped_edges_df, remapped_nodes_df, node_mapping
 
     def validate(self, data: GraphDataContainer | None) -> None:
+        """Verify that the input container is not ``None``.
+
+        Args:
+            data: The container from the previous step.
+
+        Raises:
+            ValueError: If ``data`` is ``None``.
+        """
         if data is None:
             raise ValueError("Input data is None.")
 
     def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
+        """Apply directionality conversion, deduplication, and node re-indexing.
+
+        Returns:
+            The container with structurally normalised edges and, if
+            ``reindex_nodes`` is ``True``, contiguous node IDs.
+        """
         assert data is not None
 
         src_col = data.e_src_col
@@ -143,6 +171,7 @@ class StructureNormalizer(PipelineStep):
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
+        """Record directionality settings and the node-ID mapping in metadata."""
         data.update_metadata({
             "directionality": self.directionality,
             "reindex_nodes": self.reindex_nodes,

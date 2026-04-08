@@ -4,37 +4,61 @@ from ..container import GraphDataContainer
 
 
 class PipelineStep(ABC):
+    """Abstract base class for a single preprocessing step.
+
+    Subclasses implement :meth:`validate`, :meth:`process` and
+    :meth:`update_metadata`. The orchestrating :class:`Pipeline` invokes
+    instances via ``__call__``, which wraps validation and processing.
+    """
+
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     def validate(self, data: GraphDataContainer | None) -> None:
-        """
-        Validates that the input data meets the prerequisites for this step.
-        The first step in the pipeline will receive `None`.
+        """Check that ``data`` meets this step's prerequisites.
+
+        Args:
+            data: The container produced by the previous step, or ``None``
+                for the first step in the pipeline.
+
+        Raises:
+            ValueError: If the container does not satisfy the step's
+                preconditions.
         """
         ...
 
     @abstractmethod
     def process(self, data: GraphDataContainer | None) -> "GraphDataContainer":
-        """
-        Executes the core logic of the step.
-        The first step in the pipeline will receive `None` and is expected to create
-        the initial GraphDataContainer.
+        """Execute the core logic of this step and return the updated container.
+
+        Args:
+            data: The container from the previous step, or ``None`` for the
+                first step (which is expected to construct the initial container).
+
+        Returns:
+            A new or updated :class:`GraphDataContainer`.
         """
         ...
 
     @abstractmethod
     def update_metadata(self, data: GraphDataContainer) -> None:
-        """
-        Updates GraphDataContainer metadata.
+        """Write step-specific flags and statistics into ``data.metadata``.
+
+        Args:
+            data: The container returned by :meth:`process`.
         """
         ...
 
     def __call__(self, data: GraphDataContainer | None) -> "GraphDataContainer":
-        """
-        The main execution method called by the Pipeline orchestrator.
-        It wraps validation and processing.
+        """Validate, process, and update metadata — called by the Pipeline orchestrator.
+
+        Args:
+            data: The container from the previous step, or ``None`` for the
+                first step.
+
+        Returns:
+            The container produced by :meth:`process` with metadata updated.
         """
         try:
             self.validate(data)
