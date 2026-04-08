@@ -50,17 +50,17 @@ def tune_cmd(ctx: typer.Context) -> None:
     raise typer.Exit(code=subprocess.call(cmd))
 
 
-# `dgadb scalability ...` — benchmark_scalability lives under scripts/ and is
-# invoked as a module. Passthrough keeps it identical to the documented
-# invocation.
+# `dgadb scalability ...` — benchmark logic now lives in the package under
+# src/dgadb/scalability/benchmark.py. Passthrough keeps it identical to the
+# documented invocation.
 @app.command(
     "scalability",
-    help="Run the scalability benchmark (passthrough to scripts.benchmark_scalability).",
+    help="Run the scalability benchmark (passthrough to dgadb.scalability.benchmark).",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
     add_help_option=False,
 )
 def scalability_cmd(ctx: typer.Context) -> None:
-    cmd = [sys.executable, "-m", "scripts.benchmark_scalability", *ctx.args]
+    cmd = [sys.executable, "-m", "dgadb.scalability.benchmark", *ctx.args]
     raise typer.Exit(code=subprocess.call(cmd))
 
 
