@@ -537,9 +537,9 @@ class SLADEModel:
 
 
 if __name__ == "__main__":
-    from dgadb.storage import TemporalGraphLoader
+    from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
 
-    loader = TemporalGraphLoader()
+    loader = TemporalGraphLoaderNew()
     tg = loader.load("bitcoin-alpha", create_if_not_found=True)
     model = SLADEModel("cpu", {}, None)
     model.setup(tg)

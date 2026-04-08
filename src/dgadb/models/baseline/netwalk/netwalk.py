@@ -20,7 +20,8 @@ from dgadb.storage.temporal_snapshot import TemporalGraphSnapshotLoader
 from .walk_update import WalkUpdate
 from .autoencoder import Autoencoder
 from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
-from dgadb.storage import TemporalGraphSnapshot, TemporalGraphLoader
+from dgadb.storage import TemporalGraphSnapshot
+from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
 
 
 @dataclass
@@ -305,7 +306,7 @@ if __name__ == "__main__":
         "include_cumulative": True
     }
 
-    loader = TemporalGraphLoader()
+    loader = TemporalGraphLoaderNew()
     data = loader.load(
         "bitcoin-alpha", **anom_config, create_if_not_found=True)
     # data = inject_anomalies_addgraph_style(data, **anom_config, seed=1)

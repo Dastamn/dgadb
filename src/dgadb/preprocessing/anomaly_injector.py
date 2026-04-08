@@ -62,9 +62,9 @@ class AnomalyInjector:
 
     Builds lookup tables of observed (timestamped) edges and per-split time
     deltas, then samples synthetic edges that are simultaneously absent from
-    the graph and consistent with its temporal granularity. Used by the
-    legacy :class:`TemporalGraphLoader` (and therefore by the tuner); the
-    runner uses the newer injector in :mod:`anomaly_injection`.
+    the graph and consistent with its temporal granularity. No longer used by
+    any live code path; retained as a legacy artefact. The runner and tuner
+    use the newer injector in :mod:`anomaly_injection`.
 
     Args:
         temporal_graph: The clean graph to inject into.
