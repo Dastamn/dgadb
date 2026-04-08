@@ -36,6 +36,15 @@ VALID_ANOMALY_TYPES: list[str] = list(
 
 
 def get_canonical_anomaly_type(anom_type: str) -> str:
+    """Return the canonical name for an anomaly type alias.
+
+    Accepts either short codes (``"s"``, ``"t"``, ``"c"``, ``"sc"``,
+    ``"tc"``, ``"tsc"``) or already-canonical names. Used by the legacy
+    loader to harmonise on-disk variant naming.
+
+    Raises:
+        ValueError: If ``anom_type`` is not a known alias.
+    """
     anom_type = anom_type.lower()
 
     if anom_type in _ANOMALY_TYPE_MAP:
@@ -49,6 +58,19 @@ def get_canonical_anomaly_type(anom_type: str) -> str:
 
 
 class AnomalyInjector:
+    """Legacy injector that produces structural / temporal / contextual anomalies.
+
+    Builds lookup tables of observed (timestamped) edges and per-split time
+    deltas, then samples synthetic edges that are simultaneously absent from
+    the graph and consistent with its temporal granularity. Used by the
+    legacy :class:`TemporalGraphLoader` (and therefore by the tuner); the
+    runner uses the newer injector in :mod:`anomaly_injection`.
+
+    Args:
+        temporal_graph: The clean graph to inject into.
+        rnd_seed: Seed used for the internal RNG.
+    """
+
     def __init__(self, temporal_graph: TemporalGraph, rnd_seed: int = 123) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.temporal_graph = temporal_graph
@@ -650,6 +672,24 @@ class AnomalyInjector:
         use_fallbacks: bool = False,
         **kwargs,
     ) -> TemporalGraph:
+        """Inject anomalies of ``anom_type`` and return the updated graph.
+
+        Args:
+            anom_type: Anomaly type alias or canonical name.
+            anom_train_ratio: Fraction of train edges to inject as anomalies.
+            anom_val_ratio: Fraction of validation edges to inject.
+            anom_test_ratio: Fraction of test edges to inject.
+            max_stagnation_attempts: Number of stalled iterations tolerated
+                before a generation loop gives up.
+            use_fallbacks: Allow fallback strategies when the primary
+                generator cannot reach the requested count.
+            **kwargs: Type-specific generation parameters forwarded to the
+                inner generators and recorded in metadata.
+
+        Returns:
+            The modified :class:`TemporalGraph` with injected anomalies and
+            updated ``metadata['anomaly_injection']``.
+        """
         anom_type = get_canonical_anomaly_type(anom_type)
         anom_ratios = {"train": anom_train_ratio,
                        "test": anom_test_ratio, "val": anom_val_ratio}

@@ -20,6 +20,26 @@ from scipy.sparse.csgraph import shortest_path, laplacian
 _ANOMALY_DURATION_TYPE_MAP = {"small": 0.1, "medium": 0.5, "large": 1.0}
 
 class AnomalyInjector:
+    """Inject synthetic anomalous edges into a :class:`TemporalGraph`.
+
+    Supports five anomaly types (``random``, ``burst``, ``clique``, ``path``,
+    ``bridge``) calibrated against per-dataset graph statistics. Spectral
+    clustering of the train-time adjacency, mean degree, estimated diameter
+    and average cluster size are computed once and cached on disk under
+    ``cache_dir/<dataset_name>/analysis``.
+
+    Args:
+        tg: The clean temporal graph to inject into. Must carry a
+            ``dataset_name`` entry in its metadata.
+        max_k: Upper bound on the number of spectral-clustering communities
+            considered when estimating the optimal ``k``.
+        cache_dir: Root directory under which the per-dataset analysis cache
+            is stored.
+
+    Raises:
+        ValueError: If ``tg.metadata['dataset_name']`` is missing.
+    """
+
     def __init__(self, tg: TemporalGraph, max_k: int = 50, cache_dir: str = "processed"):
         self.tg = tg
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -163,6 +183,26 @@ class AnomalyInjector:
         test_ratio=0.0,
         duration: float | Literal["small", "medium", "large"] = "medium"
     ):
+        """Generate and inject anomalous samples into the wrapped graph.
+
+        For each requested split, edges are produced according to ``anom_type``
+        until the requested ratio (relative to the existing split size) is
+        reached, then the graph is sorted in time and metadata recording the
+        injection is attached.
+
+        Args:
+            anom_type: Type of anomaly to inject.
+            train_ratio: Fraction of train edges to inject as anomalies.
+            val_ratio: Fraction of val edges to inject as anomalies.
+            test_ratio: Fraction of test edges to inject as anomalies.
+            duration: Either a literal duration bucket or a custom rate in
+                ``[0, 1]`` controlling the time window over which a single
+                anomaly group is spread.
+
+        Returns:
+            The modified :class:`TemporalGraph` with injected anomalies and
+            updated ``metadata['anomaly_injection']``.
+        """
         if isinstance(duration, str):
             duration_rate = _ANOMALY_DURATION_TYPE_MAP.get(duration, 0.01)
             duration_type = duration
