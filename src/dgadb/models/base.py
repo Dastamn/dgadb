@@ -281,7 +281,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
                 val_auc = roc_auc_score(
                     val_labels_binary, val_probs.cpu().numpy())
                 state.val_metrics = {'roc_auc': val_auc}
-                print(val_auc)
+                self.logger.info("Validation ROC-AUC: %.4f", val_auc)
 
             handler.on_train_epoch_end(state)
 

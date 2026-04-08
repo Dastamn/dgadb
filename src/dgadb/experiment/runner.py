@@ -72,7 +72,6 @@ class ExperimentRunner:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    # TODO: change snapshot_config to args
     def run(
         self,
         epochs: int,
