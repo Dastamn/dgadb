@@ -17,6 +17,29 @@ from torch.types import Device
 
 @dataclass
 class TemporalGraph:
+    """Core temporal-graph container used throughout the benchmark.
+
+    Holds all edge-level tensors (source, target, timestamp, message features,
+    labels, split masks) plus optional node-level attributes and a free-form
+    ``metadata`` dict. Unknown attributes fall through to ``metadata`` via
+    ``__getattr__``/``__setattr__`` so downstream code can attach fields like
+    ``dataset_name`` or ``variant_name`` without subclassing.
+
+    Attributes:
+        src: Source node indices, shape ``[num_edges]``.
+        tgt: Target node indices, shape ``[num_edges]``.
+        t: Edge timestamps, shape ``[num_edges]``.
+        msg: Edge features, shape ``[num_edges, num_edge_features]``.
+        edge_labels: Optional binary anomaly labels per edge.
+        train_mask: Boolean mask selecting training edges.
+        test_mask: Boolean mask selecting test edges.
+        val_mask: Optional boolean mask selecting validation edges.
+        w: Optional per-edge weight.
+        node_attr: Optional node feature matrix.
+        node_labels: Optional per-node labels.
+        metadata: Free-form dict for dataset name, anomaly-injection info, etc.
+    """
+
     src: torch.Tensor                   # Shape: [num_edges]
     tgt: torch.Tensor                   # Shape: [num_edges]
     t: torch.Tensor                     # Shape: [num_edges], timestamps
@@ -89,6 +112,11 @@ class TemporalGraph:
     #                         * torch.tensor(-1, device=device))
 
     def to(self, device: Any, **kwargs):
+        """Return a copy of this graph with all tensors moved to ``device``.
+
+        Non-tensor attributes (including ``metadata``) are deep-copied. Returns
+        ``self`` unchanged if the graph is already on the requested device.
+        """
         if self.device == torch.device(device):
             return self
 
@@ -102,6 +130,12 @@ class TemporalGraph:
         return self.__class__(**new_attrs)
 
     def check_device(self) -> torch.device:
+        """Return the device shared by all tensor attributes.
+
+        Raises:
+            ValueError: If no tensor attributes exist.
+            RuntimeError: If tensors are on multiple devices.
+        """
         devices = defaultdict(list)
         for key, value in self.__dict__.items():
             if torch.is_tensor(value):
@@ -117,6 +151,7 @@ class TemporalGraph:
         return next(iter(devices.keys()))
 
     def describe(self) -> None:
+        """Print a human-readable summary of the graph to stdout."""
         print("--- TemporalGraphData Summary ---")
         print(f"Device: {self.device}")
         print(f"Number of Nodes: {self.num_nodes}")
@@ -164,6 +199,13 @@ class TemporalGraph:
 
 
 class TemporalGraphView:
+    """Zero-copy view over a subset of edges of a :class:`TemporalGraph`.
+
+    Attribute access is forwarded to the underlying graph; tensors whose first
+    dimension equals the number of edges are transparently indexed by the
+    stored ``indices``. Used by the snapshot loader to avoid copying data.
+    """
+
     def __init__(self, temporal_graph: TemporalGraph, indices: slice | torch.Tensor):
         self._temporal_graph = temporal_graph
         self._indices = indices
@@ -190,6 +232,19 @@ class TemporalGraphView:
 
 
 class TemporalGraphLoader:
+    """Legacy on-disk loader for processed :class:`TemporalGraph` objects.
+
+    Persists each graph as a ``.pt`` file alongside a JSON metadata sidecar in
+    ``base_directory/<dataset>/``. Matches are looked up by scanning the
+    metadata files for the requested anomaly configuration.
+
+    Note:
+        This is the pre-refactor loader. It remains live because
+        :mod:`dgadb.experiment.tune` still depends on it; the runner uses
+        :class:`TemporalGraphLoaderNew` instead. Both coexist until the
+        follow-up migration.
+    """
+
     def __init__(
         self,
         base_directory: str = "processed/",
@@ -203,6 +258,11 @@ class TemporalGraphLoader:
             f"TemporalGraphLoader initialized. Using base directory: {self.base_directory}")
 
     def save(self, temporal_graph: TemporalGraph) -> str:
+        """Persist ``temporal_graph`` to ``base_directory`` and return the path prefix.
+
+        Writes a ``.pt`` tensor file and a JSON metadata sidecar derived from
+        :func:`generate_temporal_graph_filename`.
+        """
         dataset_name = temporal_graph.metadata.get(
             "dataset_name", "unknown-dataset")
         dataset_dir = os.path.join(self.base_directory, dataset_name)
@@ -240,6 +300,32 @@ class TemporalGraphLoader:
         device: Device = None,
         **kwargs
     ) -> TemporalGraph:
+        """Load a processed graph matching the given anomaly configuration.
+
+        Scans the metadata sidecars under ``base_directory/<dataset_name>/``
+        for a graph whose ``anomaly_injection`` section matches the requested
+        type, split ratios, and generation parameters.
+
+        Args:
+            dataset_name: Name of the dataset to load.
+            anom_type: Optional anomaly type; ``None`` selects the clean graph.
+            anom_train_ratio: Anomaly ratio in the train split.
+            anom_val_ratio: Anomaly ratio in the validation split.
+            anom_test_ratio: Anomaly ratio in the test split.
+            create_if_not_found: If ``True``, run the preprocessing pipeline
+                and anomaly injector when no cached graph matches.
+            device: Optional target device for the loaded graph.
+            **kwargs: Extra generation parameters forwarded to the injector.
+
+        Returns:
+            The matched or newly created :class:`TemporalGraph`.
+
+        Raises:
+            FileNotFoundError: When no match exists and ``create_if_not_found``
+                is ``False``.
+            ValueError: When multiple matches are found or when anomaly
+                parameters are inconsistent with ``anom_type=None``.
+        """
         search_criteria = {
             "dataset_name": dataset_name,
             "anomaly_type": anom_type,
@@ -353,6 +439,17 @@ class TemporalGraphLoader:
 
 
 class TemporalGraphLoaderNew:
+    """Variant-directory loader for processed :class:`TemporalGraph` objects.
+
+    Stores each (dataset, anomaly variant) under a dedicated directory
+    (``base_directory/<dataset>/<variant_name>/``) containing ``data.pt`` and
+    ``metadata.json``. Used by :mod:`dgadb.experiment.runner`; coexists with
+    the legacy :class:`TemporalGraphLoader` until the follow-up migration.
+
+    Args:
+        base_directory: Root directory for processed variants.
+    """
+
     def __init__(self, base_directory: str = "processed") -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.base_dir = base_directory
@@ -388,6 +485,7 @@ class TemporalGraphLoaderNew:
             return obj
 
     def save(self, tg: TemporalGraph, variant_dir: str):
+        """Persist ``tg`` to ``variant_dir`` as ``data.pt`` + ``metadata.json``."""
         os.makedirs(variant_dir, exist_ok=True)
         torch.save(tg, os.path.join(variant_dir, "data.pt"))
         json_meta = self._prepare_json_meta(tg.metadata)
@@ -407,6 +505,31 @@ class TemporalGraphLoaderNew:
         duration: float | Literal["small", "medium", "large"] = "medium",
         create_if_not_found: bool = False
     ) -> TemporalGraph:
+        """Load (or generate) a variant of ``dataset_name``.
+
+        Looks up ``base_directory/<dataset>/<variant>/data.pt`` where
+        ``variant`` is derived from the anomaly configuration. When no match
+        exists and ``create_if_not_found`` is ``True``, runs the preprocessing
+        pipeline for the clean graph and the anomaly injector for the variant.
+
+        Args:
+            dataset_name: Name of the dataset.
+            anom_type: Anomaly type; ``None`` returns the clean graph.
+            anom_train_ratio: Anomaly ratio in the train split.
+            anom_val_ratio: Anomaly ratio in the validation split.
+            anom_test_ratio: Anomaly ratio in the test split.
+            duration: Anomaly duration, either a literal bucket
+                (``"small"``/``"medium"``/``"large"``) or a float rate.
+            create_if_not_found: Run the preprocessing pipeline and anomaly
+                injector when no cached variant is found.
+
+        Returns:
+            The matched or newly created :class:`TemporalGraph`.
+
+        Raises:
+            FileNotFoundError: When no cached variant exists and
+                ``create_if_not_found`` is ``False``.
+        """
         if isinstance(duration, float):
             duration_rate = duration
         else:
