@@ -1,182 +1,101 @@
-# DGADB
+# DGADB — Dynamic Graph Anomaly Detection Benchmark
 
-Dynamic Graph Anomaly Detection Benchmark — a research framework for evaluating anomaly detection algorithms on temporal/dynamic graphs.
+DGADB is a research benchmark for evaluating anomaly detection algorithms on temporal (dynamic) graphs. Given a sequence of graph snapshots, the benchmark injects synthetic anomalies at controlled rates and durations, runs one or more detection methods, and reports edge-level ROC-AUC and average precision. The distinguishing property of DGADB is that anomaly injection, training, and evaluation are fully parameterized through configuration files, so every reported number is reproducible by re-running the same command with the same config.
 
-## Setup
+## Installation
 
-[pixi](https://pixi.sh) is required (manages conda + pip dependencies and avoids version conflicts).
+[pixi](https://pixi.sh) is required. It manages the conda and pip dependency stack and avoids version conflicts that arise when installing PyTorch Geometric and its optional dependencies by hand.
 
 ```bash
-git clone <repo-url> && cd dgadb
+git clone <repo-url> dgadb
+cd dgadb
 pixi install
 pixi shell
 ```
 
-**Apptainer**: On older Linux servers where installing pixi is impractical or when the requirements cannot
-be met (old libc or gcc), an [Apptainer](https://apptainer.org/) image is available. Build it with `apptainer
-build container/dgadb.sif container/dgadb.def` and run experiments via `./container/run-dgadb.sh`. See
-[`container/README.md`](container/README.md) for full details.
-
-## Download Data
-
-Download all datasets at once:
+**On older Linux servers** where installing pixi is impractical (old libc or gcc), an [Apptainer](https://apptainer.org/) image is available. Build it with:
 
 ```bash
-pixi run download-data
+apptainer build container/dgadb.sif container/dgadb.def
 ```
 
-Or download individual datasets with [uv](https://docs.astral.sh/uv/) (bundled with pixi):
+and run experiments via `./container/run-dgadb.sh`. See [`container/README.md`](container/README.md) for details.
+
+## Quickstart
+
+Download the Bitcoin-Alpha dataset, then run a five-epoch GCN experiment:
 
 ```bash
-uv run scripts/bitcoin.py      # downloads bitcoin-alpha & bitcoin-otc
-uv run scripts/uc-social.py
-uv run scripts/email-dnc.py
-# ... etc.
+uv run scripts/bitcoin.py   # downloads bitcoin-alpha and bitcoin-otc
 ```
-
-Data is placed under `data/<dataset-name>/` in the project root.
-
-## Run Experiments
 
 ```bash
-pixi run experiment --method sad --dataset bitcoin-alpha
+pixi run dgadb run --method gcn --datasets bitcoin-alpha \
+  --experiment-name quickstart --anom-types random --anom-rates 0.1 \
+  --anom-durations small --epochs 5 --concurrency 1
 ```
 
-Available methods: `sad`, `taddy`, `slade`, `strgnn`, `rustgraph`, `gcn`, `gat`, `graphsage`, `generaldyg`, `addgraph`
+The run completes in under two minutes on a laptop CPU. Results are written to:
 
-Key options:
+```
+experiment-results/quickstart/gcn/<variant>/evaluation.json
+```
 
-| Option | Description |
-|--------|-------------|
-| `--experiment-name` | Aim experiment name (default: `dgadb`) |
-| `--anom-types` | Anomaly types to inject |
-| `--anom-rates` | Anomaly rates |
-| `--anom-durations` | Anomaly durations |
-| `--epochs` | Number of training epochs |
-| `--concurrency` | Parallel runs |
-
-Datasets are defined in `configs/datasets/`. Method names must be lowercase.
-
-## Hyperparameter Tuning
-
-Use `tune` (not `experiment`) for hyperparameter tuning via Ray Tune:
+Open `evaluation.json` and look for `"roc_auc"` in the `summary` block. A value above 0.5 confirms the pipeline ran end-to-end correctly. Experiment metrics are also tracked in [Aim](https://aimstack.io/); launch the UI with:
 
 ```bash
-pixi run tune --method GCN GAT --dataset bitcoin-alpha uc-social \
-    --config_path configs/experiments/tune.yaml
+pixi run aim   # opens http://localhost:43800
 ```
 
-## View Results
+## Architecture Overview
 
-Experiments are tracked with [Aim](https://aimstack.io/):
+Data flows through five stages. **Storage** (`src/dgadb/storage/`) defines `TemporalGraph` and `TemporalGraphSnapshot`, the core data structures used throughout. **Preprocessing** (`src/dgadb/preprocessing/`) normalizes raw edge lists and splits them into train/val/test snapshots via `TemporalGraphLoaderNew`; the `_New` suffix marks the current iteration of classes that superseded earlier versions during development. **Anomaly injection** (`src/dgadb/anomaly_injection/`) inserts synthetic anomalous edges into the test split at the rate and duration specified by the config. **Models** (`src/dgadb/models/`) implement `BaseADModel` (`src/dgadb/models/base.py`), which defines the three-method interface — `setup(data)`, `_train_step(snapshot) -> float`, and `_predict(snapshot) -> Tensor`; current model adapters live in `*_new/` subdirectories and are the only ones wired into the runner. **Experiment runner and evaluator** (`src/dgadb/experiment/runner.py`, `src/dgadb/evaluation/evaluator.py`) orchestrate training and compute the final metrics, dispatching events to callbacks (`AimCallback`, `ResourceMonitor`) at each hook point.
+
+## Adding a New Dataset
+
+1. Download the raw edge list and place it under `data/<dataset-name>/`.
+2. Write a download script under `scripts/` following the pattern in `scripts/bitcoin.py`.
+3. Create a dataset config at `configs/datasets/<dataset-name>.yaml`. Copy `configs/datasets/bitcoin-alpha.yaml` as a starting point; set `dataset.name` and adjust the `pipeline.steps` parameters (split ratios, directionality, etc.) as needed.
+4. Verify the dataset loads by running the quickstart command with `--datasets <dataset-name>` and any method.
+5. Add the download step to the `download-data` task in `pyproject.toml` if the dataset should be part of the full download sweep.
+
+## Adding a New Method
+
+1. Create a directory `src/dgadb/models/<MethodName>_new/`.
+2. In that directory, implement a class that inherits from `BaseADModel` (defined in `src/dgadb/models/base.py`). You must implement `setup(data)`, `_train_step(snapshot)`, `_predict(snapshot)`, `save(save_dir)`, and `load(load_dir)`. See `src/dgadb/models/sad_new/sad.py` for a minimal example.
+3. Register the method in the method registry used by the runner. Follow the pattern for an existing method in `src/dgadb/experiment/runner.py`.
+4. Smoke-test with: `pixi run dgadb run --method <methodname> --datasets bitcoin-alpha --epochs 1 --concurrency 1`.
+
+## Reproducing the Paper's Experiments
+
+All dataset configs are in `configs/datasets/` and experiment configs in `configs/experiments/`. To run the full evaluation sweep for a given method and dataset set:
 
 ```bash
-pixi run aim  # launches UI at http://localhost:43800
+pixi run dgadb run --method sad taddy slade strgnn rustgraph gcn gat graphsage generaldyg addgraph \
+  --datasets bitcoin-alpha bitcoin-otc uc-social email-dnc \
+  --anom-types random local global \
+  --anom-rates 0.05 0.1 0.2 \
+  --anom-durations small medium large \
+  --epochs 50 --concurrency 4
 ```
 
-Logged metrics include per-step loss, per-epoch validation ROC-AUC/AP, and final test metrics.
-
-## Scalability Profiling
-
-`scripts/benchmark_scalability.py` measures setup, training, and inference
-cost for each (method, dataset) pair. The inference loop is instrumented
-with a `StreamingProfiler` (`src/dgadb/scalability/streaming_profiler.py`)
-that records per-snapshot wall-clock latency, excludes a warmup window,
-and writes streaming metrics into the result CSV plus a per-run JSON
-sidecar.
-
-### Run a single configuration
+Scalability profiling (Appendix, Tier A table) uses the `scalability` subcommand:
 
 ```bash
-pixi run -e dev python -m scripts.benchmark_scalability \
-    --methods graphsage \
-    --datasets bitcoin-alpha \
-    --epochs 1 \
-    --device gpu \
-    --output-dir benchmark-results/smoke
+pixi run dgadb scalability --methods gcn --datasets bitcoin-alpha --epochs 1 --device cpu \
+  --output-dir benchmark-results/smoke
 ```
 
-Outputs in `--output-dir`:
-
-- `benchmark_results_<timestamp>.csv` — one row per (method, dataset) with
-  legacy columns (`inference_edges_per_sec`, `peak_ram_mb`, ...) plus
-  streaming columns (`throughput_warmup_excluded`, `latency_p50_ms`,
-  `latency_p95_ms`, `latency_p99_ms`, `latency_p99_over_p50`,
-  `snapshots_after_warmup`, `insufficient_batches`).
-- `benchmark_results_<timestamp>.json` — the same rows as JSON.
-- `sidecars_<timestamp>/<method>__<dataset>.json` — per-run payload with
-  `per_snapshot_latency_ms`, `per_snapshot_edges`,
-  `per_snapshot_mean_degree`, and `windowed_throughput` (1 s windows).
-
-`insufficient_batches=True` means the test split produced fewer
-post-warmup snapshots than the profiler's floor (default
-`min_post_warmup=20`). Treat throughput/latency numbers in that row as
-unreliable — the dataset is too small for streaming measurements.
-
-### Run the full Tier A sweep
-
-To reproduce the appendix table for the rebuttal, use the dispatch
-script:
+To reproduce the full Tier A sweep, use the dispatch script:
 
 ```bash
 ./scripts/run_scalability_sweep.sh
 ```
 
-This runs every (method, dataset) pair one at a time, skipping cells that
-§4.5 of the paper already established as `OOM (compute-bound)` or
-`OOM (memory-bound)`. Results accumulate in `benchmark-results/tier_a/`
-with a per-run log under `benchmark-results/tier_a/logs/`. The script is
-idempotent: already-completed cells are detected by the presence of their
-log file and skipped on re-runs.
+After the sweep, generate the LaTeX table and figures with `scripts/analyze_streaming_scalability.py` (see the script's `--help` for subcommand options: `tier-a-table`, `latency-cdf`, `cost-curve`).
 
-### Generate the appendix artifacts
+## Citation and License
 
-After the sweep finishes, use `scripts/analyze_streaming_scalability.py`
-to produce the table and figures:
+(Citation forthcoming — the manuscript is currently under review.)
 
-```bash
-pixi run -e dev python -m scripts.analyze_streaming_scalability tier-a-table \
-    --csv-glob 'benchmark-results/tier_a/benchmark_results_*.csv' \
-    --output benchmark-results/tier_a/tier_a_table.tex
-
-pixi run -e dev python -m scripts.analyze_streaming_scalability latency-cdf \
-    --sidecar-glob 'benchmark-results/tier_a/sidecars_*/*.json' \
-    --output benchmark-results/tier_a/latency_cdf.pdf
-
-pixi run -e dev python -m scripts.analyze_streaming_scalability cost-curve \
-    --sidecar-glob 'benchmark-results/tier_a/sidecars_*/*.json' \
-    --output benchmark-results/tier_a/cost_curve.pdf
-```
-
-The `KNOWN_OOM` map inside `analyze_streaming_scalability.py` is the
-single source of truth for which cells are inherited from §4.5; extend
-it if the sweep reveals additional ceilings.
-
-## Code Quality
-
-```bash
-pixi run -e dev lint        # ruff check .
-pixi run -e dev format      # ruff format .
-pixi run -e dev typecheck   # pyrefly check .
-pixi run -e dev check       # lint + typecheck
-```
-
-Pre-commit hooks enforce these checks automatically.
-
-## Project Structure
-
-```
-configs/             Dataset and experiment YAML configs
-data/                Downloaded datasets (git-ignored)
-scripts/             Download scripts & analysis pipelines
-src/dgadb/
-  data/              Dataset loading (load_df)
-  evaluation/        ROC-AUC / AP evaluator
-  experiment/        ExperimentRunner, tune, callbacks
-  models/            AD model implementations
-    base.py          BaseADModel interface
-    *_new/           Current model implementations
-  preprocessing/     Data pipeline
-  storage/           TemporalGraph, snapshots, loaders
-  utils/             Config loading, paths
-```
+This project is released under the MIT License. See [`LICENSE`](LICENSE) for the full text.
