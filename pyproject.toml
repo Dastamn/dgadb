@@ -8,6 +8,9 @@ authors = [
 ]
 dependencies = ["ray[all]>=2.51.1", "torch-geometric>=2.7.0", "gensim>=4.4.0"]
 
+[project.scripts]
+dgadb = "dgadb.cli:app"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
