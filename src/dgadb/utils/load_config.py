@@ -7,6 +7,17 @@ logger = logging.getLogger(__name__)
 
 
 def load_config(name: str) -> dict:
+    """Load a named config YAML from the project's ``configs/`` directory.
+
+    Args:
+        name: Config name without the ``.yaml`` extension (e.g. ``"tune"``).
+
+    Returns:
+        Parsed config as a plain dict.
+
+    Raises:
+        FileNotFoundError: If ``configs/<name>.yaml`` does not exist.
+    """
     base_path = get_project_root()
     yaml_path = os.path.join(base_path, "configs", f"{name}.yaml")
 
