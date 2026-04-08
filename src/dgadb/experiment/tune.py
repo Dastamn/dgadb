@@ -60,6 +60,13 @@ def trainable_function(
 
 
 class Tuner:
+    """Orchestrates hyperparameter search over a DGADB model using Ray Tune.
+
+    Reads a YAML configuration to define the search space, loads the target
+    dataset via :class:`~dgadb.storage.temporal_graph.TemporalGraphLoaderNew`,
+    runs the Ray Tune experiment, and evaluates the best trial on the test split.
+    """
+
     def __init__(
             self,
             config_path: str,

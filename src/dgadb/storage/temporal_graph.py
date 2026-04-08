@@ -65,26 +65,32 @@ class TemporalGraph:
 
     @property
     def device(self) -> torch.device:
+        """Device shared by all tensor attributes."""
         return self.check_device()
 
     @property
     def num_nodes(self) -> int:
+        """Number of nodes, inferred as ``max(src, tgt) + 1``."""
         return max(int(self.src.max()), int(self.tgt.max())) + 1
 
     @property
     def num_edges(self) -> int:
+        """Number of edges in the graph."""
         return self.src.size(0)
 
     @property
     def edges(self):
+        """Edge tensor of shape ``[num_edges, 2]`` with columns ``[src, tgt]``."""
         return torch.stack([self.src, self.tgt], dim=1)
 
     @property
     def edge_index(self) -> torch.Tensor:
+        """Edge index tensor of shape ``[2, num_edges]`` in COO format."""
         return torch.stack([self.src, self.tgt], dim=0)
 
     @property
     def adj_matrix_coo(self) -> torch.Tensor:
+        """Sparse COO adjacency matrix, shape ``[num_nodes, num_nodes]``."""
         device = self.device
         size = self.num_nodes
         if self.num_edges == 0:
@@ -99,10 +105,12 @@ class TemporalGraph:
 
     @property
     def adj_matrix_csr(self) -> torch.Tensor:
+        """CSR adjacency matrix converted from :attr:`adj_matrix_coo`."""
         return self.adj_matrix_coo.to_sparse_csr()
 
     @property
     def adj_matrix_dense(self) -> torch.Tensor:
+        """Dense adjacency matrix converted from :attr:`adj_matrix_coo`."""
         return self.adj_matrix_coo.to_dense()
 
     # def flip_edge_labels(self):
@@ -206,6 +214,12 @@ class TemporalGraphView:
     """
 
     def __init__(self, temporal_graph: TemporalGraph, indices: slice | torch.Tensor):
+        """Construct a view over a subset of edges.
+
+        Args:
+            temporal_graph: The underlying graph to slice.
+            indices: A slice or 1-D integer tensor selecting the edge subset.
+        """
         self._temporal_graph = temporal_graph
         self._indices = indices
         
@@ -223,10 +237,12 @@ class TemporalGraphView:
 
     @property
     def num_edges(self) -> int:
+        """Number of edges in this view."""
         return self._num_edges
 
     @property
     def edge_index(self) -> torch.Tensor:
+        """Edge index tensor of shape ``[2, num_edges]`` for this view."""
         return torch.stack([self.src, self.tgt], dim=0)
 
 
@@ -235,8 +251,7 @@ class TemporalGraphLoaderNew:
 
     Stores each (dataset, anomaly variant) under a dedicated directory
     (``base_directory/<dataset>/<variant_name>/``) containing ``data.pt`` and
-    ``metadata.json``. Used by :mod:`dgadb.experiment.runner`; coexists with
-    the legacy :class:`TemporalGraphLoader` until the follow-up migration.
+    ``metadata.json``.
 
     Args:
         base_directory: Root directory for processed variants.
