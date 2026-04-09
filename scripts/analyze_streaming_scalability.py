@@ -28,6 +28,7 @@ app = typer.Typer(pretty_exceptions_enable=False)
 # Extend as Tier A runs reveal additional ceilings.
 KNOWN_OOM: dict[tuple[str, str], str] = {
     ("taddy", "as-topology"): "memory-bound",
+    ("taddy", "enron"): "memory-bound",
     ("taddy", "epinions"): "memory-bound",
     ("generaldyg", "as-topology"): "memory-bound",
     ("generaldyg", "epinions"): "memory-bound",

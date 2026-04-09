@@ -70,6 +70,7 @@ fi
 # Format: "method dataset reason".
 declare -a KNOWN_OOM=(
     "taddy as-topology memory-bound"
+    "taddy enron memory-bound"
     "taddy epinions memory-bound"
     "generaldyg as-topology memory-bound"
     "generaldyg epinions memory-bound"
