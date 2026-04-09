@@ -17,11 +17,19 @@
 #                                        [--methods "m1 m2 ..."]
 #                                        [--datasets "d1 d2 ..."]
 #                                        [--timeout SECONDS]
+#                                        [--outer dataset|method]
 #
 # Defaults: --epochs 3, --device gpu, --output-dir benchmark-results/tier_a,
-# --timeout 0 (no timeout). Set a positive timeout to wrap each pair in
-# `timeout <N>` so a hung run does not block the sweep; a pair killed by
-# the timeout is recorded as FAILED with rc=124.
+# --timeout 0 (no timeout), --outer dataset. Set a positive timeout to wrap
+# each pair in `timeout <N>` so a hung run does not block the sweep; a pair
+# killed by the timeout is recorded as FAILED with rc=124.
+#
+# --outer controls loop nesting. "dataset" (default) iterates every method
+# on each dataset in turn, so every method finishes on the small datasets
+# before any method starts on the large ones. "method" preserves the old
+# method-outer order. Dataset-outer is strongly preferred under a time
+# budget because a hang on (slow method, large dataset) does not block fast
+# methods on other datasets.
 #
 # Success detection: a pair is only marked SUCCESS when (a) pixi exits 0,
 # (b) the per-pair log contains no `FAILED:` / `Failed to load` line, and
@@ -41,6 +49,13 @@ OUTPUT_DIR="benchmark-results/tier_a"
 METHODS="gcn gat graphsage addgraph rustgraph strgnn sad slade taddy generaldyg"
 DATASETS="bitcoin-alpha email-dnc bitcoin-otc uc-social digg-homo as-topology enron epinions"
 TIMEOUT_SEC=0
+# Loop nesting order: "dataset" (default) iterates every method on each
+# dataset in turn, so every method finishes on the small datasets before any
+# method starts on the large ones. "method" iterates every dataset for each
+# method, matching the historical behaviour. Dataset-outer is strongly
+# preferred under a time budget because a hang on (slow method, large
+# dataset) doesn't block fast methods on other datasets.
+OUTER="dataset"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -50,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --methods)    METHODS="$2"; shift 2 ;;
         --datasets)   DATASETS="$2"; shift 2 ;;
         --timeout)    TIMEOUT_SEC="$2"; shift 2 ;;
+        --outer)      OUTER="$2"; shift 2 ;;
         -h|--help)
             sed -n '3,30p' "$0"
             exit 0
@@ -60,6 +76,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+case "$OUTER" in
+    dataset|method) ;;
+    *)
+        echo "ERROR: --outer must be 'dataset' or 'method', got '$OUTER'" >&2
+        exit 2
+        ;;
+esac
 
 # Require `timeout` (GNU coreutils) when the caller asked for one.
 if [[ "$TIMEOUT_SEC" != "0" ]]; then
@@ -99,7 +123,7 @@ SWEEP_LOG="$OUTPUT_DIR/logs/_sweep.log"
 echo "=== sweep started at $(date --iso-8601=seconds 2>/dev/null || date) ===" >> "$SWEEP_LOG"
 echo "methods: $METHODS" >> "$SWEEP_LOG"
 echo "datasets: $DATASETS" >> "$SWEEP_LOG"
-echo "epochs: $EPOCHS  device: $DEVICE  output: $OUTPUT_DIR" >> "$SWEEP_LOG"
+echo "epochs: $EPOCHS  device: $DEVICE  output: $OUTPUT_DIR  outer: $OUTER" >> "$SWEEP_LOG"
 
 total=0
 completed=0
@@ -107,9 +131,27 @@ skipped_oom=0
 skipped_done=0
 failed=0
 
-for method in $METHODS; do
+# Build the ordered list of (method, dataset) pairs in whichever loop nesting
+# the caller requested. Emitted as "method dataset" lines for the inner loop
+# to read with `read -r`.
+pairs=()
+if [[ "$OUTER" == "dataset" ]]; then
     for dataset in $DATASETS; do
-        total=$((total + 1))
+        for method in $METHODS; do
+            pairs+=("$method $dataset")
+        done
+    done
+else
+    for method in $METHODS; do
+        for dataset in $DATASETS; do
+            pairs+=("$method $dataset")
+        done
+    done
+fi
+
+for pair in "${pairs[@]}"; do
+    read -r method dataset <<< "$pair"
+    total=$((total + 1))
         log_file="$OUTPUT_DIR/logs/${method}__${dataset}.log"
 
         if is_known_oom "$method" "$dataset"; then
@@ -201,7 +243,6 @@ PY
             echo "[FAIL] $method $dataset ($reason — see $log_file)"
             echo "[FAIL] $method $dataset $reason" >> "$SWEEP_LOG"
         fi
-    done
 done
 
 echo
