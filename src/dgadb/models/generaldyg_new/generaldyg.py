@@ -377,10 +377,16 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
             handler.on_train_epoch_end(state)
         handler.on_train_end(state)
 
-    def run_inference(self, loader=None) -> tuple[torch.Tensor, torch.Tensor]:
+    def run_inference(
+        self,
+        loader=None,
+        profiler: "StreamingProfiler | None" = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Overrides base.py inference to use precomputed subgraphs for the test mask.
         """
+        import time as _time
+
         assert self.test_mask is not None
         test_indices = torch.where(self.test_mask)[0].tolist()
         all_probs = []
@@ -389,8 +395,26 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
         with torch.no_grad():
             for i in range(0, len(test_indices), self.batch_size):
                 batch_idx = test_indices[i: i + self.batch_size]
+
+                if profiler is not None:
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                    _t0 = _time.perf_counter()
+
                 logits = self._forward_batch(batch_idx)
-                all_probs.append(torch.sigmoid(logits))
+                probs = torch.sigmoid(logits)
+
+                if profiler is not None:
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                    _elapsed = _time.perf_counter() - _t0
+                    profiler.record(
+                        num_edges=len(batch_idx),
+                        mean_degree=0.0,
+                        elapsed_sec=_elapsed,
+                    )
+
+                all_probs.append(probs)
 
         return self.edge_labels[test_indices], torch.cat(all_probs)
 

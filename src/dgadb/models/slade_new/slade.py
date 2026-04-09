@@ -303,14 +303,18 @@ class SLADEAD(BaseADModel[SLADEComponents]):
 
         return contrastive_loss.item()
 
-    def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[torch.Tensor, torch.Tensor]:
+    def run_inference(
+        self,
+        loader: TemporalGraphSnapshotLoader,
+        profiler: "StreamingProfiler | None" = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # SLADE SPECIFIC: Reset memory
         self.components.model.memory.__init_memory__()
         # SLADE SPECIFIC: Set neighbor finder to full (safe for all splits if causal)
         self.components.model.set_neighbor_finder(
             self.components.full_ngh_finder)
 
-        return super().run_inference(loader)
+        return super().run_inference(loader, profiler=profiler)
 
     def _predict(self, snapshot: TemporalGraphSnapshot, **kwargs) -> torch.Tensor:
         model = self.components.model
