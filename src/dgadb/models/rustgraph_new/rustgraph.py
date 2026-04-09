@@ -75,9 +75,12 @@ class RustGraphAD(BaseADModel[RustGraphComponents]):
             )
             # We train on the full edge list to get global structural context
             edge_index = data.edge_index.to(self.device)
+            print("FULL EDGE INDEX", edge_index.shape)
+            edge_index_train = edge_index[:, data.train_mask]
+            print("USING TRAIN EDGE_INDEX", edge_index_train.shape)
 
             n2v = Node2Vec(
-                edge_index, embedding_dim=x_dim, walk_length=20, context_size=10, walks_per_node=10, num_nodes=num_nodes
+                edge_index_train, embedding_dim=x_dim, walk_length=20, context_size=10, walks_per_node=10, num_nodes=num_nodes
             ).to(self.device)
 
             loader = n2v.loader(batch_size=128, shuffle=True)
