@@ -34,8 +34,12 @@ set -euo pipefail
 EPOCHS=3
 DEVICE="gpu"
 OUTPUT_DIR="benchmark-results/tier_a"
-METHODS="sad taddy slade strgnn gcn gat graphsage rustgraph generaldyg addgraph"
-DATASETS="bitcoin-alpha bitcoin-otc email-dnc uc-social digg-homo as-topology enron epinions"
+# Ordered fastest → slowest so cheap cells finish first and a hang on a
+# slow method/dataset pair doesn't block the rest of the sweep.
+# Methods: plain GNN baselines → temporal GNNs → heavier anomaly detectors.
+# Datasets: sorted by edge count (see docs/dataset_edge_count_discrepancies.md).
+METHODS="gcn gat graphsage addgraph rustgraph strgnn sad slade taddy generaldyg"
+DATASETS="bitcoin-alpha email-dnc bitcoin-otc uc-social digg-homo as-topology enron epinions"
 TIMEOUT_SEC=0
 
 while [[ $# -gt 0 ]]; do
