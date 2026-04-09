@@ -18,6 +18,7 @@
 #                                        [--datasets "d1 d2 ..."]
 #                                        [--timeout SECONDS]
 #                                        [--outer dataset|method]
+#                                        [--pixi-env NAME]
 #
 # Defaults: --epochs 3, --device gpu, --output-dir benchmark-results/tier_a,
 # --timeout 0 (no timeout), --outer dataset. Set a positive timeout to wrap
@@ -30,6 +31,13 @@
 # method-outer order. Dataset-outer is strongly preferred under a time
 # budget because a hang on (slow method, large dataset) does not block fast
 # methods on other datasets.
+#
+# --pixi-env picks the pixi environment used to launch the benchmark. When
+# unset, the script auto-selects "cuda" for --device gpu and "dev" for
+# --device cpu, because the "dev" pixi feature installs CPU-only PyTorch
+# wheels. Passing --device gpu from the "dev" env used to silently fall
+# back to CPU; benchmark_scalability.py now raises instead, but
+# auto-selecting the env here avoids the error in the first place.
 #
 # Success detection: a pair is only marked SUCCESS when (a) pixi exits 0,
 # (b) the per-pair log contains no `FAILED:` / `Failed to load` line, and
@@ -66,6 +74,7 @@ while [[ $# -gt 0 ]]; do
         --datasets)   DATASETS="$2"; shift 2 ;;
         --timeout)    TIMEOUT_SEC="$2"; shift 2 ;;
         --outer)      OUTER="$2"; shift 2 ;;
+        --pixi-env)   PIXI_ENV="$2"; shift 2 ;;
         -h|--help)
             sed -n '3,30p' "$0"
             exit 0
@@ -84,6 +93,21 @@ case "$OUTER" in
         exit 2
         ;;
 esac
+
+# Pixi env selection. The `dev` env uses the CPU-only PyTorch wheel; the
+# `cuda` env pulls in the CUDA-enabled wheel and the matching cuda runtime.
+# Running `--device gpu` from `dev` silently falls through to CPU inside
+# `torch.device("cuda" if torch.cuda.is_available() ...)` (benchmark_scalability.py
+# now raises instead of falling back, but we resolve the env up front so
+# operators don't hit that error every single pair).
+# Override with --pixi-env if you have a non-standard env name.
+if [[ -z "${PIXI_ENV:-}" ]]; then
+    if [[ "$DEVICE" == "gpu" ]]; then
+        PIXI_ENV="cuda"
+    else
+        PIXI_ENV="dev"
+    fi
+fi
 
 # Require `timeout` (GNU coreutils) when the caller asked for one.
 if [[ "$TIMEOUT_SEC" != "0" ]]; then
@@ -123,7 +147,8 @@ SWEEP_LOG="$OUTPUT_DIR/logs/_sweep.log"
 echo "=== sweep started at $(date --iso-8601=seconds 2>/dev/null || date) ===" >> "$SWEEP_LOG"
 echo "methods: $METHODS" >> "$SWEEP_LOG"
 echo "datasets: $DATASETS" >> "$SWEEP_LOG"
-echo "epochs: $EPOCHS  device: $DEVICE  output: $OUTPUT_DIR  outer: $OUTER" >> "$SWEEP_LOG"
+echo "epochs: $EPOCHS  device: $DEVICE  pixi_env: $PIXI_ENV  output: $OUTPUT_DIR  outer: $OUTER" >> "$SWEEP_LOG"
+echo "[info] pixi env: $PIXI_ENV  device: $DEVICE"
 
 total=0
 completed=0
@@ -172,7 +197,7 @@ for pair in "${pairs[@]}"; do
 
         # Build the command, optionally wrapped in timeout(1).
         # Using an array so quoting survives intact.
-        cmd=(pixi run -e dev python -m scripts.benchmark_scalability
+        cmd=(pixi run -e "$PIXI_ENV" python -m scripts.benchmark_scalability
              --methods "$method"
              --datasets "$dataset"
              --epochs "$EPOCHS"
@@ -203,7 +228,7 @@ for pair in "${pairs[@]}"; do
             # Inspect the most recently written CSV for this pair's error column.
             # asdict writes the error column as the literal string "" when no error.
             error_cell=$(
-                pixi run -e dev python - <<'PY' 2>/dev/null "$OUTPUT_DIR" "$method" "$dataset"
+                pixi run -e "$PIXI_ENV" python - <<'PY' 2>/dev/null "$OUTPUT_DIR" "$method" "$dataset"
 import sys, glob, polars as pl
 out_dir, method, dataset = sys.argv[1], sys.argv[2], sys.argv[3]
 paths = sorted(glob.glob(f"{out_dir}/benchmark_results_*.csv"))

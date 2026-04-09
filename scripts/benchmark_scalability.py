@@ -347,12 +347,25 @@ def run_benchmarks(
     anom_ratio: float,
     duration: str,
 ):
-    device = torch.device("cuda" if device_str == "gpu" and torch.cuda.is_available() else "cpu")
+    # Hard-fail when the caller asked for GPU but CUDA is not actually
+    # available. The previous silent fallback to CPU cost us hours of wall
+    # time on a sweep that was supposed to run on GPU but was using the
+    # `dev` pixi env (no CUDA-enabled torch) instead of `cuda`; we'd rather
+    # exit loudly here than produce CPU numbers masquerading as GPU numbers.
+    if device_str == "gpu" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "--device gpu was requested but torch.cuda.is_available() is False. "
+            "Check that PyTorch was installed with CUDA support (e.g. pixi env "
+            "`cuda` rather than `dev`) and that the host has a visible GPU "
+            "(try `nvidia-smi`)."
+        )
+    device = torch.device("cuda" if device_str == "gpu" else "cpu")
     logger.info(f"Benchmarking on device: {device}")
 
     if device.type == "cuda":
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
         logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / (1024**3):.1f} GB")
+        logger.info(f"CUDA version: {torch.version.cuda}  torch: {torch.__version__}")
 
     os.makedirs(output_dir, exist_ok=True)
     results: list[BenchmarkResult] = []
