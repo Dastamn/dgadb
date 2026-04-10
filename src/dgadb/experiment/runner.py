@@ -117,7 +117,7 @@ class ExperimentRunner:
         evaluator = ADEvaluator(self.output_dir)
         metrics = evaluator.evaluate(all_labels, all_scores, test_group_ids)
         self.logger.info(
-            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}"
+            f"Evaluation result: AUC {metrics['roc_auc']}, AP {metrics['average_precision']}, AUPRC {metrics['auprc']}"
         )
         evaluator.save_results()
 
