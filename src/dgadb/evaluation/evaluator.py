@@ -12,6 +12,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_sco
 from . import metrics
 from .utils import check_matching_device
 
+from sklearn.metrics import average_precision_score, precision_recall_curve, auc
 
 VALID_METRICS = [
     "best_f1",
@@ -72,6 +73,9 @@ def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor, group_ids: Opt
         y_true, y_scores)
     y_pred = (y_scores >= best_threshold).to(y_true.dtype)
 
+    precision, recall, _ = precision_recall_curve(y_true, y_scores)
+    pr_auc = auc(recall, precision)
+
     results = {
         "max_f1": max_f1,
         "best_threshold": best_threshold,
@@ -80,7 +84,8 @@ def compute_metrics(y_true: torch.Tensor, y_scores: torch.Tensor, group_ids: Opt
         "accuracy": accuracy_score(y_true, y_pred),
         "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
         "max_precision": max_precision,
-        "max_recall": max_recall
+        "max_recall": max_recall,
+        "auprc": pr_auc,
     }
 
     if group_ids is not None:
