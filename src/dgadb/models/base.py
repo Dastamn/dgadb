@@ -199,10 +199,22 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
                     mean_degree = (2.0 * num_edges) / float(num_nodes)
                 else:
                     mean_degree = 0.0
+                # Data-time span of the snapshot, used by the profiler to
+                # estimate the buffering component of detection delay (the
+                # time edges spent in the snapshot buffer before scoring
+                # could start). All DyGADBench datasets carry edge
+                # timestamps in seconds, so the span is in seconds.
+                snapshot_span_sec: float | None = None
+                t_attr = getattr(current_graph, "t", None)
+                if t_attr is not None and t_attr.numel() > 1:
+                    snapshot_span_sec = float(t_attr.max().item() - t_attr.min().item())
+                elif t_attr is not None and t_attr.numel() == 1:
+                    snapshot_span_sec = 0.0
                 profiler.record(
                     num_edges=num_edges,
                     mean_degree=mean_degree,
                     elapsed_sec=elapsed,
+                    snapshot_span_sec=snapshot_span_sec,
                 )
             edge_labels = current_graph.edge_labels
             all_scores.append(edge_scores)

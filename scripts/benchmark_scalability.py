@@ -121,6 +121,19 @@ class BenchmarkResult:
     snapshots_after_warmup: int = 0
     insufficient_batches: bool = False
 
+    # Detection delay (buffering + scoring), in seconds. Reported only for
+    # methods whose inference loop iterates over snapshots in the natural
+    # way and exposes per-snapshot data-time spans (i.e. base.py
+    # run_inference; methods that override the loop with a batched form do
+    # not report these and the values stay at 0.0).
+    detection_delay_mean_sec: float = 0.0
+    detection_delay_max_sec: float = 0.0
+    detection_delay_p95_sec: float = 0.0
+    detection_delay_p99_sec: float = 0.0
+    snapshot_span_mean_sec: float = 0.0
+    snapshot_span_max_sec: float = 0.0
+    snapshots_with_span: int = 0
+
     time_to_convergence_sec: float = 0.0
     best_val_auc: float = 0.0
     best_epoch: int = -1
@@ -310,6 +323,20 @@ def benchmark_single(
         result.latency_p99_over_p50 = summary["latency_p99_over_p50"]
         result.snapshots_after_warmup = summary["snapshots_after_warmup"]
         result.insufficient_batches = summary["insufficient_batches"]
+
+        # Detection-delay metrics. Present only when at least one snapshot's
+        # data-time span was supplied to the profiler (i.e. methods that go
+        # through base.py run_inference); methods that override the loop
+        # with a batched form leave the keys absent and we keep the result
+        # defaults.
+        if "snapshots_with_span" in summary:
+            result.snapshots_with_span = summary["snapshots_with_span"]
+            result.detection_delay_mean_sec = summary["detection_delay_mean_sec"]
+            result.detection_delay_max_sec = summary["detection_delay_max_sec"]
+            result.detection_delay_p95_sec = summary["detection_delay_p95_sec"]
+            result.detection_delay_p99_sec = summary["detection_delay_p99_sec"]
+            result.snapshot_span_mean_sec = summary["snapshot_span_mean_sec"]
+            result.snapshot_span_max_sec = summary["snapshot_span_max_sec"]
 
         # Stash sidecar on the result for the writer phase.
         result._sidecar = profiler.to_sidecar()  # type: ignore[attr-defined]

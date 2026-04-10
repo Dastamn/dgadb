@@ -67,3 +67,56 @@ def test_profiler_emits_sidecar_with_per_snapshot_arrays_and_windows():
     assert sidecar["per_snapshot_edges"] == [100, 100, 100, 100, 100]
     assert sidecar["per_snapshot_mean_degree"] == [2.0, 2.0, 2.0, 2.0, 2.0]
     assert sidecar["windowed_throughput"] == [200.0, 300.0]
+
+
+def test_profiler_omits_detection_delay_when_no_span_supplied():
+    """When record() is never called with snapshot_span_sec, the
+    detection-delay keys should be absent from the summary so that
+    consumers can detect that the metric is not measured for this method."""
+    profiler = StreamingProfiler(warmup_min=0, warmup_frac=0.0)
+    for _ in range(5):
+        profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=0.01)
+
+    summary = profiler.summary()
+    assert "detection_delay_mean_sec" not in summary
+    assert "detection_delay_max_sec" not in summary
+    assert "snapshots_with_span" not in summary
+
+
+def test_profiler_reports_detection_delay_when_span_supplied():
+    """Detection delay = buffering (span/2 for the typical edge, span for the
+    worst) + scoring latency. With three snapshots of (span=10s, lat=1s),
+    (span=20s, lat=2s), (span=30s, lat=3s) the typical-edge delays are
+    (5+1)=6, (10+2)=12, (15+3)=18 — mean 12. The worst-edge delays are
+    (10+1)=11, (20+2)=22, (30+3)=33 — max 33."""
+    profiler = StreamingProfiler(warmup_min=0, warmup_frac=0.0)
+    profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=1.0, snapshot_span_sec=10.0)
+    profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=2.0, snapshot_span_sec=20.0)
+    profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=3.0, snapshot_span_sec=30.0)
+
+    summary = profiler.summary()
+    assert summary["snapshots_with_span"] == 3
+    assert summary["detection_delay_mean_sec"] == pytest.approx(12.0, rel=1e-6)
+    assert summary["detection_delay_max_sec"] == pytest.approx(33.0, rel=1e-6)
+    # With only 3 samples, p99 is the linearly-interpolated point at
+    # k = (n-1) * 0.99 = 1.98 between sorted values [11, 22, 33], i.e.
+    # 0.02 * 22 + 0.98 * 33 = 32.78. We just check it lies between the
+    # second-largest worst-case delay and the largest.
+    assert 22.0 < summary["detection_delay_p99_sec"] <= 33.0
+
+
+def test_profiler_handles_mixed_span_and_no_span_records():
+    """Snapshots that supply a span and snapshots that don't can coexist;
+    detection-delay aggregates should be computed only from the spans
+    that were supplied."""
+    profiler = StreamingProfiler(warmup_min=0, warmup_frac=0.0)
+    profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=1.0, snapshot_span_sec=10.0)
+    profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=2.0)  # no span
+    profiler.record(num_edges=10, mean_degree=1.0, elapsed_sec=3.0, snapshot_span_sec=30.0)
+
+    summary = profiler.summary()
+    assert summary["snapshots_with_span"] == 2
+    # Mean of (5+1, 15+3) = mean(6, 18) = 12
+    assert summary["detection_delay_mean_sec"] == pytest.approx(12.0, rel=1e-6)
+    # Max of (10+1, 30+3) = 33
+    assert summary["detection_delay_max_sec"] == pytest.approx(33.0, rel=1e-6)
