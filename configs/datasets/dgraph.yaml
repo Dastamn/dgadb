@@ -9,10 +9,10 @@ pipeline:
         dataset_dir: data/dgraph
     - name: StructureNormalizer
       params:
-        directionality: directed
+        directionality: canonical
         reindex_nodes: True
-        remove_self_loops: False
-        remove_duplicates: False
+        remove_self_loops: True
+        remove_duplicates: True
 
     # TimestampNormalizer is skipped for DGraph: the dataset contains
     # int32 sentinel values (-2147483648) for ~289K edges whose
