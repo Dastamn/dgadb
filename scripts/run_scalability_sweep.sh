@@ -55,7 +55,7 @@ OUTPUT_DIR="benchmark-results/tier_a"
 # Methods: plain GNN baselines → temporal GNNs → heavier anomaly detectors.
 # Datasets: sorted by edge count (see docs/dataset_edge_count_discrepancies.md).
 METHODS="gcn gat graphsage addgraph rustgraph strgnn sad slade taddy generaldyg"
-DATASETS="bitcoin-alpha email-dnc bitcoin-otc uc-social digg-homo as-topology enron epinions"
+DATASETS="bitcoin-alpha email-dnc bitcoin-otc uc-social digg-homo as-topology enron dgraph"
 TIMEOUT_SEC=0
 # Loop nesting order: "dataset" (default) iterates every method on each
 # dataset in turn, so every method finishes on the small datasets before any
@@ -118,17 +118,23 @@ if [[ "$TIMEOUT_SEC" != "0" ]]; then
     fi
 fi
 
-# Known-OOM cells inherited from section 4.5 of the published paper.
+# Known-OOM cells inherited from section 4.5 of the published paper,
+# plus DGraph cells inferred from the O(N^2) memory scaling observed
+# in the Enron sweep (AddGraph dense adjacency, RustGraph GRU hidden
+# states, TADDY spectral inversion, GeneralDyG k-hop subgraphs).
+# DGraph has 3.7M nodes — even methods with O(N) memory will be tight.
 # Format: "method dataset reason".
 declare -a KNOWN_OOM=(
     "taddy as-topology memory-bound"
     "taddy enron memory-bound"
-    "taddy epinions memory-bound"
     "generaldyg as-topology memory-bound"
-    "generaldyg epinions memory-bound"
-    "strgnn epinions compute-bound"
-    "sad epinions compute-bound"
-    "addgraph epinions compute-bound"
+    # DGraph (3.7M nodes, 4.3M edges): O(N^2) methods are infeasible,
+    # and per-edge subgraph methods are compute-bound at this scale.
+    "taddy dgraph memory-bound"
+    "generaldyg dgraph memory-bound"
+    "addgraph dgraph memory-bound"
+    "strgnn dgraph compute-bound"
+    "sad dgraph compute-bound"
 )
 
 is_known_oom() {
