@@ -1,0 +1,26 @@
+dataset:
+  name: dgraph
+  paths:
+    raw: null
+    structured: data/dgraph
+    processed: null
+
+pipeline:
+  cache_dir: pipeline_cache/dgraph
+  steps:
+    - name: DataLoader
+      params:
+        dataset_dir: data/dgraph
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        reindex_nodes: True
+        remove_self_loops: True
+        remove_duplicates: True
+
+    - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.7
+        val_ratio: 0.1
