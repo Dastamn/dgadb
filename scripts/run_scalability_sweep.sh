@@ -131,7 +131,7 @@ declare -a KNOWN_OOM=(
     # Enron (87K nodes, 1.2M edges): confirmed failures from tier_a GPU sweep.
     "addgraph enron memory-bound"      # CUDA OOM: O(N^2) dense adjacency at 87K nodes needs ~85 GiB
     "strgnn enron scale-limited"        # subgraph extraction crashes at Enron's scale (np.int64 index error)
-    "generaldyg enron scale-limited"   # pickle data truncated during preprocessing (memory or disk)
+    "generaldyg enron memory-bound"    # pickle truncated: k-hop subgraph extraction OOM during preprocessing
     # DGraph (3.7M nodes, 4.3M edges): O(N^2) methods are infeasible,
     # and per-edge subgraph methods are compute-bound at this scale.
     "taddy dgraph memory-bound"
