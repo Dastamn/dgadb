@@ -1,5 +1,6 @@
 .vscode/
 __pycache__/
+__marimo__/
 pipeline_cache/
 venv/
 
