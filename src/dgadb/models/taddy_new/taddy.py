@@ -18,6 +18,7 @@ from ..base import BaseADModel, BaseADModelComponents, TrainingState
 from ..TADDY.codes.Component import MyConfig
 from ..TADDY.codes.DynADModel import DynADModel
 from dgadb.experiment.callbacks import ExperimentCallbackHandler
+from dgadb.scalability.streaming_profiler import StreamingProfiler
 from dgadb.storage.temporal_graph import TemporalGraph
 from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 from dgadb.storage.utils import generate_temporal_graph_filename
@@ -390,7 +391,7 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
     def run_inference(
         self,
         loader: TemporalGraphSnapshotLoader,
-        profiler: "StreamingProfiler | None" = None,
+        profiler: StreamingProfiler | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run inference on a snapshot loader and return labels and scores.
 

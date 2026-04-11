@@ -5,7 +5,7 @@ import torch
 import numpy as np
 import scipy.sparse as ssp
 from dataclasses import dataclass
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Self
 
 # Original StrGNN imports
 from dgadb.models.StrGNN.pytorch_DGCNN.main import Classifier, loop_dataset
@@ -16,6 +16,7 @@ from dgadb.models.StrGNN.detection.util_functions import (
 from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
 
 from ..base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.scalability.streaming_profiler import StreamingProfiler
 from dgadb.storage.temporal_graph import TemporalGraph
 from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 import math
@@ -329,8 +330,8 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
     def run_inference(
         self,
         loader: TemporalGraphSnapshotLoader,
-        profiler: "StreamingProfiler | None" = None,
-    ) -> tuple[Tensor, Tensor]:
+        profiler: StreamingProfiler | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         import time as _time
 
         self.classifier.eval()

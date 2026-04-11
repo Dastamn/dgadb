@@ -13,6 +13,7 @@ from .model.Transformer import TransformerBinaryClassifier
 from .model.Combine import CombinedModel
 
 from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.scalability.streaming_profiler import StreamingProfiler
 from dgadb.storage.temporal_graph import TemporalGraph
 from dgadb.experiment.callbacks import ExperimentCallbackHandler
 from dataclasses import dataclass
@@ -380,7 +381,7 @@ class GeneralDyGAD(BaseADModel[GeneralDyGComponents]):
     def run_inference(
         self,
         loader=None,
-        profiler: "StreamingProfiler | None" = None,
+        profiler: StreamingProfiler | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Overrides base.py inference to use precomputed subgraphs for the test mask.

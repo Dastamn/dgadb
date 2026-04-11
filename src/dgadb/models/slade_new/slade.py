@@ -10,6 +10,7 @@ from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
 from dgadb.models.base import BaseADModel, BaseADModelComponents, TrainingState
+from dgadb.scalability.streaming_profiler import StreamingProfiler
 from dgadb.storage.temporal_graph import TemporalGraph
 from dgadb.storage.temporal_snapshot import TemporalGraphSnapshot, TemporalGraphSnapshotLoader
 from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHandler
@@ -306,7 +307,7 @@ class SLADEAD(BaseADModel[SLADEComponents]):
     def run_inference(
         self,
         loader: TemporalGraphSnapshotLoader,
-        profiler: "StreamingProfiler | None" = None,
+        profiler: StreamingProfiler | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # SLADE SPECIFIC: Reset memory
         self.components.model.memory.__init_memory__()

@@ -25,13 +25,17 @@ import logging
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields, field
-from typing import TYPE_CHECKING, Generic, Optional, Self, TypeVar
-
-if TYPE_CHECKING:
-    from dgadb.scalability.streaming_profiler import StreamingProfiler
+from typing import Generic, Optional, Self, TypeVar
 
 import torch
 from tqdm import tqdm
+
+# StreamingProfiler is imported eagerly (rather than under
+# `TYPE_CHECKING`) so that pdoc and any other tool that introspects
+# annotations can resolve `StreamingProfiler | None` without an
+# evaluation error. There is no circular-import risk: the profiler
+# module depends only on dataclasses + stdlib typing.
+from dgadb.scalability.streaming_profiler import StreamingProfiler
 from sklearn.metrics import roc_auc_score
 from torch_geometric.loader import LinkLoader, NodeLoader
 
