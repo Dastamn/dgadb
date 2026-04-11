@@ -18,6 +18,7 @@ Usage:
 
 import gc
 import json
+import resource
 from pathlib import Path
 import os
 import sys
@@ -28,7 +29,6 @@ import datetime
 
 import torch
 import typer
-import psutil
 import polars as pl
 from loguru import logger
 
@@ -41,6 +41,53 @@ from dgadb.models.base import TrainingState
 # Configure loguru: remove default handler, add one with a clean format
 logger.remove()
 logger.add(sys.stderr, format="{time:HH:mm:ss} | {level:<7} | {message}")
+
+
+def _configure_torch_threads() -> None:
+    """Honor ``DGADB_NUM_THREADS`` / ``OMP_NUM_THREADS`` for PyTorch CPU ops.
+
+    PyTorch's default CPU thread count depends on how the wheel was built and
+    on ``OMP_NUM_THREADS`` at import time. On some pixi environments that is
+    1, which makes full-graph GCN/GAT/GraphSAGE forwards on epinions
+    pathologically slow. We resolve the intended count from environment
+    variables (``DGADB_NUM_THREADS`` wins, then ``OMP_NUM_THREADS``, then
+    ``MKL_NUM_THREADS``, finally ``os.cpu_count()``) and force it explicitly.
+    """
+    requested = (
+        os.environ.get("DGADB_NUM_THREADS")
+        or os.environ.get("OMP_NUM_THREADS")
+        or os.environ.get("MKL_NUM_THREADS")
+    )
+    try:
+        n = int(requested) if requested else (os.cpu_count() or 1)
+    except ValueError:
+        n = os.cpu_count() or 1
+    n = max(1, n)
+    torch.set_num_threads(n)
+    try:
+        torch.set_num_interop_threads(min(n, 4))
+    except RuntimeError:
+        # set_num_interop_threads must be called before any parallel work.
+        # If something already spawned the pool, skip silently.
+        pass
+    logger.info(f"Torch CPU threads: num_threads={torch.get_num_threads()}, "
+                f"num_interop_threads={torch.get_num_interop_threads()}")
+
+
+_configure_torch_threads()
+
+
+def _peak_rss_mb() -> float:
+    """Return the process peak resident set size in MiB.
+
+    Uses ``resource.getrusage(RUSAGE_SELF).ru_maxrss``. The unit reported by
+    that syscall is KiB on Linux and bytes on macOS, so we normalize based on
+    platform.
+    """
+    maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return maxrss / (1024 ** 2)  # bytes -> MiB
+    return maxrss / 1024  # KiB -> MiB
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -73,6 +120,19 @@ class BenchmarkResult:
     latency_p99_over_p50: float = 0.0
     snapshots_after_warmup: int = 0
     insufficient_batches: bool = False
+
+    # Detection delay (buffering + scoring), in seconds. Reported only for
+    # methods whose inference loop iterates over snapshots in the natural
+    # way and exposes per-snapshot data-time spans (i.e. base.py
+    # run_inference; methods that override the loop with a batched form do
+    # not report these and the values stay at 0.0).
+    detection_delay_mean_sec: float = 0.0
+    detection_delay_max_sec: float = 0.0
+    detection_delay_p95_sec: float = 0.0
+    detection_delay_p99_sec: float = 0.0
+    snapshot_span_mean_sec: float = 0.0
+    snapshot_span_max_sec: float = 0.0
+    snapshots_with_span: int = 0
 
     time_to_convergence_sec: float = 0.0
     best_val_auc: float = 0.0
@@ -188,8 +248,12 @@ def benchmark_single(
         device=str(device),
     )
 
-    process = psutil.Process(os.getpid())
-    ram_before = process.memory_info().rss / (1024 ** 2)
+    # Baseline peak RSS before the benchmark allocates anything. ``ru_maxrss``
+    # is monotonically non-decreasing per process, so taking the delta against
+    # a baseline gives a conservative estimate of this benchmark's peak
+    # allocation even when a prior benchmark in the same process already
+    # pushed the peak up.
+    rss_baseline_mb = _peak_rss_mb()
     reset_gpu_stats()
 
     snap_config = {
@@ -260,6 +324,20 @@ def benchmark_single(
         result.snapshots_after_warmup = summary["snapshots_after_warmup"]
         result.insufficient_batches = summary["insufficient_batches"]
 
+        # Detection-delay metrics. Present only when at least one snapshot's
+        # data-time span was supplied to the profiler (i.e. methods that go
+        # through base.py run_inference); methods that override the loop
+        # with a batched form leave the keys absent and we keep the result
+        # defaults.
+        if "snapshots_with_span" in summary:
+            result.snapshots_with_span = summary["snapshots_with_span"]
+            result.detection_delay_mean_sec = summary["detection_delay_mean_sec"]
+            result.detection_delay_max_sec = summary["detection_delay_max_sec"]
+            result.detection_delay_p95_sec = summary["detection_delay_p95_sec"]
+            result.detection_delay_p99_sec = summary["detection_delay_p99_sec"]
+            result.snapshot_span_mean_sec = summary["snapshot_span_mean_sec"]
+            result.snapshot_span_max_sec = summary["snapshot_span_max_sec"]
+
         # Stash sidecar on the result for the writer phase.
         result._sidecar = profiler.to_sidecar()  # type: ignore[attr-defined]
 
@@ -267,9 +345,13 @@ def benchmark_single(
         logger.opt(exception=True).error(f"Error benchmarking {method.value} on {dataset_name}: {e}")
         result.error = str(e)
 
-    # Memory measurements
-    ram_after = process.memory_info().rss / (1024 ** 2)
-    result.peak_ram_mb = ram_after - ram_before
+    # Memory measurements. ``ru_maxrss`` from ``getrusage`` reports true peak
+    # RSS, unlike ``process.memory_info().rss`` which reports instantaneous
+    # RSS and therefore misses peaks that have already been freed by the time
+    # we sample. Subtract the baseline so we get *this* benchmark's additional
+    # footprint, even when prior benchmarks in the same process pushed the
+    # peak up.
+    result.peak_ram_mb = max(0.0, _peak_rss_mb() - rss_baseline_mb)
     result.peak_gpu_mb = get_peak_gpu_memory_mb()
 
     # Cleanup
@@ -292,12 +374,25 @@ def run_benchmarks(
     anom_ratio: float,
     duration: str,
 ):
-    device = torch.device("cuda" if device_str == "gpu" and torch.cuda.is_available() else "cpu")
+    # Hard-fail when the caller asked for GPU but CUDA is not actually
+    # available. The previous silent fallback to CPU cost us hours of wall
+    # time on a sweep that was supposed to run on GPU but was using the
+    # `dev` pixi env (no CUDA-enabled torch) instead of `cuda`; we'd rather
+    # exit loudly here than produce CPU numbers masquerading as GPU numbers.
+    if device_str == "gpu" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "--device gpu was requested but torch.cuda.is_available() is False. "
+            "Check that PyTorch was installed with CUDA support (e.g. pixi env "
+            "`cuda` rather than `dev`) and that the host has a visible GPU "
+            "(try `nvidia-smi`)."
+        )
+    device = torch.device("cuda" if device_str == "gpu" else "cpu")
     logger.info(f"Benchmarking on device: {device}")
 
     if device.type == "cuda":
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
         logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / (1024**3):.1f} GB")
+        logger.info(f"CUDA version: {torch.version.cuda}  torch: {torch.__version__}")
 
     os.makedirs(output_dir, exist_ok=True)
     results: list[BenchmarkResult] = []

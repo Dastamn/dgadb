@@ -326,11 +326,35 @@ class StrGNNAD(BaseADModel[StrGNNComponents]):
 
         handler.on_train_end(state)
 
-    def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[Tensor, Tensor]:
+    def run_inference(
+        self,
+        loader: TemporalGraphSnapshotLoader,
+        profiler: "StreamingProfiler | None" = None,
+    ) -> tuple[Tensor, Tensor]:
+        import time as _time
+
         self.classifier.eval()
         graphs = self.data_dict["test_graphs"]
+
+        if profiler is not None and torch.cuda.is_available():
+            torch.cuda.synchronize()
+        _t0 = _time.perf_counter() if profiler is not None else 0.0
+
         avg_loss, labels, preds = loop_dataset(
             graphs, self.classifier, list(range(len(graphs))), bsize=self.batch_size)
+
+        if profiler is not None:
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            _elapsed = _time.perf_counter() - _t0
+            # StrGNN's loop_dataset batches across snapshots; record as a single
+            # aggregate measurement so the profiler does not crash.
+            profiler.record(
+                num_edges=int(labels.shape[0]) if hasattr(labels, "shape") else len(labels),
+                mean_degree=0.0,
+                elapsed_sec=_elapsed,
+            )
+
         return labels, preds
 
     def _train_step(self, snapshot: TemporalGraphSnapshot, **kwargs) -> float:

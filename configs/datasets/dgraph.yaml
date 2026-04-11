@@ -1,0 +1,26 @@
+dataset:
+  name: dgraph
+
+pipeline:
+  cache_dir: pipeline_cache/dgraph
+  steps:
+    - name: DataLoader
+      params:
+        dataset_dir: data/dgraph
+    - name: StructureNormalizer
+      params:
+        directionality: canonical
+        reindex_nodes: True
+        remove_self_loops: True
+        remove_duplicates: True
+
+    # TimestampNormalizer is skipped for DGraph: the dataset contains
+    # int32 sentinel values (-2147483648) for ~289K edges whose
+    # timestamps are missing, which causes a polars i32 -> u64 cast
+    # failure. The raw timestamps (0..790) are already usable as-is.
+    # - name: TimestampNormalizer
+
+    - name: TemporalSplitter
+      params:
+        train_ratio: 0.5
+        val_ratio: 0.25

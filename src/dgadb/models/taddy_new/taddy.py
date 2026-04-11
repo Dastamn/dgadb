@@ -387,15 +387,23 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             "Use run_inference() with a TemporalGraphSnapshotLoader instead."
         )
 
-    def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[torch.Tensor, torch.Tensor]:
+    def run_inference(
+        self,
+        loader: TemporalGraphSnapshotLoader,
+        profiler: "StreamingProfiler | None" = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run inference on a snapshot loader and return labels and scores.
 
         Args:
             loader: Snapshot loader for the data split (val or test)
+            profiler: Optional streaming profiler; if provided, per-snapshot
+                latency and edge counts are recorded.
 
         Returns:
             Tuple of (labels, scores) as tensors
         """
+        import time as _time
+
         self.components.model.eval()
 
         preds = []
@@ -414,6 +422,11 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
             hop_embedding = self.embeddings["hop"][snap].to(self.device)
             time_embedding = self.embeddings["time"][snap].to(self.device)
 
+            if profiler is not None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _t0 = _time.perf_counter()
+
             with torch.no_grad():
                 output = self.components.model.forward(
                     int_embedding, hop_embedding, time_embedding, None
@@ -421,6 +434,18 @@ class TADDYAD(BaseADModel[TADDYADComponents]):
                 output = torch.sigmoid(output)
 
             pred = output.squeeze().cpu()
+
+            if profiler is not None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _elapsed = _time.perf_counter() - _t0
+                _num_edges = int(pred.numel())
+                profiler.record(
+                    num_edges=_num_edges,
+                    mean_degree=0.0,
+                    elapsed_sec=_elapsed,
+                )
+
             preds.append(pred)
             labels.append(self.data_dict["y"][snap].cpu())
 
