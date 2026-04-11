@@ -53,7 +53,32 @@ pixi run aim   # opens http://localhost:43800
 
 ## Architecture Overview
 
-Data flows through five stages. **Storage** (`src/dgadb/storage/`) defines `TemporalGraph` and `TemporalGraphSnapshot`, the core data structures used throughout. **Preprocessing** (`src/dgadb/preprocessing/`) normalizes raw edge lists and splits them into train/val/test snapshots via `TemporalGraphLoaderNew`; the `_New` suffix marks the current iteration of classes that superseded earlier versions during development. **Anomaly injection** (`src/dgadb/preprocessing/anomaly_injection.py`) inserts synthetic anomalous edges into the test split at the rate and duration specified by the config. **Models** (`src/dgadb/models/`) implement `BaseADModel` (`src/dgadb/models/base.py`), which defines the three-method interface — `setup(data)`, `_train_step(snapshot) -> float`, and `_predict(snapshot) -> Tensor`; current model adapters live in `*_new/` subdirectories and are the only ones wired into the runner. **Experiment runner and evaluator** (`src/dgadb/experiment/runner.py`, `src/dgadb/evaluation/evaluator.py`) orchestrate training and compute the final metrics, dispatching events to callbacks (`AimCallback`, `ResourceMonitor`) at each hook point.
+Data flows left-to-right through five stages: a raw edge list is loaded into a `TemporalGraph`, anomalies are injected into the val/test splits, the result is iterated as a sequence of snapshots, each model consumes those snapshots through a uniform interface, and an evaluator computes the final metrics while training-loop callbacks emit telemetry along the way.
+
+```mermaid
+flowchart LR
+    raw["Raw edges<br/>data/&lt;dataset&gt;/"]
+    loader["TemporalGraphLoaderNew<br/>(preprocessing/)"]
+    tg["TemporalGraph<br/>(storage/)"]
+    inj["AnomalyInjector<br/>(preprocessing/)"]
+    snap["SnapshotLoader<br/>(storage/)"]
+    model["BaseADModel<br/>(models/)"]
+    evalr["ADEvaluator<br/>(evaluation/)"]
+    out["evaluation.json<br/>+ Aim run"]
+    cb["AimCallback /<br/>ResourceMonitor<br/>(experiment/callbacks/)"]
+
+    raw --> loader --> tg --> inj --> snap --> model --> evalr --> out
+    model -. hooks .-> cb
+    cb --> out
+```
+
+The five stages, in code:
+
+- **Storage** (`src/dgadb/storage/`) — defines `TemporalGraph` and `TemporalGraphSnapshot`, the core data structures used throughout the rest of the package.
+- **Preprocessing** (`src/dgadb/preprocessing/`) — normalises raw edge lists and splits them into train/val/test via `TemporalGraphLoaderNew`. The `_New` suffix marks the current iteration of classes that superseded earlier versions during development.
+- **Anomaly injection** (`src/dgadb/preprocessing/anomaly_injection.py`) — `AnomalyInjector` inserts synthetic anomalous edges into the val/test splits at the rate and duration specified by the config (one of `random / burst / clique / path / bridge`).
+- **Models** (`src/dgadb/models/`) — every method inherits from `BaseADModel` (`src/dgadb/models/base.py`) and implements the five-method contract: `setup(data)`, `_train_step(snapshot) -> float`, `_predict(snapshot) -> Tensor`, `save(dir)`, and `load(dir)`. Current model adapters live in `*_new/` subdirectories; legacy adapters in their non-`_new` siblings exist only for historical reference and are not wired into the runner.
+- **Experiment runner and evaluator** (`src/dgadb/experiment/runner.py`, `src/dgadb/evaluation/evaluator.py`) — `ExperimentRunner` orchestrates training and dispatches events to a list of callbacks (`AimCallback`, `ResourceMonitor`, `TuneReporter`) at six hook points (`on_train_begin/end`, `on_train_epoch_begin/end`, `on_train_step_begin/end`); `ADEvaluator` consumes the trained model's per-edge scores on the test split and produces the final ROC-AUC and average precision.
 
 ## Adding a New Dataset
 
