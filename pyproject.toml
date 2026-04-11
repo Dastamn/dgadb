@@ -35,7 +35,7 @@ download-data = "uv run scripts/bitcoin.py && uv run scripts/uc-social.py && uv 
 [tool.pixi.feature.dev.tasks]
 lint = "ruff check ."
 format = "ruff format ."
-typecheck = "pyrefly check ."
+typecheck = "ty check ."
 check = { depends-on = ["lint", "typecheck"] }
 pytest = "python -m pytest"
 # `docs` renders the curated dgadb modules to docs/api/. We invoke pdoc

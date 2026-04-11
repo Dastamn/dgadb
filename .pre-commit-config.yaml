@@ -15,7 +15,7 @@ repos:
     # Run the formatter.
     - id: ruff-format
 
-- repo: https://github.com/facebook/pyrefly
-  rev: 0.26.0
-  hooks:
-    - id: pyrefly-typecheck
+# Type checking is run via `pixi run -e dev typecheck` (which calls
+# `ty check .`); ty does not yet ship a pre-commit hook, so it is not
+# wired into pre-commit. Re-add a hook here once astral-sh publishes
+# one.
