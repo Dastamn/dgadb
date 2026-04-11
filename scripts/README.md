@@ -1,305 +1,158 @@
 # Scripts
 
-This directory contains two categories of scripts:
+Helper scripts that sit alongside the `dgadb` package. They fall into three
+categories:
 
-1. **Dataset preparation scripts** — one-off scripts for downloading and preprocessing specific datasets (e.g., `bitcoin.py`, `amazon.py`).
-2. **Analysis scripts** — post-experiment analysis pipelines that consume benchmark results and produce plots/statistics.
+1. **Dataset preparation** — one-shot downloaders for each dataset.
+2. **Smoke testing** — sanity checks that exercise every method and every
+   dataset after a refactor or merge.
+3. **Scalability** — Tier A streaming-scalability sweeps and the appendix
+   table/figure generator.
 
-This README focuses on the analysis scripts.
+All scripts work from a `pixi shell` (or via `pixi run -e dev <command>`).
+The dataset downloaders use [PEP 723](https://peps.python.org/pep-0723/)
+inline metadata and are launched via `uv run` (uv is installed by pixi).
 
-## Prerequisites
+---
 
-```bash
-pixi install && pixi shell
-```
+## Dataset preparation
 
-All analysis scripts use [Typer](https://typer.tiangolo.com/) for CLI and support `--help`.
-
-## Analysis Pipeline Overview
-
-The analysis experiments form a coherent sequence:
-
-```
-Experiment 4a (spectral baseline)
-    |
-    v
-Experiment 4b (spectral shift)  -->  Experiment 7 (spectral-performance correlation)
-    |                                       ^
-    v                                       |
-Experiment 4c (spectral signature)     Aim repo (benchmark results)
-    |
-    v
-Experiment 5 (multigraph analysis)  -->  experiment-results/ (benchmark results)
-```
-
-**Experiments 4a-5** can be run together via `run_all_analysis.py`.
-**Experiment 7** must be run separately after both the spectral shift analysis (4b) and benchmark experiments have completed.
-
-## Quick Start
+Each downloader is a self-contained script that fetches the raw files for
+one dataset, normalises them into the parquet layout the loader expects,
+and writes the result under `data/<dataset>/`. Run with:
 
 ```bash
-# Run all spectral + multigraph analysis (experiments 4a-5)
-python scripts/run_all_analysis.py
+uv run scripts/<dataset>.py
+```
 
-# Run spectral-performance correlation (experiment 7)
-# Requires: experiment 4b results + Aim-tracked benchmark runs
-python scripts/run_spectral_performance.py
+Set `DATA_PATH` if you want the data placed somewhere other than the
+project root (e.g. `DATA_PATH=/mnt/disk2/dgadb uv run scripts/bitcoin.py`).
+
+| Script | What it produces |
+|---|---|
+| `bitcoin.py` | bitcoin-alpha and bitcoin-otc trade graphs |
+| `as-topology.py` | AS-Topology internet routing graph |
+| `digg-homo.py` | Digg homogenous social graph |
+| `email-dnc.py` | DNC email leak interaction graph |
+| `enron.py` | Enron email graph |
+| `epinions.py` | Epinions trust graph |
+| `mooc.py` | MOOC student interaction graph |
+| `reddit.py` | Reddit comment graph |
+| `uc-social.py` | UC Irvine messaging graph |
+| `wiki.py` | Wikipedia editor graph |
+| `amazon.py` | Amazon review graph |
+| `yelp-zip.py` | Yelp ZIP review graph |
+| `dgraph.py` | DGraph financial-fraud graph (requires manual download of the source `.npz` first; see the script header) |
+| `trace-theia.py` | Trace and Theia provenance graphs |
+
+A bulk download is also exposed as a pixi task:
+
+```bash
+pixi run download-data    # runs every downloader except dgraph and trace-theia
 ```
 
 ---
 
-## Script Reference
+## Smoke testing
 
-### `run_all_analysis.py` — Master Orchestrator (Experiments 4a-5)
+### `smoke_test.sh` — two-phase end-to-end smoke
 
-Runs experiments 4a, 4b, 4c, and 5 in sequence. Each sub-experiment can be skipped individually.
+Runs `dgadb run` once per method on a small baseline dataset (phase 1)
+and once per dataset using the fastest baseline method (phase 2). Catches
+methods or dataset loaders that break after a refactor or merge in
+roughly `num_methods + num_datasets - 1` cells, instead of the cartesian
+product. Per-cell logs and a TSV results summary land under
+`benchmark-results/smoke/<timestamp>_<device>/`.
 
 ```bash
-python scripts/run_all_analysis.py [OPTIONS]
+./scripts/smoke_test.sh                                # cpu, full default
+./scripts/smoke_test.sh --device gpu                   # gpu (cuda env)
+./scripts/smoke_test.sh --methods "gcn gat" --skip-phase2
+./scripts/smoke_test.sh --datasets "bitcoin-alpha bitcoin-otc" --skip-phase1
+./scripts/smoke_test.sh --epochs 2 --timeout 900 --device gpu
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--n-workers` | `16` | Number of parallel workers |
-| `--output-base` | `analysis-results` | Base output directory |
-| `--experiment-dir` | `experiment-results` | Directory with benchmark results (for Experiment 5) |
-| `--skip-baseline` | `False` | Skip spectral baseline (4a) |
-| `--skip-shift` | `False` | Skip spectral shift (4b) |
-| `--skip-signature` | `False` | Skip spectral signature (4c) |
-| `--skip-multigraph` | `False` | Skip multigraph analysis (5) |
-| `--datasets` | all 6 | Specific datasets to analyze (repeatable) |
-
-**Default datasets:** bitcoin-alpha, bitcoin-otc, as-topology, digg-homo, email-dnc, uc-social
+Exit code is `0` only if every cell passes; `1` otherwise. See
+`./scripts/smoke_test.sh --help` for the full list of options.
 
 ---
 
-### `run_spectral_baseline.py` — Experiment 4a: Spectral Baseline
+## Scalability sweeps
 
-Computes spectral properties (eigenvalues, S_high, spectral density) for the clean (no anomaly) version of each dataset.
+The scalability subcommand (`dgadb scalability`) measures wall-clock
+training, peak GPU/RAM, edge throughput, and warmup-excluded streaming
+metrics for one (method, dataset) pair. The shell wrappers below dispatch
+that subcommand across the full grid for the appendix Tier A table.
+
+### `run_scalability_sweep.sh` — full Tier A dispatch
+
+The general-purpose driver. Iterates the cartesian product of `$METHODS`
+and `$DATASETS`, skips cells listed in `KNOWN_OOM` (compute-bound or
+memory-bound from §4.5 of the paper), launches each pair as a separate
+process so a crash in one cell doesn't cascade, and records SUCCESS or
+FAILED into `$OUTPUT_DIR/logs/<method>__<dataset>.log`. The script is
+idempotent — already-completed pairs are detected by their log file and
+skipped on re-run.
 
 ```bash
-python scripts/run_spectral_baseline.py [OPTIONS]
+./scripts/run_scalability_sweep.sh \
+    --epochs 3 --device gpu \
+    --output-dir benchmark-results/tier_a \
+    --timeout 1800
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--n-workers` | `8` | Number of parallel workers |
-| `--datasets` | all 6 | Specific datasets (repeatable) |
-| `--output-base` | `analysis-results/spectral` | Output directory |
+Run with `--help` for the full option list (`--methods`, `--datasets`,
+`--outer dataset|method`, `--pixi-env`, etc.).
 
-**Outputs** (per dataset in `{output-base}/{dataset}/baseline/`):
-- `eigenvalues.npy` — raw eigenvalue array
-- `spectral_metrics.json` — S_high, eigenvalue stats, graph info
-- `density.png` / `density.svg` — spectral density histogram
+### `run_scalability_sweep_tier1.sh` — everything except epinions
 
-**Cross-dataset outputs** (`{output-base}/plots/`):
-- `eigenvalue_violin.png` — violin plot comparing all datasets
+Thin wrapper around `run_scalability_sweep.sh` that pins dataset-outer
+ordering, a 30-minute per-pair timeout, and excludes `epinions` (which
+is substantially larger than the other datasets and would dominate the
+budget). Run this first under any time pressure — it guarantees a
+complete table for every other dataset even if the overall sweep is
+interrupted.
 
-**Summary:** `{output-base}/baseline_summary.json`
+### `run_scalability_sweep_tier2.sh` — DGraph stretch goal
+
+Wrapper that runs DGraph (3.7M nodes, 4.3M edges) for the methods that
+are not already known to OOM at that scale — primarily the GNN baselines
+and SLADE. Pinned 3-hour per-pair timeout. Run AFTER tier 1.
 
 ---
 
-### `run_spectral_shift.py` — Experiment 4b: Spectral Shift
+## Scalability analysis
 
-Computes delta S_high (spectral shift) between clean and anomalous graphs for every (dataset, anomaly_type) pair.
+### `analyze_streaming_scalability.py`
+
+Reads the CSVs and sidecar JSONs produced by the scalability sweep and
+produces the appendix table and figures. Typer CLI with three subcommands:
 
 ```bash
-python scripts/run_spectral_shift.py [OPTIONS]
+pixi run -e dev python -m scripts.analyze_streaming_scalability tier-a-table \
+    --csv-glob 'benchmark-results/tier_a/benchmark_results_*.csv' \
+    --output benchmark-results/tier_a/tier_a_table.tex
+
+pixi run -e dev python -m scripts.analyze_streaming_scalability latency-cdf \
+    --sidecar-glob 'benchmark-results/tier_a/sidecars_*/*.json' \
+    --output benchmark-results/tier_a/latency_cdf.pdf
+
+pixi run -e dev python -m scripts.analyze_streaming_scalability cost-curve \
+    --sidecar-glob 'benchmark-results/tier_a/sidecars_*/*.json' \
+    --output benchmark-results/tier_a/cost_curve.pdf
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--n-workers` | `8` | Number of parallel workers |
-| `--datasets` | all 6 | Specific datasets (repeatable) |
-| `--anom-types` | all 5 | Specific anomaly types (repeatable) |
-| `--anom-ratio` | `0.1` | Anomaly injection ratio |
-| `--duration` | `medium` | Anomaly duration (small/medium/large) |
-| `--output-base` | `analysis-results/spectral` | Output directory |
-
-**Default anomaly types:** random, burst, clique, path, bridge
-
-**Outputs** (per pair in `{output-base}/{dataset}/anomalous/{anom_type}/`):
-- `spectral_shift.json` — clean/anom S_high, delta_s_high, graph sizes
-- `energy_curves.npz` — clean and anomalous energy ratio curves
-
-**Cross-dataset outputs** (`{output-base}/plots/`):
-- `delta_s_high_heatmap.png` — datasets x anomaly types heatmap
-- `delta_s_high_bar.png` — grouped bar chart by anomaly type
-- `energy_ratio_{dataset}.png` — energy ratio curves per dataset
-
-**Summary:** `{output-base}/shift_summary.json` (contains the `delta_s_high` dict consumed by Experiment 7)
+The `KNOWN_OOM` map at the top of the file is the single source of truth
+for which cells are inherited from §4.5; extend it if a sweep reveals
+additional ceilings.
 
 ---
 
-### `run_spectral_signature.py` — Experiment 4c: Spectral Signature
+## Where the spectral analysis scripts went
 
-Computes full eigenvalue distributions for clean and each anomaly type, analyzing which frequency bands are most affected.
-
-```bash
-python scripts/run_spectral_signature.py [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--n-workers` | `8` | Number of parallel workers |
-| `--datasets` | all 6 | Specific datasets (repeatable) |
-| `--anom-types` | all 5 | Specific anomaly types (repeatable) |
-| `--anom-ratio` | `0.1` | Anomaly injection ratio |
-| `--duration` | `medium` | Anomaly duration (small/medium/large) |
-| `--output-base` | `analysis-results/spectral` | Output directory |
-
-**Outputs** (per dataset in `{output-base}/{dataset}/signature/`):
-- Per anomaly type: eigenvalues, spectral metrics, histogram comparison plots
-- `kde_overlay.png` — KDE overlay of all conditions
-- `frequency_bands.png` — frequency band distribution bars
-- `signature_summary.json` — per-condition spectral stats
-
-**Cross-dataset outputs** (`{output-base}/plots/`):
-- `delta_mean_heatmap.png` — mean eigenvalue shift heatmap
-- `concentration_at_one.png` — clique concentration analysis
-
----
-
-### `run_multigraph_analysis.py` — Experiment 5: Multigraph Handling
-
-Computes edge multiplicity statistics for each dataset and correlates with DTDG vs CTDG method performance.
-
-```bash
-python scripts/run_multigraph_analysis.py [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--n-workers` | `8` | Number of parallel workers |
-| `--datasets` | all 6 | Specific datasets (repeatable) |
-| `--output-base` | `analysis-results/multigraph` | Output directory |
-| `--experiment-dir` | `experiment-results` | Directory with benchmark results |
-| `--skip-correlation` | `False` | Skip performance correlation |
-
-**Method categorization:**
-- DTDG (binary deduplication): strgnn, taddy, gcn, gat, graphsage
-- CTDG (preserves parallel edges): sad, slade
-
-**Outputs** (per dataset in `{output-base}/{dataset}/`):
-- `multiplicity_stats.json` — full and train-split multiplicity statistics
-- `distribution.png` — multiplicity distribution bar chart
-
-**Cross-dataset outputs:**
-- `multiplicity_summary.csv` — summary table
-- `correlation/plots/multiplicity_vs_performance.png` — DTDG vs CTDG scatter
-- `correlation/plots/compression_vs_ctdg_advantage.png` — compression ratio correlation
-- `correlation/correlation_analysis.json` — Pearson r and data
-
----
-
-### `run_spectral_performance.py` — Experiment 7: Spectral-Performance Correlation
-
-Correlates spectral shift (delta S_high from Experiment 4b) with per-method anomaly detection ROC-AUC queried from the Aim experiment tracker.
-
-Tests whether spectral-aware methods (TADDY, RustGraph) perform better on datasets/anomalies with larger spectral shifts.
-
-```bash
-python scripts/run_spectral_performance.py [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--aim-repo` | `.` | Path to directory containing the `.aim` repo |
-| `--experiment-name` | `None` | Filter to a specific Aim experiment |
-| `--spectral-dir` | `analysis-results/spectral` | Directory with Experiment 4b results |
-| `--output-base` | `analysis-results/spectral/performance` | Output directory |
-| `--anom-ratio` | `0.1` | Must match Experiment 4b's anom_ratio |
-| `--anom-duration` | `medium` | Must match Experiment 4b's duration |
-
-**Data sources:**
-1. `{spectral-dir}/shift_summary.json` — delta S_high values (from `run_spectral_shift.py`)
-2. `.aim/` repository — per-run ROC-AUC and metadata (from `runner.py` benchmark runs)
-
-**Method categorization:**
-- Spectral-aware: taddy, rustgraph
-- Non-spectral: sad, slade, strgnn, gcn, gat, graphsage, generaldyg, addgraph
-
-**Outputs** (`{output-base}/plots/`):
-- `spectral_performance_scatter.png` — main scatter with regression lines for spectral vs non-spectral groups
-- `method_correlation.png` — horizontal bar chart of per-method Pearson r with significance markers
-- `spectral_performance_grid.png` — small-multiples grid, one scatter per method
-- `overall_correlation.png` — pooled scatter across all methods
-
-**Summary:** `{output-base}/correlation_summary.json` — all correlation coefficients, p-values, and raw data
-
----
-
-## Shell Wrappers
-
-### `run_analysis_internal.sh`
-
-Internal entry point for running the full analysis pipeline. Detects whether it is inside an Apptainer container or a pixi environment and configures accordingly.
-
-```bash
-./scripts/run_analysis_internal.sh [OPTIONS]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--n-workers` | `8` | Number of parallel workers |
-| `--skip-download` | off | Skip dataset download verification |
-| `--skip-baseline` | off | Skip spectral baseline (4a) |
-| `--skip-shift` | off | Skip spectral shift (4b) |
-| `--skip-signature` | off | Skip spectral signature (4c) |
-| `--skip-multigraph` | off | Skip multigraph analysis (5) |
-
-### `run_analysis_server.sh`
-
-Convenience wrapper that runs `run_analysis_internal.sh` through pixi (for non-container environments). Requires pixi and uv.
-
-```bash
-./scripts/run_analysis_server.sh
-```
-
----
-
-## Output Directory Structure
-
-After a full analysis run, the output looks like:
-
-```
-analysis-results/
-  spectral/
-    baseline_summary.json
-    shift_summary.json           <-- consumed by Experiment 7
-    plots/
-      eigenvalue_violin.png
-      delta_s_high_heatmap.png
-      delta_s_high_bar.png
-      delta_mean_heatmap.png
-      concentration_at_one.png
-      energy_ratio_{dataset}.png
-    {dataset}/
-      baseline/
-        eigenvalues.npy
-        spectral_metrics.json
-        density.png
-      anomalous/{anom_type}/
-        spectral_shift.json
-        energy_curves.npz
-      signature/
-        ...
-    performance/                 <-- Experiment 7
-      correlation_summary.json
-      plots/
-        spectral_performance_scatter.png
-        method_correlation.png
-        spectral_performance_grid.png
-        overall_correlation.png
-  multigraph/
-    analysis_summary.json
-    multiplicity_summary.csv
-    {dataset}/
-      multiplicity_stats.json
-      distribution.png
-    correlation/
-      correlation_analysis.json
-      plots/
-        multiplicity_vs_performance.png
-        compression_vs_ctdg_advantage.png
-```
+Earlier iterations of this directory shipped a set of spectral-analysis
+scripts (`run_spectral_baseline.py`, `run_spectral_shift.py`, etc.).
+Those were exploratory research artifacts that did not make it into the
+published version. They still live on the `data_stats` branch if you
+need to revive them; the main and `integration/rebuttal` branches do not
+carry them.
