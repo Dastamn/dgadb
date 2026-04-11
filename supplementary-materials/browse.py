@@ -525,8 +525,16 @@ def _(
         # ROC-AUC random baseline. For AUPRC the center is less
         # meaningful, but the visual still makes "above/below random"
         # immediate at a glance for the dominant metric.
+        #
+        # `coolwarm` is Kenneth Moreland's perceptually uniform
+        # diverging colormap (Moreland 2009, IEEE Vis). It is the
+        # matplotlib-recommended choice for diverging scientific data
+        # and is colorblind-safe — the blue and red ends differ in
+        # both hue and luminance, so deuteranopes/protanopes can
+        # distinguish them, unlike `RdBu_r` which has known confusion
+        # in the orange-red region for red-green colorblindness.
         _norm = TwoSlopeNorm(vmin=0.0, vcenter=0.5, vmax=1.0)
-        _im = _ax.imshow(_mat, cmap="RdBu_r", aspect="auto", norm=_norm)
+        _im = _ax.imshow(_mat, cmap="coolwarm", aspect="auto", norm=_norm)
         _ax.set_xticks(range(len(_rt_cells)))
         _ax.set_xticklabels(
             [f"R={r}\nT={t}" for r, t in _rt_cells], fontsize=8
