@@ -6,8 +6,25 @@ This folder contains the complete per-dataset results from the DyGADBench evalua
 supplementary-materials/
 ├── tables/       # Per-method CSV files with full numerical results
 ├── plots/        # Sensitivity analysis plots (ROC-AUC and AUPRC)
+├── browse.py     # Interactive marimo notebook (see below)
 └── README.md
 ```
+
+## Interactive browser
+
+`browse.py` is a [marimo](https://marimo.io) notebook that lets you scan
+through the tables and plots without leaving the terminal. Launch it with:
+
+```bash
+pixi run marimo edit supplementary-materials/browse.py
+# or, for a read-only app view:
+pixi run marimo run supplementary-materials/browse.py
+```
+
+The notebook has five sections: a multi-axis table filter, an aggregated
+summary, a head-to-head leaderboard at a fixed (dataset, anomaly type, R, T)
+configuration, a per-method heatmap over the (dataset × R × T) grid, and
+an embedded viewer for the sensitivity PDFs.
 
 ## Tables
 
