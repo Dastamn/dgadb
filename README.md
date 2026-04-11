@@ -10,8 +10,32 @@ DyGADBench is a research benchmark for evaluating anomaly detection algorithms o
 git clone <repo-url> dgadb
 cd dgadb
 pixi install
+pixi run aim-init   # initialise the local Aim repo (.aim/) — required, see below
 pixi shell
 ```
+
+The `aim-init` step creates a `.aim/` repository in the project root. The training loop's `AimCallback` writes to this repository on every run; if `.aim/` is not present, the runner crashes the first time a callback fires. You only need to run `aim-init` once per fresh clone.
+
+### GPU support
+
+The default `pixi install` resolves the CPU-only PyTorch wheel. To get a CUDA-enabled environment, install the `cuda` feature:
+
+```bash
+pixi install -e cuda
+```
+
+Then run any `dgadb` command via `pixi run -e cuda ...` and pass `--device gpu` where the subcommand accepts it:
+
+```bash
+pixi run -e cuda dgadb run --method gcn --datasets bitcoin-alpha \
+    --epochs 5 --device gpu --concurrency 1
+pixi run -e cuda dgadb scalability --methods gcn --datasets bitcoin-alpha \
+    --epochs 1 --device gpu --output-dir benchmark-results/smoke
+```
+
+The `cuda` feature is Linux-only and pulls in `cuda-version=12.*`; macOS users stay on the default CPU environment.
+
+### Apptainer (older Linux servers)
 
 **On older Linux servers** where installing pixi is impractical (old libc or gcc), an [Apptainer](https://apptainer.org/) image is available. Build it with:
 
@@ -160,12 +184,12 @@ The [`supplementary-materials/`](supplementary-materials/) directory ships the p
 - **`browse.py`** — an interactive [marimo](https://marimo.io) notebook to scan the tables and plots: filterable results, head-to-head leaderboards, per-method heatmaps, and an embedded PDF viewer.
 
 ```bash
-pixi run marimo edit supplementary-materials/browse.py     # editable
-pixi run marimo run  supplementary-materials/browse.py     # read-only
+pixi run -e dev marimo edit supplementary-materials/browse.py     # editable
+pixi run -e dev marimo run  supplementary-materials/browse.py     # read-only
 ```
 
 See [`supplementary-materials/README.md`](supplementary-materials/README.md) for the column schema and dataset statistics.
 
-## Citation and License
+## License
 
 This project is released under the MIT License. See [`LICENSE`](LICENSE) for the full text.

@@ -29,6 +29,7 @@ dgadb = { path = ".", editable = true }
 experiment = "python -m dgadb.experiment.runner"
 tune = "python -m dgadb.experiment.tune"
 aim = "aim up"
+aim-init = "aim init"
 download-data = "uv run scripts/bitcoin.py && uv run scripts/uc-social.py && uv run scripts/email-dnc.py && uv run scripts/digg-homo.py && uv run scripts/as-topology.py && uv run scripts/enron.py && uv run scripts/epinions.py && uv run scripts/mooc.py && uv run scripts/reddit.py && uv run scripts/wiki.py && uv run scripts/amazon.py"
 
 [tool.pixi.feature.dev.tasks]
