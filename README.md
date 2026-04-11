@@ -1,6 +1,6 @@
-# DGADB — Dynamic Graph Anomaly Detection Benchmark
+# DyGADBench — Dynamic Graph Anomaly Detection Benchmark
 
-DGADB is a research benchmark for evaluating anomaly detection algorithms on temporal (dynamic) graphs. Given a sequence of graph snapshots, the benchmark injects synthetic anomalies at controlled rates and durations, runs one or more detection methods, and reports edge-level ROC-AUC and average precision. The distinguishing property of DGADB is that anomaly injection, training, and evaluation are fully parameterized through configuration files, so every reported number is reproducible by re-running the same command with the same config.
+DyGADBench is a research benchmark for evaluating anomaly detection algorithms on temporal (dynamic) graphs. Given a sequence of graph snapshots, the benchmark injects synthetic anomalies at controlled rates and durations, runs one or more detection methods, and reports edge-level ROC-AUC and average precision. The distinguishing property of DGADB is that anomaly injection, training, and evaluation are fully parameterized through configuration files, so every reported number is reproducible by re-running the same command with the same config.
 
 ## Installation
 
@@ -95,7 +95,5 @@ To reproduce the full Tier A sweep, use the dispatch script:
 After the sweep, generate the LaTeX table and figures with `scripts/analyze_streaming_scalability.py` (see the script's `--help` for subcommand options: `tier-a-table`, `latency-cdf`, `cost-curve`).
 
 ## Citation and License
-
-(Citation forthcoming — the manuscript is currently under review.)
 
 This project is released under the MIT License. See [`LICENSE`](LICENSE) for the full text.
