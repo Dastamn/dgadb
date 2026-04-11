@@ -518,10 +518,15 @@ def _(
             "*No data for this (method, anomaly type) combination.*"
         )
     else:
+        from matplotlib.colors import TwoSlopeNorm
+
         _fig, _ax = plt.subplots(figsize=(10, 4))
-        _im = _ax.imshow(
-            _mat, cmap="viridis", aspect="auto", vmin=0, vmax=1
-        )
+        # Diverging blue->white->red colormap centered at 0.5 — the
+        # ROC-AUC random baseline. For AUPRC the center is less
+        # meaningful, but the visual still makes "above/below random"
+        # immediate at a glance for the dominant metric.
+        _norm = TwoSlopeNorm(vmin=0.0, vcenter=0.5, vmax=1.0)
+        _im = _ax.imshow(_mat, cmap="RdBu_r", aspect="auto", norm=_norm)
         _ax.set_xticks(range(len(_rt_cells)))
         _ax.set_xticklabels(
             [f"R={r}\nT={t}" for r, t in _rt_cells], fontsize=8
@@ -536,6 +541,11 @@ def _(
             for _ci in range(len(_rt_cells)):
                 _v = _mat[_di, _ci]
                 if not np.isnan(_v):
+                    # White text on the dark ends of the colormap,
+                    # black text near the white midpoint.
+                    _text_color = (
+                        "black" if 0.30 <= _v <= 0.70 else "white"
+                    )
                     _ax.text(
                         _ci,
                         _di,
@@ -543,7 +553,7 @@ def _(
                         ha="center",
                         va="center",
                         fontsize=7,
-                        color="white" if _v < 0.5 else "black",
+                        color=_text_color,
                     )
         _fig.colorbar(_im, ax=_ax, label=hm_metric.value)
         plt.tight_layout()
