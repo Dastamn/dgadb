@@ -64,6 +64,20 @@ roughly `num_methods + num_datasets - 1` cells, instead of the cartesian
 product. Per-cell logs and a TSV results summary land under
 `benchmark-results/smoke/<timestamp>_<device>/`.
 
+```mermaid
+flowchart TD
+    start(["./smoke_test.sh"]) --> p1{"--skip-phase1?"}
+    p1 -- "no (default)" --> p1run["Phase 1<br/>for method in $METHODS:<br/>run_cell(method, $PHASE1_DATASET)"]
+    p1 -- yes --> p2
+    p1run --> p2{"--skip-phase2?"}
+    p2 -- "no (default)" --> p2run["Phase 2<br/>for dataset in $DATASETS:<br/>skip if (dataset == $PHASE1_DATASET)<br/>and ($PHASE2_METHOD in $METHODS)<br/>else run_cell($PHASE2_METHOD, dataset)"]
+    p2 -- yes --> summary
+    p2run --> summary["Render TSV summary"]
+    summary --> exit{"Any FAIL?"}
+    exit -- yes --> code1(["exit 1"])
+    exit -- no --> code0(["exit 0"])
+```
+
 ```bash
 ./scripts/smoke_test.sh                                # cpu, full default
 ./scripts/smoke_test.sh --device gpu                   # gpu (cuda env)
