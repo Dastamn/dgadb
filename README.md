@@ -139,11 +139,11 @@ Hyperparameter tuning is supported through `src/dgadb/experiment/tune.py` and is
 
 This means tuning is performed independently for each method–dataset pair rather than once globally, and the selected configuration is then used for the final experiment run.
 
-*Note: due to compute constraints, the published results apply the full protocol (steps 1–4) to only a subset of (method, dataset) pairs. The remaining cells use only step 1 — the hyperparameters recommended in each method's original paper. The same `tune.py` driver and the same search spaces (Appendix A.3, Table 4 in the paper) can be re-run on any cell to extend the tuned subset.*
+*Note: due to compute constraints, the published results apply the full protocol (steps 1–4) to a subset of **datasets** rather than to the full method × dataset matrix. On the tuned datasets, every method went through the protocol; on the remaining datasets, every method uses only step 1 — the hyperparameters recommended in its original paper. `tune.py` and the search spaces from Appendix A.3 (Table 4 in the paper) can be re-run on any cell to extend the tuned subset.*
 
 ## Reproducing the Paper's Experiments
 
-All dataset configs are in `configs/datasets/` and experiment configs in `configs/experiments/`. The hyperparameters used by the loop below are the configurations selected by the [Hyperparameter tuning](#hyperparameter-tuning) protocol — the tuned winners on the (method, dataset) pairs that were tuned, the original-paper defaults on the rest. The runner takes a single method per invocation, so reproducing the full evaluation grid is a shell loop over the ten methods:
+All dataset configs are in `configs/datasets/` and experiment configs in `configs/experiments/`. The hyperparameters used by the loop below are the configurations selected by the [Hyperparameter tuning](#hyperparameter-tuning) protocol — the tuned winners on the datasets that went through the protocol, the original-paper defaults on the rest. The runner takes a single method per invocation, so reproducing the full evaluation grid is a shell loop over the ten methods:
 
 ```bash
 for method in sad taddy slade strgnn rustgraph gcn gat graphsage generaldyg addgraph; do
