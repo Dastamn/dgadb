@@ -72,7 +72,6 @@ class ExperimentRunner:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    # TODO: change snapshot_config to args
     def run(
         self,
         epochs: int,
@@ -80,6 +79,16 @@ class ExperimentRunner:
         callbacks: list[ExperimentCallback] | None = None,
         evaluate: bool = True,
     ):
+        """Train the model and (optionally) evaluate it on the test split.
+
+        Args:
+            epochs: Number of training epochs to run.
+            snapshot_config: Keyword arguments forwarded to
+                :class:`TemporalGraphSnapshotLoader` (e.g. ``strategy``,
+                ``window_size``, ``include_cumulative``).
+            callbacks: Optional list of training callbacks.
+            evaluate: When ``True``, run :meth:`evaluate` after training.
+        """
         self.logger.info(
             f"Starting Experiment: {self.model.__class__.__name__}/{self.dataset_name}"
         )
@@ -102,6 +111,12 @@ class ExperimentRunner:
         self.logger.info("Done.")
 
     def evaluate(self, snapshot_config: dict):
+        """Run inference on the test split and log/save metrics.
+
+        Builds a test :class:`TemporalGraphSnapshotLoader`, calls the
+        model's inference loop, runs :class:`ADEvaluator`, persists the
+        results, and forwards them to any attached :class:`AimCallback`.
+        """
         test_loader = TemporalGraphSnapshotLoader(
             self.data, split="test", **snapshot_config
         )
@@ -128,6 +143,7 @@ class ExperimentRunner:
 
 
 def setup_worker_logging(level=logging.INFO):
+    """Configure root logging inside a multiprocessing worker process."""
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(levelname)s] (%(processName)s) %(name)s: %(message)s",
@@ -151,6 +167,13 @@ def run_single_config(
     cache_dir: str,
     device: str
 ):
+    """Worker entry point that runs a single (method, dataset, anomaly) configuration.
+
+    Loads (or generates) the requested anomaly variant, instantiates the
+    matching model, configures Aim and resource-monitor callbacks, and
+    drives :class:`ExperimentRunner`. Intended to be submitted to a
+    :class:`ProcessPoolExecutor` from :func:`run_experiment`.
+    """
     setup_worker_logging(logging.INFO)
 
     cache_dir = os.path.join(cache_dir, method)
@@ -250,6 +273,11 @@ def run_experiment(
     cache_dir: Annotated[str, typer.Option(help="Location of intermediate files")] = "cache",
     device: Annotated[str, typer.Option(help="Use GPU if available")] = "cpu"
 ):
+    """Typer entry point: launch the cartesian product of experiments in parallel.
+
+    Builds one task per (dataset, anomaly type, ratio, duration) combination
+    and dispatches them to a process pool of size ``concurrency``.
+    """
     try:
         total_cores = len(os.sched_getaffinity(0))
     except AttributeError:

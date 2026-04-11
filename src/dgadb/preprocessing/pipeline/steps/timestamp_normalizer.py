@@ -4,10 +4,26 @@ from ..container import GraphDataContainer
 
 
 class TimestampNormalizer(PipelineStep):
+    """Pipeline step that casts edge (and node) timestamps to ``UInt64``.
+
+    Date/datetime columns are cast directly; integer-like float columns are
+    truncated; floats with fractional parts are scaled by a power of ten so
+    that all decimals are preserved before casting.
+    """
+
     def __init__(self) -> None:
         super().__init__()
 
     def validate(self, data: GraphDataContainer | None) -> None:
+        """Check that the container exists and timestamp columns are numeric or temporal.
+
+        Args:
+            data: The container from the previous step.
+
+        Raises:
+            ValueError: If ``data`` is ``None`` or a timestamp column has an
+                unsupported dtype.
+        """
         if data is None:
             raise ValueError("Input data is None.")
 
@@ -71,6 +87,11 @@ class TimestampNormalizer(PipelineStep):
         return df.with_columns(normalized_expr.alias(time_col))
 
     def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
+        """Cast edge and node timestamp columns to ``UInt64``.
+
+        Returns:
+            The container with integer-valued timestamp columns.
+        """
         assert data is not None
 
         self.logger.info("Starting timestamp normalization...")
@@ -88,4 +109,5 @@ class TimestampNormalizer(PipelineStep):
         return data
 
     def update_metadata(self, data: GraphDataContainer) -> None:
+        """Set ``is_timestamp_normalized = True`` in container metadata."""
         data.is_timestamp_normalized = True

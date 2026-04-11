@@ -9,6 +9,15 @@ _SNAPSHOTTING_STRATEGIES: list[str] = ["window", "event"]
 
 @dataclass
 class TemporalGraphSnapshot:
+    """A single temporal snapshot fed to a model during training or inference.
+
+    Attributes:
+        snapshot_id: Sequential index of the snapshot within the loader.
+        current: Edges belonging to the current window.
+        cumulative: Optional view containing all edges up to and including
+            the current window (used by methods that require running history).
+    """
+
     snapshot_id: int
     current: TemporalGraph | TemporalGraphView
     cumulative: Optional[TemporalGraph | TemporalGraphView]
@@ -18,6 +27,25 @@ class TemporalGraphSnapshot:
 
 
 class TemporalGraphSnapshotLoader:
+    """Iterates over a :class:`TemporalGraph` as a sequence of snapshots.
+
+    Splits the edge stream into snapshots according to a strategy:
+
+    - ``"window"``: fixed-size batches of ``window_size`` edges.
+    - ``"event"``: groups consecutive edges sharing the same source node.
+
+    The loader honours train/val/test masks via ``split`` and can optionally
+    yield a cumulative view alongside the current snapshot.
+
+    Args:
+        data: The temporal graph to iterate over.
+        strategy: Snapshot strategy (``"window"`` or ``"event"``).
+        split: Restrict iteration to a single split (``"train"``/``"val"``/``"test"``).
+        copy_on_load: If ``True``, copy tensors per snapshot instead of viewing.
+        include_cumulative: If ``True``, also expose all preceding edges.
+        **kwargs: Strategy parameters (e.g. ``window_size`` for ``"window"``).
+    """
+
     def __init__(
         self,
         data: TemporalGraph,
@@ -40,6 +68,7 @@ class TemporalGraphSnapshotLoader:
 
     @property
     def total_num_nodes(self):
+        """Total number of nodes in the underlying full graph."""
         return self.data.num_nodes
 
     def _slice_data(self, indices: torch.Tensor) -> TemporalGraph:
@@ -55,6 +84,7 @@ class TemporalGraphSnapshotLoader:
         )
 
     def reset(self):
+        """Rewind the iterator to the first snapshot."""
         self._current_snapshot_num = 0
 
     def _compute_snapshot_indices(self) -> list[torch.Tensor]:

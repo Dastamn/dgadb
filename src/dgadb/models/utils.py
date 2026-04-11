@@ -91,7 +91,7 @@ class NeighborSampler:
 
 
 if __name__ == "__main__":
-    from dgadb.storage import TemporalGraphLoader
-    loader = TemporalGraphLoader()
+    from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
+    loader = TemporalGraphLoaderNew()
     tg = loader.load("bitcoin-alpha", create_if_not_found=True)
     sampler = NeighborSampler(tg, split="train")

@@ -25,21 +25,51 @@ class ExperimentCallback(ABC):
         self.verbose = verbose
 
     def on_train_begin(self, state: TrainingState):
+        """Called once before the first training epoch starts.
+
+        Args:
+            state: Current training state snapshot.
+        """
         pass
 
     def on_train_end(self, state: TrainingState):
+        """Called once after the last training epoch finishes.
+
+        Args:
+            state: Final training state snapshot.
+        """
         pass
 
     def on_train_epoch_begin(self, state: TrainingState):
+        """Called at the start of each training epoch.
+
+        Args:
+            state: Current training state snapshot.
+        """
         pass
 
     def on_train_epoch_end(self, state: TrainingState):
+        """Called at the end of each training epoch.
+
+        Args:
+            state: Current training state snapshot including validation metrics.
+        """
         pass
 
     def on_train_step_begin(self, state: TrainingState):
+        """Called before each individual training step (snapshot).
+
+        Args:
+            state: Current training state snapshot.
+        """
         pass
 
     def on_train_step_end(self, state: TrainingState):
+        """Called after each individual training step (snapshot).
+
+        Args:
+            state: Current training state snapshot including the step loss.
+        """
         pass
 
 
@@ -58,25 +88,31 @@ class ExperimentCallbackHandler:
         self.callbacks = callbacks or []
 
     def on_train_begin(self, state: TrainingState):
+        """Dispatch ``on_train_begin`` to all registered callbacks."""
         for cb in self.callbacks:
             cb.on_train_begin(state)
 
     def on_train_end(self, state: TrainingState):
+        """Dispatch ``on_train_end`` to all registered callbacks."""
         for cb in self.callbacks:
             cb.on_train_end(state)
 
     def on_train_epoch_begin(self, state: TrainingState):
+        """Dispatch ``on_train_epoch_begin`` to all registered callbacks."""
         for cb in self.callbacks:
             cb.on_train_epoch_begin(state)
 
     def on_train_epoch_end(self, state: TrainingState):
+        """Dispatch ``on_train_epoch_end`` to all registered callbacks."""
         for cb in self.callbacks:
             cb.on_train_epoch_end(state)
 
     def on_train_step_begin(self, state: TrainingState):
+        """Dispatch ``on_train_step_begin`` to all registered callbacks."""
         for cb in self.callbacks:
             cb.on_train_step_begin(state)
 
     def on_train_step_end(self, state: TrainingState):
+        """Dispatch ``on_train_step_end`` to all registered callbacks."""
         for cb in self.callbacks:
             cb.on_train_step_end(state)

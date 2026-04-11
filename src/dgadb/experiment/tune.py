@@ -14,7 +14,8 @@ from . import utils
 from .runner import ExperimentRunner
 from .callbacks import ResourceMonitor, TuneReporter
 from dgadb.models import BaseADModel
-from dgadb.storage import TemporalGraph, TemporalGraphLoader, generate_temporal_graph_filename
+from dgadb.storage import TemporalGraph, generate_temporal_graph_filename
+from dgadb.storage.temporal_graph import TemporalGraphLoaderNew
 from dgadb.utils.paths import get_project_root
 
 
@@ -59,6 +60,13 @@ def trainable_function(
 
 
 class Tuner:
+    """Orchestrates hyperparameter search over a DGADB model using Ray Tune.
+
+    Reads a YAML configuration to define the search space, loads the target
+    dataset via :class:`~dgadb.storage.temporal_graph.TemporalGraphLoaderNew`,
+    runs the Ray Tune experiment, and evaluates the best trial on the test split.
+    """
+
     def __init__(
             self,
             config_path: str,
@@ -108,7 +116,7 @@ class Tuner:
         self.output_dir = os.path.join(
             _BASE_PATH, output_dir, method_name, dataset_name)
 
-        self.loader = TemporalGraphLoader(loader_base_dir)
+        self.loader = TemporalGraphLoaderNew(loader_base_dir)
         self.data = self.loader.load(
             dataset_name, **self.config.get("anomalies", {}), create_if_not_found=True)
         self.dataset_name = generate_temporal_graph_filename(self.data)
@@ -118,13 +126,21 @@ class Tuner:
 
     @property
     def metric(self):
+        """Name of the validation metric used to rank trials."""
         return self.config["val_metric"]["name"]
 
     @property
     def metric_mode(self):
+        """Optimisation direction (``"min"`` or ``"max"``) for :attr:`metric`."""
         return self.config["val_metric"]["mode"]
 
     def run(self, stopper: Stopper | None = None):
+        """Launch the Ray Tune experiment and evaluate the best trial.
+
+        Args:
+            stopper: Optional Ray Tune stopper (e.g.
+                :class:`TrialPlateauStopper`) used to terminate trials early.
+        """
         param_space = utils.get_tune_param_space(self.config)
 
         time_budget = self.config.get("time_budget", None)
@@ -174,6 +190,7 @@ class Tuner:
         self.evaluate_result(results.get_best_result(metric, mode))
 
     def evaluate_result(self, result: tune.Result):
+        """Reload the best checkpoint and evaluate it on the test split."""
         checkpoint = result.checkpoint
         if checkpoint is None:
             self.logger.error("No checkpoint found for evaluation.")

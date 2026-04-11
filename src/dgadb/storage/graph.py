@@ -29,6 +29,19 @@ E_KEYS = {
 
 
 class Graph:
+    """Legacy node/edge-dict graph container.
+
+    Stores nodes and edges as dictionaries keyed by names from the
+    ``N_KEYS`` and ``E_KEYS`` schemas. Supports per-snapshot iteration via
+    :meth:`generate_snapshots` and :meth:`snapshots`. Retained for older
+    methods that have not migrated to :class:`TemporalGraph`.
+
+    Args:
+        nodes: Dict of node tensors keyed by ``N_KEYS`` entries.
+        edges: Dict of edge tensors keyed by ``E_KEYS`` entries.
+        window_size: Optional snapshot window size hint.
+    """
+
     def __init__(
         self,
         nodes: Optional[Dict[str, torch.Tensor]] = None,
@@ -98,12 +111,15 @@ class Graph:
         return f"<Graph:\n  Nodes: [{node_keys}]\n  Edges: [{edge_keys}]\n>"
 
     def node_dict(self) -> Dict[str, torch.Tensor]:
+        """Return a shallow copy of the node tensor dictionary."""
         return self._nodes.copy()
 
     def edge_dict(self) -> Dict[str, torch.Tensor]:
+        """Return a shallow copy of the edge tensor dictionary."""
         return self._edges.copy()
 
     def to(self, device: torch.device):
+        """Move all stored node and edge tensors to ``device`` in place."""
         for k in self._nodes:
             self._nodes[k] = self._nodes[k].to(device)
         for k in self._edges:
@@ -111,27 +127,18 @@ class Graph:
         return self
 
     def generate_snapshots(self, snapshot_size: int, temporal_snapshots: bool = False):
-        """
-        Assigns snapshot IDs to edges based on either temporal or structural slicing.
+        """Assign snapshot IDs to edges via temporal or structural slicing.
 
-        Parameters:
-        snapshot_size : int
-            The size or duration of each snapshot. For temporal slicing this represents
-            the time window. For structural slicing this is the number of edges per snapshot.
+        Modifies the graph in-place by setting ``e_snapshot_id`` on every edge.
+        When ``e_val_mask`` is present, validation and test snapshot IDs are
+        shifted so they never overlap with preceding splits.
 
-        temporal_snapshots : bool, optional (default=False)
-            If True, snapshots are generated based on temporal intervals using the 'e_timestamp' field.
-            If False, snapshots are generated structurally by grouping a fixed number of edges.
-
-        Notes:
-        - This method modifies the graph in-place by adding or updating the 'e_snapshot_id' field in the edge dictionary.
-        - If 'e_val_mask' is present, it ensures that validation and test snapshots do not overlap in time with training.
-        - When `temporal_snapshots` is True:
-            - Edges are assigned to snapshots based on the difference between their timestamp and the minimum timestamp.
-            - Snapshots for validation and test sets are adjusted to not overlap with training/validation snapshots.
-        - When `temporal_snapshots` is False:
-            - Edges are split into chunks of size `snapshot_size`, separately for train, val, and test sets.
-            - Snapshot IDs are assigned to each chunk.
+        Args:
+            snapshot_size: Window duration (temporal mode) or number of edges
+                per chunk (structural mode).
+            temporal_snapshots: If ``True``, compute snapshot IDs from
+                ``e_timestamp`` divided by ``snapshot_size``. If ``False``,
+                group edges into fixed-size chunks within each split.
         """
         e_ts = self._edges["e_timestamp"]
         device = e_ts.device
@@ -213,34 +220,27 @@ class Graph:
         self._edges["e_snapshot_id"] = e_snapshot_id
 
     def snapshots(self, split="all", accumulate=True, all_nodes: bool = True):
-        """
-        Generates subgraphs corresponding to individual snapshots based on snapshot IDs.
+        """Yield per-snapshot subgraphs derived from pre-computed snapshot IDs.
 
-        Parameters:
-        split : str, optional (default="all")
-            The data split to use for generating snapshots. Options are:
-            - "train": only training edges
-            - "val": only validation edges
-            - "test": only test edges
-            - "all": all edges
+        Requires that :meth:`generate_snapshots` has been called first. If
+        nodes have an ``n_snapshot_id`` field, they are filtered consistently
+        with the current snapshot ID.
 
-        accumulate : bool, optional (default=True)
-            If True, each snapshot will contain all edges up to and including the current snapshot ID.
-            If False, each snapshot will contain only the edges assigned exactly to that snapshot ID.
-
-        all_nodes : bool, optional (default=True)
-            If True, includes all nodes in each snapshot.
-            If False, includes only the nodes present in the selected edges for the snapshot.
+        Args:
+            split: Which split's edges to iterate over (``"train"``,
+                ``"val"``, ``"test"``, or ``"all"``).
+            accumulate: If ``True``, each snapshot includes all edges up to
+                and including the current snapshot ID. If ``False``, only
+                edges with exactly the current snapshot ID are included.
+            all_nodes: If ``True``, include all nodes in each snapshot.
+                If ``False``, restrict nodes to those present in the
+                selected edges.
 
         Yields:
-        Graph
-            A subgraph representing a snapshot. Each yielded Graph object includes:
-            - A subset of edges (based on snapshot ID and split)
-            - A subset of nodes (based on `all_nodes` and node timestamps, if available)
+            A :class:`Graph` subgraph for each snapshot ID in ``split``.
 
-        Notes:
-        - Requires that 'e_snapshot_id' is already computed, typically by calling `generate_snapshots`.
-        - If nodes have a 'n_snapshot_id' field, they are filtered based on snapshot timing.
+        Raises:
+            ValueError: If ``split`` is not one of the accepted values.
         """
 
         if split == "all":
@@ -316,36 +316,42 @@ class Graph:
 
     @property
     def num_nodes(self) -> int:
+        """Number of nodes recorded in this graph."""
         if "n_id" in self._nodes:
             return self._nodes["n_id"].shape[0]
         return 0
 
     @property
     def num_edges(self) -> int:
+        """Number of edges recorded in this graph."""
         if "e_id" in self._edges:
             return self._edges["e_id"].shape[0]
         return 0
 
     @property
     def num_node_types(self) -> int:
+        """Number of distinct node types; returns 1 when ``n_type`` is absent."""
         if "n_type" in self._nodes:
             return int(self._nodes["n_type"].unique().numel())
         return 1
 
     @property
     def num_edge_types(self) -> int:
+        """Number of distinct edge types; returns 1 when ``e_type`` is absent."""
         if "e_type" in self._edges:
             return int(self._edges["e_type"].unique().numel())
         return 1
 
     @property
     def node_types(self):
+        """Unique node type values as a CPU tensor."""
         if "n_type" in self._nodes:
             return self._nodes["n_type"].unique().cpu()
         return torch.tensor([0])
 
     @property
     def num_snapshots(self) -> int:
+        """Maximum snapshot ID across nodes and edges; 0 when none are set."""
         if "n_snapshot_id" in self._nodes or "e_snapshot_id" in self._edges:
             if "n_snapshot_id" in self._nodes:
                 n_snapshots = torch.max(self._nodes["n_snapshot_id"]).item()
@@ -358,18 +364,21 @@ class Graph:
 
     @property
     def edge_types(self):
+        """Unique edge type values as a CPU tensor."""
         if "e_type" in self._edges:
             return self._edges["e_type"].unique().cpu()
         return torch.tensor([0])
 
     @property
     def node_feature_dim(self) -> int:
+        """Dimensionality of node features; 0 when ``n_feat`` is absent."""
         if "n_feat" in self._nodes:
             return self._nodes["n_feat"].shape[1]
         return 0
 
     @property
     def edge_feature_dim(self) -> int:
+        """Dimensionality of edge features; 0 when ``e_feat`` is absent."""
         if "e_feat" in self._edges:
             return self._edges["e_feat"].shape[1]
         return 0

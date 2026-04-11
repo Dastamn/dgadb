@@ -4,6 +4,16 @@ from functools import wraps
 
 
 def check_matching_device(func):
+    """Decorator that moves ``y_true`` and ``y_scores`` onto the same device before calling ``func``.
+
+    The target device is determined from the ``device`` keyword argument, then
+    ``y_scores``, then ``y_true``, falling back to CPU. Both inputs are cast to
+    :class:`torch.Tensor` if they are not already.
+
+    Raises:
+        TypeError: If either input is not a :class:`torch.Tensor` or
+            :class:`numpy.ndarray`.
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
         y_true, y_pred, *_ = args
@@ -35,6 +45,7 @@ def check_matching_device(func):
 
 
 def check_matching_shapes(func):
+    """Decorator that raises ``ValueError`` when ``y_true`` and ``y_pred`` shapes differ."""
     @wraps(func)
     def wrapper(*args, **kwargs):
         y_true, y_pred, *_ = args

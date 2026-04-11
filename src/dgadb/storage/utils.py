@@ -7,6 +7,12 @@ from .temporal_graph import TemporalGraph
 
 
 def generate_temporal_graph_filename(temporal_graph: TemporalGraph):
+    """Build a deterministic filename prefix encoding a graph's identity.
+
+    The prefix combines dataset name, train/val/test ratios and (when present)
+    anomaly type, ratios, duration, and a hash of generation parameters. Used
+    by the legacy loader to look up cached graphs on disk.
+    """
     meta = temporal_graph.metadata
     dataset_name = meta.get("dataset_name", "unknown-dataset")
 
@@ -45,6 +51,10 @@ def generate_temporal_graph_filename(temporal_graph: TemporalGraph):
 
 
 def convert_temporal_graph_to_legacy_graph(temporal_graph: TemporalGraph) -> Graph:
+    """Convert a :class:`TemporalGraph` to the legacy :class:`Graph` container.
+
+    Used by methods that still expect the older node/edge-dict graph format.
+    """
     device = temporal_graph.device
     temporal_graph = temporal_graph.to("cpu")
 

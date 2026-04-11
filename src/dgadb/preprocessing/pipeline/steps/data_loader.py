@@ -6,6 +6,25 @@ from ..container import GraphDataContainer
 
 
 class DataLoader(PipelineStep):
+    """Pipeline step that loads a dataset's parquet files into a container.
+
+    Reads the required ``edges.parquet`` plus any optional node/edge feature,
+    type and label parquet files found in ``dataset_dir`` and joins them on
+    their respective id columns.
+
+    Args:
+        dataset_dir: Directory containing the dataset's parquet files.
+        e_src_col: Source-node column name in ``edges.parquet``.
+        e_tgt_col: Target-node column name.
+        e_time_col: Edge timestamp column name.
+        e_id_col: Edge id column used for joining feature tables.
+        n_time_col: Node timestamp column name.
+        n_id_col: Node id column name.
+        feat_id_col: Long-format feature id column name.
+        feat_val_col: Long-format feature value column name.
+        feat_col_prefix: Prefix used when generating wide feature columns.
+    """
+
     # TODO @Dastamn: update to data_path="data/structured"
     def __init__(
         self,
@@ -50,9 +69,19 @@ class DataLoader(PipelineStep):
         return df
 
     def validate(self, data: GraphDataContainer | None) -> None:
+        """No-op — the data loader is always the first step and requires no input."""
         pass
 
     def process(self, data: GraphDataContainer | None) -> GraphDataContainer:
+        """Load all parquet files from ``dataset_dir`` and return a container.
+
+        Returns:
+            A :class:`GraphDataContainer` with edges and (optional) nodes
+            joined from all discovered parquet files.
+
+        Raises:
+            FileNotFoundError: If ``edges.parquet`` is missing.
+        """
         # Load and join edge files
         edge_file = os.path.join(self.dataset_dir, "edges.parquet")
         if not os.path.exists(edge_file):
@@ -133,4 +162,5 @@ class DataLoader(PipelineStep):
         )
 
     def update_metadata(self, data: GraphDataContainer) -> None:
+        """Set ``dataset_name`` in metadata to the base name of ``dataset_dir``."""
         data.dataset_name = Path(self.dataset_dir).name

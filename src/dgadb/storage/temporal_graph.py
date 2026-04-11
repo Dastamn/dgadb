@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Literal
 import os
-import glob
 import json
 import copy
 import logging
@@ -17,6 +16,29 @@ from torch.types import Device
 
 @dataclass
 class TemporalGraph:
+    """Core temporal-graph container used throughout the benchmark.
+
+    Holds all edge-level tensors (source, target, timestamp, message features,
+    labels, split masks) plus optional node-level attributes and a free-form
+    ``metadata`` dict. Unknown attributes fall through to ``metadata`` via
+    ``__getattr__``/``__setattr__`` so downstream code can attach fields like
+    ``dataset_name`` or ``variant_name`` without subclassing.
+
+    Attributes:
+        src: Source node indices, shape ``[num_edges]``.
+        tgt: Target node indices, shape ``[num_edges]``.
+        t: Edge timestamps, shape ``[num_edges]``.
+        msg: Edge features, shape ``[num_edges, num_edge_features]``.
+        edge_labels: Optional binary anomaly labels per edge.
+        train_mask: Boolean mask selecting training edges.
+        test_mask: Boolean mask selecting test edges.
+        val_mask: Optional boolean mask selecting validation edges.
+        w: Optional per-edge weight.
+        node_attr: Optional node feature matrix.
+        node_labels: Optional per-node labels.
+        metadata: Free-form dict for dataset name, anomaly-injection info, etc.
+    """
+
     src: torch.Tensor                   # Shape: [num_edges]
     tgt: torch.Tensor                   # Shape: [num_edges]
     t: torch.Tensor                     # Shape: [num_edges], timestamps
@@ -43,26 +65,32 @@ class TemporalGraph:
 
     @property
     def device(self) -> torch.device:
+        """Device shared by all tensor attributes."""
         return self.check_device()
 
     @property
     def num_nodes(self) -> int:
+        """Number of nodes, inferred as ``max(src, tgt) + 1``."""
         return max(int(self.src.max()), int(self.tgt.max())) + 1
 
     @property
     def num_edges(self) -> int:
+        """Number of edges in the graph."""
         return self.src.size(0)
 
     @property
     def edges(self):
+        """Edge tensor of shape ``[num_edges, 2]`` with columns ``[src, tgt]``."""
         return torch.stack([self.src, self.tgt], dim=1)
 
     @property
     def edge_index(self) -> torch.Tensor:
+        """Edge index tensor of shape ``[2, num_edges]`` in COO format."""
         return torch.stack([self.src, self.tgt], dim=0)
 
     @property
     def adj_matrix_coo(self) -> torch.Tensor:
+        """Sparse COO adjacency matrix, shape ``[num_nodes, num_nodes]``."""
         device = self.device
         size = self.num_nodes
         if self.num_edges == 0:
@@ -77,10 +105,12 @@ class TemporalGraph:
 
     @property
     def adj_matrix_csr(self) -> torch.Tensor:
+        """CSR adjacency matrix converted from :attr:`adj_matrix_coo`."""
         return self.adj_matrix_coo.to_sparse_csr()
 
     @property
     def adj_matrix_dense(self) -> torch.Tensor:
+        """Dense adjacency matrix converted from :attr:`adj_matrix_coo`."""
         return self.adj_matrix_coo.to_dense()
 
     # def flip_edge_labels(self):
@@ -89,6 +119,11 @@ class TemporalGraph:
     #                         * torch.tensor(-1, device=device))
 
     def to(self, device: Any, **kwargs):
+        """Return a copy of this graph with all tensors moved to ``device``.
+
+        Non-tensor attributes (including ``metadata``) are deep-copied. Returns
+        ``self`` unchanged if the graph is already on the requested device.
+        """
         if self.device == torch.device(device):
             return self
 
@@ -102,6 +137,12 @@ class TemporalGraph:
         return self.__class__(**new_attrs)
 
     def check_device(self) -> torch.device:
+        """Return the device shared by all tensor attributes.
+
+        Raises:
+            ValueError: If no tensor attributes exist.
+            RuntimeError: If tensors are on multiple devices.
+        """
         devices = defaultdict(list)
         for key, value in self.__dict__.items():
             if torch.is_tensor(value):
@@ -117,6 +158,7 @@ class TemporalGraph:
         return next(iter(devices.keys()))
 
     def describe(self) -> None:
+        """Print a human-readable summary of the graph to stdout."""
         print("--- TemporalGraphData Summary ---")
         print(f"Device: {self.device}")
         print(f"Number of Nodes: {self.num_nodes}")
@@ -164,7 +206,20 @@ class TemporalGraph:
 
 
 class TemporalGraphView:
+    """Zero-copy view over a subset of edges of a :class:`TemporalGraph`.
+
+    Attribute access is forwarded to the underlying graph; tensors whose first
+    dimension equals the number of edges are transparently indexed by the
+    stored ``indices``. Used by the snapshot loader to avoid copying data.
+    """
+
     def __init__(self, temporal_graph: TemporalGraph, indices: slice | torch.Tensor):
+        """Construct a view over a subset of edges.
+
+        Args:
+            temporal_graph: The underlying graph to slice.
+            indices: A slice or 1-D integer tensor selecting the edge subset.
+        """
         self._temporal_graph = temporal_graph
         self._indices = indices
         
@@ -182,177 +237,26 @@ class TemporalGraphView:
 
     @property
     def num_edges(self) -> int:
+        """Number of edges in this view."""
         return self._num_edges
 
     @property
     def edge_index(self) -> torch.Tensor:
+        """Edge index tensor of shape ``[2, num_edges]`` for this view."""
         return torch.stack([self.src, self.tgt], dim=0)
 
 
-class TemporalGraphLoader:
-    def __init__(
-        self,
-        base_directory: str = "processed/",
-        metadata_suffix: str = "_meta"
-    ) -> None:
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.base_directory = base_directory
-        self.metadata_suffix = metadata_suffix
-        os.makedirs(base_directory, exist_ok=True)
-        self.logger.info(
-            f"TemporalGraphLoader initialized. Using base directory: {self.base_directory}")
-
-    def save(self, temporal_graph: TemporalGraph) -> str:
-        dataset_name = temporal_graph.metadata.get(
-            "dataset_name", "unknown-dataset")
-        dataset_dir = os.path.join(self.base_directory, dataset_name)
-
-        os.makedirs(dataset_dir, exist_ok=True)
-
-        from .utils import generate_temporal_graph_filename
-
-        prefix = generate_temporal_graph_filename(temporal_graph)
-        full_path_prefix = os.path.join(dataset_dir, prefix)
-
-        torch_fn = f"{full_path_prefix}.pt"
-        metadata_fn = f"{full_path_prefix}{self.metadata_suffix}.json"
-
-        torch.save(temporal_graph, torch_fn)
-        self.logger.info(f"Saved torch object: {torch_fn}")
-
-        with open(metadata_fn, "w") as f:
-            json.dump(temporal_graph.metadata, f, indent=4)
-
-        self.logger.info(f"Saved metadata JSON: {metadata_fn}")
-
-        self.logger.info(f"Graph saved successfully.")
-
-        return full_path_prefix
-
-    def load(
-        self,
-        dataset_name: str,
-        anom_type: Optional[str] = None,
-        anom_train_ratio: Optional[float] = None,
-        anom_val_ratio: Optional[float] = None,
-        anom_test_ratio: Optional[float] = None,
-        create_if_not_found: bool = False,
-        device: Device = None,
-        **kwargs
-    ) -> TemporalGraph:
-        search_criteria = {
-            "dataset_name": dataset_name,
-            "anomaly_type": anom_type,
-            "anomaly_ratios": (
-                anom_train_ratio or 0.0,
-                anom_val_ratio or 0.0,
-                anom_test_ratio or 0.0
-            ),
-            "anomaly_generation_parameters": kwargs
-        }
-        self.logger.info(
-            f"Searching for graph with criteria: {search_criteria}")
-
-        if anom_type is None:
-            if any(r for r in [anom_train_ratio, anom_val_ratio, anom_test_ratio]):
-                raise ValueError(
-                    "Cannot specify non-zero anomaly ratios when 'anom_type' is None.")
-            if kwargs:
-                raise ValueError(
-                    "Cannot specify generation parameters (kwargs) when 'anom_type' is None.")
-        else:
-            from dgadb.preprocessing import get_canonical_anomaly_type
-
-            anom_type = get_canonical_anomaly_type(anom_type)
-
-        search_pattern = os.path.join(
-            self.base_directory, dataset_name, f"{dataset_name}*{self.metadata_suffix}.json")
-        possible_files = glob.glob(search_pattern)
-
-        matches = []
-        for meta_path in possible_files:
-            with open(meta_path, "r") as f:
-                meta = json.load(f)
-
-            if meta.get("dataset_name") != dataset_name:
-                continue
-
-            is_injected = meta.get("anomaly_injection", {}) \
-                .get("is_injected", False)
-
-            if anom_type is None:
-                # Looking for clean graph
-                if is_injected:
-                    continue  # Skip anomalous
-
-                matches.append(meta_path)
-
-            else:
-                if not is_injected:
-                    continue  # Skip clean
-
-                if meta["anomaly_injection"].get("type") != anom_type:
-                    continue
-
-                splits_meta = meta["anomaly_injection"].get("splits", {})
-                if splits_meta.get("train", {}).get("ratio") != anom_train_ratio:
-                    continue
-                if splits_meta.get("val", {}).get("ratio") != anom_val_ratio:
-                    continue
-                if splits_meta.get("test", {}).get("ratio") != anom_test_ratio:
-                    continue
-
-                gen_params = meta.get("anomaly_injection", {}) \
-                    .get("generation_parameters", {})
-                if any(gen_params.get(key) != value for key, value in kwargs.items()):
-                    continue
-
-                matches.append(meta_path)
-
-        if len(matches) == 0:
-            if create_if_not_found:
-                self.logger.info(
-                    "Could not find a matching graph for the specified criteria. Loading from raw data.")
-
-                from dgadb.preprocessing import Pipeline
-
-                pipeline = Pipeline.from_config(dataset_name)
-                temmporal_graph = pipeline.run().to_temporal_graph()
-                if device:
-                    temmporal_graph = temmporal_graph.to(device)
-
-                if anom_type is None:
-                    return temmporal_graph
-
-                from dgadb.preprocessing import AnomalyInjector
-
-                anom_injector = AnomalyInjector(temmporal_graph)
-                anomalous_temporal_graph = anom_injector.generate_anomalous_samples(
-                    anom_type, anom_train_ratio or 0, anom_val_ratio or 0, anom_test_ratio or 0, **kwargs)
-
-                return anomalous_temporal_graph
-
-            else:
-                raise FileNotFoundError(
-                    f"Could not find a matching graph for the specified criteria.")
-
-        if len(matches) > 1:
-            raise ValueError(
-                f"Found multiple matching graphs. Refine your search criteria.\n"
-                f"Matches found: {matches}"
-            )
-
-        matched_meta_path = matches[0]
-        path_prefix = matched_meta_path.replace(
-            f"{self.metadata_suffix}.json", "")
-
-        self.logger.info(
-            f"Found matching graph: {os.path.basename(path_prefix)}.pt")
-
-        return torch.load(f"{path_prefix}.pt", weights_only=False)
-
-
 class TemporalGraphLoaderNew:
+    """Variant-directory loader for processed :class:`TemporalGraph` objects.
+
+    Stores each (dataset, anomaly variant) under a dedicated directory
+    (``base_directory/<dataset>/<variant_name>/``) containing ``data.pt`` and
+    ``metadata.json``.
+
+    Args:
+        base_directory: Root directory for processed variants.
+    """
+
     def __init__(self, base_directory: str = "processed") -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.base_dir = base_directory
@@ -388,6 +292,7 @@ class TemporalGraphLoaderNew:
             return obj
 
     def save(self, tg: TemporalGraph, variant_dir: str):
+        """Persist ``tg`` to ``variant_dir`` as ``data.pt`` + ``metadata.json``."""
         os.makedirs(variant_dir, exist_ok=True)
         torch.save(tg, os.path.join(variant_dir, "data.pt"))
         json_meta = self._prepare_json_meta(tg.metadata)
@@ -407,6 +312,31 @@ class TemporalGraphLoaderNew:
         duration: float | Literal["small", "medium", "large"] = "medium",
         create_if_not_found: bool = False
     ) -> TemporalGraph:
+        """Load (or generate) a variant of ``dataset_name``.
+
+        Looks up ``base_directory/<dataset>/<variant>/data.pt`` where
+        ``variant`` is derived from the anomaly configuration. When no match
+        exists and ``create_if_not_found`` is ``True``, runs the preprocessing
+        pipeline for the clean graph and the anomaly injector for the variant.
+
+        Args:
+            dataset_name: Name of the dataset.
+            anom_type: Anomaly type; ``None`` returns the clean graph.
+            anom_train_ratio: Anomaly ratio in the train split.
+            anom_val_ratio: Anomaly ratio in the validation split.
+            anom_test_ratio: Anomaly ratio in the test split.
+            duration: Anomaly duration, either a literal bucket
+                (``"small"``/``"medium"``/``"large"``) or a float rate.
+            create_if_not_found: Run the preprocessing pipeline and anomaly
+                injector when no cached variant is found.
+
+        Returns:
+            The matched or newly created :class:`TemporalGraph`.
+
+        Raises:
+            FileNotFoundError: When no cached variant exists and
+                ``create_if_not_found`` is ``False``.
+        """
         if isinstance(duration, float):
             duration_rate = duration
         else:

@@ -77,7 +77,7 @@ class SADAD(BaseADModel[SADComponents]):
         self.sample_size = sample_size
 
     def setup(self, data: TemporalGraph, **kwargs) -> None:
-        print("[SAD] Setting up model logic to match original...", flush=True)
+        logger.info("Setting up SAD model logic to match original...")
 
         # 1. Prepare Neighbor Finder
         src = data.src.detach().cpu().numpy()
@@ -88,12 +88,12 @@ class SADAD(BaseADModel[SADComponents]):
         full_data_obj = ds.SADData(src, tgt, ts, edge_ids, labels)
         ngh_finder = get_neighbor_finder(full_data_obj, uniform=False)
 
-        if data.edge_attr is not None:
-            edge_features = data.edge_attr.detach().cpu().numpy().astype(np.float32)
+        if data.msg is not None and data.msg.numel() > 0:
+            edge_features = data.msg.detach().cpu().numpy().astype(np.float32)
             self.input_dim = edge_features.shape[1]
         else:
             edge_features = np.zeros((len(src), self.input_dim), dtype=np.float32)
-            print(f"[SAD] No edge features found. Created zeros of shape {edge_features.shape}")
+            logger.info("No edge features found. Created zeros of shape %s", edge_features.shape)
         
         if data.node_attr is not None:
             node_features = data.node_attr.detach().cpu().numpy().astype(np.float32)
@@ -101,7 +101,7 @@ class SADAD(BaseADModel[SADComponents]):
             num_nodes = data.num_nodes
             feat_dim = self.input_dim 
             node_features = np.zeros((num_nodes, feat_dim), dtype=np.float32)
-            print(f"[SAD] No node features found. Created zero-matrix of shape ({num_nodes}, {feat_dim})")
+            logger.info("No node features found. Created zero-matrix of shape (%d, %d)", num_nodes, feat_dim)
 
         persistent_labels = labels.clone()
         if self.mask_label:
@@ -109,7 +109,7 @@ class SADAD(BaseADModel[SADComponents]):
             num_to_mask = int(len(train_idx) * self.mask_ratio)
             mask_idx = np.random.choice(train_idx, num_to_mask, replace=False)
             persistent_labels[mask_idx] = -1
-            print(f"[SAD] Masked {num_to_mask} training labels.")
+            logger.info("Masked %d training labels.", num_to_mask)
 
         arg_dict = {
             "input_dim": self.input_dim, "hidden_dim": self.hidden_dim,

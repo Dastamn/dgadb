@@ -4,7 +4,10 @@ import logging
 import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields, field
-from typing import Generic, Optional, Self, TypeVar
+from typing import TYPE_CHECKING, Generic, Optional, Self, TypeVar
+
+if TYPE_CHECKING:
+    from dgadb.scalability.streaming_profiler import StreamingProfiler
 
 import torch
 from tqdm import tqdm
@@ -16,6 +19,12 @@ from dgadb.experiment.callbacks import ExperimentCallback, ExperimentCallbackHan
 
 
 class BaseModel(ABC):
+    """Deprecated base class for anomaly detection models.
+
+    Use :class:`BaseADModel` for all new implementations. This class is
+    retained for backwards compatibility with older method adapters.
+    """
+
     temporal_graph: typing.Optional[TemporalGraph]
     model: typing.Optional[torch.nn.Module]
     optimizer: typing.Optional[torch.optim.Optimizer]
@@ -149,17 +158,64 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
         return self._components
 
     def set_training_mode(self, is_training: bool):
+        """Toggle training/eval mode on all ``nn.Module`` components.
+
+        Args:
+            is_training: Pass ``True`` to call ``.train()`` on every module
+                component; ``False`` to call ``.eval()``.
+        """
         for field in fields(self.components):
             attr = getattr(self.components, field.name)
             if isinstance(attr, torch.nn.Module):
                 attr.train() if is_training else attr.eval()
 
-    def run_inference(self, loader: TemporalGraphSnapshotLoader) -> tuple[torch.Tensor, torch.Tensor]:
+    def run_inference(
+        self,
+        loader: TemporalGraphSnapshotLoader,
+        profiler: StreamingProfiler | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run the model in eval mode over a snapshot loader and collect labels and scores.
+
+        Args:
+            loader: Snapshot loader covering the desired split (typically test).
+            profiler: Optional ``StreamingProfiler``. When supplied, each
+                snapshot's wall-clock latency, edge count, and mean degree
+                are recorded for streaming-scalability analysis. CUDA
+                synchronization brackets each scoring call so the timings
+                are not biased by asynchronous kernel launches.
+
+        Returns:
+            Tuple of (all_labels, all_scores) concatenated across all snapshots.
+        """
+        import time
+
         all_scores = []
         all_labels = []
         for snapshot in tqdm(loader, desc="TEST"):
             current_graph = snapshot.current
+            if profiler is not None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                t0 = time.perf_counter()
             edge_scores = self._predict(snapshot)
+            if profiler is not None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                elapsed = time.perf_counter() - t0
+                num_edges = int(current_graph.edge_labels.shape[0])
+                # Mean degree of the snapshot, computed cheaply: every edge
+                # contributes to two endpoints, so the mean of the degree
+                # distribution equals 2 * num_edges / num_nodes.
+                num_nodes = getattr(current_graph, "num_nodes", 0) or 0
+                if num_nodes > 0:
+                    mean_degree = (2.0 * num_edges) / float(num_nodes)
+                else:
+                    mean_degree = 0.0
+                profiler.record(
+                    num_edges=num_edges,
+                    mean_degree=mean_degree,
+                    elapsed_sec=elapsed,
+                )
             edge_labels = current_graph.edge_labels
             all_scores.append(edge_scores)
             all_labels.append(edge_labels)
@@ -190,6 +246,18 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
         val_loader: Optional[TemporalGraphSnapshotLoader] = None,
         callbacks: Optional[list[ExperimentCallback]] = None
     ):
+        """Run the full training loop and dispatch events to callbacks.
+
+        Calls :meth:`_train_step` for each snapshot and, after each epoch,
+        evaluates on ``val_loader`` (if provided) and stores the ROC-AUC in
+        the training state.
+
+        Args:
+            epochs: Number of full passes over the training data.
+            train_loader: Snapshot loader for the training split.
+            val_loader: Optional snapshot loader for the validation split.
+            callbacks: Optional list of callbacks to fire at each hook point.
+        """
         handler = ExperimentCallbackHandler(callbacks)
         state = TrainingState(model=self)
         handler.on_train_begin(state)
@@ -213,7 +281,7 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
                 val_auc = roc_auc_score(
                     val_labels_binary, val_probs.cpu().numpy())
                 state.val_metrics = {'roc_auc': val_auc}
-                print(val_auc)
+                self.logger.info("Validation ROC-AUC: %.4f", val_auc)
 
             handler.on_train_epoch_end(state)
 
@@ -229,9 +297,24 @@ class BaseADModel(Generic[BaseADModelComponentsType], ABC):
 
     @abstractmethod
     def save(self, save_dir: str) -> None:
+        """Persist the model's state to ``save_dir``.
+
+        Args:
+            save_dir: Directory to write model artefacts into.
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def load(cls, load_dir: str, device: torch.device | str = "cpu", **kwargs) -> Self:
+        """Restore a previously saved model from ``load_dir``.
+
+        Args:
+            load_dir: Directory containing the saved artefacts.
+            device: Device to map the restored model onto.
+            **kwargs: Additional model constructor arguments.
+
+        Returns:
+            An initialised instance of the concrete subclass.
+        """
         raise NotImplementedError
