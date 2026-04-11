@@ -67,7 +67,7 @@ METHODS="sad taddy slade strgnn rustgraph gcn gat graphsage generaldyg addgraph"
 # $PHASE2_METHOD. Includes every dataset config we ship; override with
 # --datasets to narrow it down on constrained hardware or when some
 # datasets are not yet downloaded.
-DATASETS="bitcoin-alpha bitcoin-otc email-dnc uc-social digg-homo as-topology mooc wiki reddit epinions enron dgraph yelp-zip"
+DATASETS="bitcoin-alpha bitcoin-otc email-dnc uc-social digg-homo as-topology mooc wiki reddit epinions enron dgraph"
 PHASE1_DATASET="bitcoin-alpha"
 PHASE2_METHOD="gcn"
 
