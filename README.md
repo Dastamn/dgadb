@@ -148,7 +148,7 @@ All dataset configs are in `configs/datasets/` and experiment configs in `config
 ```bash
 for method in sad taddy slade strgnn rustgraph gcn gat graphsage generaldyg addgraph; do
     pixi run dgadb run --method "$method" \
-        --datasets bitcoin-alpha bitcoin-otc uc-social email-dnc \
+        --datasets bitcoin-alpha bitcoin-otc email-dnc uc-social digg-homo as-topology \
         --anom-types random burst clique path bridge \
         --anom-rates 0.01 0.05 0.1 \
         --anom-durations small medium large \
