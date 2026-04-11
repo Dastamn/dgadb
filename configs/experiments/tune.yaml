@@ -1,7 +1,7 @@
 global:
   epochs: 50
-  time_budget: 259200 # 3 days
-  num_samples: 1
+  time_budget: 86400
+  num_samples: 20
 
   val_metric:
     name: roc_auc
@@ -15,7 +15,7 @@ global:
     duration: small
 
   snapshot_config:
-    window_size: [2000, 6000, 12000, 20000, 40000]
+    window_size: [2000, 6000, 12000]
     strategy: window
 
   hyperparameters: {}
@@ -76,3 +76,110 @@ methods:
       include_cumulative: True
 
     hyperparameters: {}
+
+  AddGraph:
+    model_name: AddGraphAD
+
+    hyperparameters:
+      hidden:
+        search_strategy: random_search
+        search_space: [64, 100, 128]
+      window_size:
+        search_strategy: random_search
+        search_space: [1, 3, 5]
+      lr:
+        search_strategy: random_search
+        search_space: [0.0001, 0.001, 0.01]
+
+  StrGNN:
+    model_name: StrGNNAD
+
+    hyperparameters:
+      hidden:
+        search_strategy: random_search
+        search_space: [64, 128, 256]
+      hop:
+        search_strategy: random_search
+        search_space: [1, 2]
+      window_size:
+        search_strategy: random_search
+        search_space: [3, 5, 7]
+      learning_rate:
+        search_strategy: random_search
+        search_space: [0.00001, 0.0001, 0.001]
+
+  RustGraph:
+    model_name: RustGraphAD
+
+    hyperparameters:
+      z_dim:
+        search_strategy: random_search
+        search_space: [128, 256, 512]
+      layer_num:
+        search_strategy: random_search
+        search_space: [1, 2, 3]
+      window:
+        search_strategy: random_search
+        search_space: [1, 2, 3]
+
+  SAD:
+    model_name: SADAD
+
+    anomalies:
+      anom_train_ratio: 0.01
+
+    hyperparameters:
+      hidden_dim:
+        search_strategy: random_search
+        search_space: [64, 128, 256]
+      n_heads:
+        search_strategy: random_search
+        search_space: [2, 4]
+      n_neighbors:
+        search_strategy: random_search
+        search_space: [10, 20, 40]
+
+  SLADE:
+    model_name: SLADEAD
+
+    hyperparameters:
+      memory_dim:
+        search_strategy: random_search
+        search_space: [128, 256, 512]
+      num_neighbors:
+        search_strategy: random_search
+        search_space: [10, 20, 40]
+      learning_rate:
+        search_strategy: random_search
+        search_space: [0.000001, 0.000003, 0.00001]
+
+  TADDY:
+    model_name: TADDYAD
+
+    hyperparameters:
+      window_size:
+        search_strategy: random_search
+        search_space: [1, 3, 5]
+      num_neighbors:
+        search_strategy: random_search
+        search_space: [5, 10, 15]
+      message_dim:
+        search_strategy: random_search
+        search_space: [64, 128, 256]
+
+  GeneralDyG:
+    model_name: GeneralDyGAD
+
+    hyperparameters:
+      hidden_dim:
+        search_strategy: random_search
+        search_space: [128, 256]
+      n_layer:
+        search_strategy: random_search
+        search_space: [2, 4, 6]
+      n_heads:
+        search_strategy: random_search
+        search_space: [2, 4]
+      k_hop:
+        search_strategy: random_search
+        search_space: [1, 2]
