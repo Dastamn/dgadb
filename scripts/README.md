@@ -6,8 +6,10 @@ categories:
 1. **Dataset preparation** — one-shot downloaders for each dataset.
 2. **Smoke testing** — sanity checks that exercise every method and every
    dataset after a refactor or merge.
-3. **Scalability** — Tier A streaming-scalability sweeps and the appendix
-   table/figure generator.
+3. **Scalability** — full per-(method, dataset) sweeps for the streaming-
+   scalability appendix table (called *Tier A* throughout the codebase
+   and in this README), plus the table/figure generator that consumes
+   the sweep output.
 
 All scripts work from a `pixi shell` (or via `pixi run -e dev <command>`).
 The dataset downloaders use [PEP 723](https://peps.python.org/pep-0723/)
@@ -93,10 +95,15 @@ Exit code is `0` only if every cell passes; `1` otherwise. See
 
 ## Scalability sweeps
 
-The scalability subcommand (`dgadb scalability`) measures wall-clock
-training, peak GPU/RAM, edge throughput, and warmup-excluded streaming
-metrics for one (method, dataset) pair. The shell wrappers below dispatch
-that subcommand across the full grid for the appendix Tier A table.
+The scalability subcommand (`dgadb scalability`) measures, for one
+(method, dataset) pair: wall-clock training time, peak GPU/RAM, edge
+throughput, and per-snapshot streaming metrics (latency percentiles
+plus throughput recomputed after a warmup window of leading snapshots
+is discarded — that is, "warmup-excluded throughput"). The shell
+wrappers below dispatch that subcommand across the full grid for the
+streaming-scalability appendix table — the *Tier A* table; the name
+shows up in script and directory names throughout this folder
+(`run_scalability_sweep_tier1.sh`, `benchmark-results/tier_a/`, etc.).
 
 ### `run_scalability_sweep.sh` — full Tier A dispatch
 
@@ -118,20 +125,25 @@ skipped on re-run.
 Run with `--help` for the full option list (`--methods`, `--datasets`,
 `--outer dataset|method`, `--pixi-env`, etc.).
 
-### `run_scalability_sweep_tier1.sh` — everything except epinions
+The Tier A grid is large enough that you typically split it into two
+scheduling passes — `tier1` (every dataset except epinions) and
+`tier2` (DGraph alone). These are subdivisions *within* Tier A driven
+by per-cell wall-clock cost; they are not paper-level tiers.
+
+### `run_scalability_sweep_tier1.sh` — Tier A pass 1 (everything except epinions)
 
 Thin wrapper around `run_scalability_sweep.sh` that pins dataset-outer
 ordering, a 30-minute per-pair timeout, and excludes `epinions` (which
 is substantially larger than the other datasets and would dominate the
 budget). Run this first under any time pressure — it guarantees a
-complete table for every other dataset even if the overall sweep is
-interrupted.
+complete Tier A table for every other dataset even if the overall
+sweep is interrupted.
 
-### `run_scalability_sweep_tier2.sh` — DGraph stretch goal
+### `run_scalability_sweep_tier2.sh` — Tier A pass 2 (DGraph stretch goal)
 
 Wrapper that runs DGraph (3.7M nodes, 4.3M edges) for the methods that
 are not already known to OOM at that scale — primarily the GNN baselines
-and SLADE. Pinned 3-hour per-pair timeout. Run AFTER tier 1.
+and SLADE. Pinned 3-hour per-pair timeout. Run AFTER `tier1`.
 
 ---
 
@@ -139,8 +151,11 @@ and SLADE. Pinned 3-hour per-pair timeout. Run AFTER tier 1.
 
 ### `analyze_streaming_scalability.py`
 
-Reads the CSVs and sidecar JSONs produced by the scalability sweep and
-produces the appendix table and figures. Typer CLI with three subcommands:
+Reads the per-pair CSV rows and the per-pair *sidecar* JSON files
+produced by the sweep — each sidecar holds the per-snapshot arrays
+(latencies, edge counts, mean degree, windowed throughput) that the
+CSV does not have room for — and produces the appendix table and
+figures. Typer CLI with three subcommands:
 
 ```bash
 pixi run -e dev python -m scripts.analyze_streaming_scalability tier-a-table \

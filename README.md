@@ -134,14 +134,16 @@ This runs `dgadb run` once per method on a small baseline dataset and once per d
 
 ## Scalability benchmark
 
-Scalability profiling (Appendix, Tier A table) uses the `scalability` subcommand:
+The streaming-scalability appendix from the paper — referred to throughout the codebase as **Tier A** — reports per-(method, dataset) wall-clock training time, peak GPU/RAM, edge throughput, and per-snapshot latency percentiles for every cell of the main evaluation grid. The table is dispatched one cell at a time so a single failure (out-of-memory, timeout, missing data) doesn't cascade to the rest of the sweep.
+
+A single cell uses the `scalability` subcommand:
 
 ```bash
 pixi run dgadb scalability --methods gcn --datasets bitcoin-alpha --epochs 1 --device cpu \
   --output-dir benchmark-results/smoke
 ```
 
-To reproduce the full Tier A sweep, use the dispatch script:
+The full Tier A grid is dispatched by:
 
 ```bash
 ./scripts/run_scalability_sweep.sh
