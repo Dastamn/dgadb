@@ -68,6 +68,24 @@ df_edge_types = pl.from_numpy(
 df_edges = df_edges.with_row_index(name="edge_id")
 df_edge_types = df_edge_types.with_row_index(name="edge_id")
 
+# Derive edge labels from node labels:
+# edge is anomalous (1) if either endpoint node has label 1, else normal (0)
+df_src_labels = df_node_labels.rename({"node_id": "src", "label": "src_label"})
+df_tgt_labels = df_node_labels.rename({"node_id": "tgt", "label": "tgt_label"})
+
+df_edge_labels = (
+    df_edges
+    .join(df_src_labels, on="src", how="left")
+    .join(df_tgt_labels, on="tgt", how="left")
+    .with_columns(
+        pl.when((pl.col("src_label") == 1) | (pl.col("tgt_label") == 1))
+        .then(pl.lit(1))
+        .otherwise(pl.lit(0))
+        .alias("label")
+    )
+    .select(["edge_id", "label"])
+)
+
 file_path_node_features_num = os.path.join(
     dataset_dir, "node_features_num.parquet")
 file_path_node_labels = os.path.join(dataset_dir, "node_labels.parquet")
@@ -75,11 +93,13 @@ file_path_node_timestamps = os.path.join(
     dataset_dir, "node_timestamps.parquet")
 file_path_edges = os.path.join(dataset_dir, "edges.parquet")
 file_path_edge_types = os.path.join(dataset_dir, "edge_types.parquet")
+file_path_edge_labels = os.path.join(dataset_dir, "edge_labels.parquet")
 
 df_node_features_num.write_parquet(file_path_node_features_num)
 df_node_labels.write_parquet(file_path_node_labels)
 df_node_timestamps.write_parquet(file_path_node_timestamps)
 df_edges.write_parquet(file_path_edges)
 df_edge_types.write_parquet(file_path_edge_types)
+df_edge_labels.write_parquet(file_path_edge_labels)
 
 print("success.")
