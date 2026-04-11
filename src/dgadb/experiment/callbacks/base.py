@@ -1,3 +1,26 @@
+"""Callback base class and dispatch handler for the training loop.
+
+The training loop in :class:`~dgadb.models.base.BaseADModel` invokes a
+list of :class:`ExperimentCallback` instances at six well-defined hook
+points (``on_train_begin``, ``on_train_end``, ``on_train_epoch_begin``,
+``on_train_epoch_end``, ``on_train_step_begin``, ``on_train_step_end``).
+Subclassing :class:`ExperimentCallback` and overriding any subset of
+these methods is the supported way to add custom logging, model
+checkpointing, resource monitoring, or hyperparameter-tuning hooks
+without touching the training loop itself.
+
+The concrete callbacks shipped with dgadb live in sibling modules:
+
+* :class:`~dgadb.experiment.callbacks.aim_tracker.AimCallback`
+* :class:`~dgadb.experiment.callbacks.resource_monitor.ResourceMonitor`
+* :class:`~dgadb.experiment.callbacks.tune_reporter.TuneReporter`
+
+:class:`ExperimentCallbackHandler` is the dispatcher that walks a list
+of registered callbacks at each hook point; users do not normally
+construct it directly — :class:`~dgadb.models.base.BaseADModel.train`
+does that internally from the ``callbacks=`` argument.
+"""
+
 from __future__ import annotations
 
 import logging

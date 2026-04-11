@@ -1,3 +1,24 @@
+"""Abstract model interface and shared training-loop scaffolding.
+
+This module defines the contract every anomaly-detection method in
+``dgadb.models`` is expected to honour:
+
+* :class:`BaseADModel` — the abstract base class with the standard
+  ``setup`` / ``_train_step`` / ``_predict`` / ``save`` / ``load`` hooks
+  and a ready-made training loop that drives the callback system.
+* :class:`BaseADModelComponents` — a dataclass mixin that holds the
+  trainable / device-dependent pieces of a model. Inheriting from it
+  gives you a ``.to(device)`` method that walks the dataclass fields
+  and moves every ``nn.Module`` / ``Tensor`` / ``Optimizer`` state
+  tensor to the requested device, so concrete models do not need to
+  reimplement device handling.
+* :class:`TrainingState` — the snapshot dataclass passed to callbacks
+  at each hook point.
+* :class:`BaseModel` — a deprecated predecessor kept around only so
+  that legacy method adapters in non-``*_new`` directories still
+  import. New code should not touch it.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -108,6 +129,27 @@ class BaseADModelComponents:
     """
 
     def to(self, device: torch.device | str):
+        """Move every device-dependent component to ``device`` in place.
+
+        Walks the dataclass fields of the subclass and dispatches by
+        type:
+
+        * ``torch.nn.Module`` and ``torch.Tensor`` fields are reassigned
+          to their ``.to(device)`` result.
+        * ``torch.optim.Optimizer`` fields have every tensor inside
+          their internal ``state`` dict moved to ``device`` (the
+          optimizer object itself stays the same instance).
+
+        Fields of any other type are left untouched. The instance is
+        returned for chaining, mirroring ``nn.Module.to``.
+
+        Args:
+            device: Target device, accepted as a ``torch.device`` or as
+                a string like ``"cuda"``, ``"cpu"``, or ``"cuda:0"``.
+
+        Returns:
+            ``self``, with all relevant components now on ``device``.
+        """
         for field in fields(self):
             attr = getattr(self, field.name)
             if isinstance(attr, torch.nn.Module) or isinstance(attr, torch.Tensor):

@@ -1,3 +1,24 @@
+"""Snapshot-level views over a :class:`TemporalGraph`.
+
+A model in dgadb consumes the edge stream as a sequence of
+*snapshots*, not as one monolithic graph. This module defines:
+
+* :class:`TemporalGraphSnapshot` — the dataclass yielded at each step,
+  carrying the edges of the current window plus an optional cumulative
+  view of all preceding edges (for methods that need running history).
+* :class:`TemporalGraphSnapshotLoader` — the iterator that walks a
+  :class:`TemporalGraph` according to one of the supported strategies:
+
+  - ``"window"``: fixed-size batches of ``window_size`` consecutive
+    edges (the default for most methods).
+  - ``"event"``: one snapshot per maximal run of consecutive edges
+    sharing the same source node (used by methods that operate on
+    per-source events).
+
+  The loader honours train/val/test masks via the ``split`` argument
+  so each phase of training only iterates over its own edges.
+"""
+
 import logging
 import torch
 from dataclasses import dataclass

@@ -1,3 +1,30 @@
+"""Synthetic anomaly injection for temporal graphs.
+
+Defines :class:`AnomalyInjector`, which takes a clean
+:class:`~dgadb.storage.TemporalGraph` and injects synthetic anomalous
+edges into one or more splits (``train``/``val``/``test``) according to
+one of five anomaly types:
+
+* ``random`` — random (src, tgt) pairs sampled uniformly.
+* ``burst`` — a single source node fans out to many destinations.
+* ``clique`` — a fully-connected subgraph among a small node set.
+* ``path`` — a long simple path through unrelated nodes.
+* ``bridge`` — a single edge connecting two distinct spectral
+  clusters of the train-time graph.
+
+Each strategy is calibrated against per-dataset statistics (mean
+degree, estimated diameter, average cluster size, spectral community
+structure). The expensive parts of that calibration — spectral
+clustering of the train-time adjacency, k-estimation, graph stats —
+are computed once and cached on disk under
+``cache_dir/<dataset_name>/analysis/`` so subsequent runs reuse them.
+
+CLI integration: the ``dgadb run`` command exposes ``--anom-types``,
+``--anom-rates``, and ``--anom-durations``. The string buckets used by
+``--anom-durations`` are mapped to numeric rates by
+:data:`_ANOMALY_DURATION_TYPE_MAP`.
+"""
+
 from dgadb.storage import TemporalGraph
 
 import os
@@ -17,6 +44,11 @@ from scipy.sparse.linalg import eigsh
 from scipy.sparse.csgraph import shortest_path, laplacian
 
 
+# Maps the human-readable duration buckets exposed via the
+# ``--anom-durations`` CLI flag to fractions of the per-split time
+# horizon over which a single anomaly group is spread. ``"large" = 1.0``
+# means an anomaly group can span the full split window; ``"small" =
+# 0.1`` keeps it within 10% of that window.
 _ANOMALY_DURATION_TYPE_MAP = {"small": 0.1, "medium": 0.5, "large": 1.0}
 
 class AnomalyInjector:
