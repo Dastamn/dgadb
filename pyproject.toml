@@ -37,6 +37,12 @@ format = "ruff format ."
 typecheck = "pyrefly check ."
 check = { depends-on = ["lint", "typecheck"] }
 pytest = "python -m pytest"
+# `docs` renders the curated dgadb modules to docs/api/. We invoke pdoc
+# via a Python script (scripts/build_docs.py) rather than the CLI so we
+# can clear sys.argv before importing legacy vendored code that runs
+# argparse at import time (see the script header for details).
+docs = "python scripts/build_docs.py"
+docs-serve = { cmd = "python -m http.server 8080 --directory docs/api", depends-on = ["docs"] }
 
 [tool.pixi.dependencies]
 aim = ">=3.17.0"
@@ -69,6 +75,7 @@ sqlglot = ">=28.6.0,<29"
 graph-tool = ">=2.98,<3"
 fastexcel = ">=0.19.0,<0.20"
 seaborn = ">=0.13.2,<0.14"
+pdoc = ">=15"
 
 [tool.pixi.feature.cuda]
 platforms = ["linux-64"]

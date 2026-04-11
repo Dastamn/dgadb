@@ -3,6 +3,7 @@ __pycache__/
 __marimo__/
 pipeline_cache/
 venv/
+docs/api/
 
 /data/
 /raw/
