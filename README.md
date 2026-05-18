@@ -205,4 +205,4 @@ See [`supplementary-materials/README.md`](supplementary-materials/README.md) for
 
 ## License
 
-This project is released under the MIT License. See [`LICENSE`](LICENSE) for the full text.
+This project is released under the Apache License 2.0. See [`LICENSE`](LICENSE) for the full text.
